@@ -28,16 +28,7 @@ jobs:
         env:
           VITE_API_BASE_URL: /api
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, json, tokenizer
-          tools: composer:v2
-
-      - name: Install API dependencies
-        working-directory: ./api
-        run: composer install --no-dev --prefer-dist --optimize-autoloader
+      # No composer needed - raw PHP
 
       - name: Deploy to server
         uses: easingthemes/ssh-deploy@main
@@ -57,13 +48,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /var/www/sms.ieosuia.com/api
-            php artisan migrate --force
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-            php artisan queue:restart
-            sudo chown -R www-data:www-data storage bootstrap/cache
-            sudo chmod -R 775 storage bootstrap/cache
+            sudo chown -R www-data:www-data uploads
+            sudo chmod -R 755 uploads
 
       - name: Notify deployment success
         run: echo "✅ Deployment to production successful!"
