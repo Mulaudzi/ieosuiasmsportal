@@ -10,6 +10,8 @@ require_once __DIR__ . '/core/Response.php';
 require_once __DIR__ . '/core/Request.php';
 require_once __DIR__ . '/core/JWT.php';
 require_once __DIR__ . '/core/Auth.php';
+require_once __DIR__ . '/core/RateLimiter.php';
+require_once __DIR__ . '/services/EmailService.php';
 
 // CORS Headers
 header('Access-Control-Allow-Origin: *');
@@ -46,12 +48,14 @@ $router->post('/auth/register', 'AuthController@register');
 $router->post('/auth/login', 'AuthController@login');
 $router->post('/auth/forgot-password', 'AuthController@forgotPassword');
 $router->post('/auth/reset-password', 'AuthController@resetPassword');
+$router->post('/auth/verify-email', 'AuthController@verifyEmail');
 
 // Protected routes
 $router->group(['middleware' => 'auth'], function($router) {
     // Auth
     $router->post('/auth/logout', 'AuthController@logout');
     $router->get('/auth/user', 'AuthController@user');
+    $router->post('/auth/resend-verification', 'AuthController@resendVerification');
     
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
