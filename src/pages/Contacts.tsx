@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { deleteContacts, addContactsToGroup, exportContacts, importContacts } from "@/lib/api";
+import { deleteContacts, addContactsToGroup, exportContacts } from "@/lib/api";
+import { ContactImportModal } from "@/components/contacts/ContactImportModal";
+import { AddContactModal } from "@/components/contacts/AddContactModal";
+import { CreateGroupModal } from "@/components/contacts/CreateGroupModal";
 
 interface Contact {
   id: string;
@@ -102,10 +106,14 @@ const groups = [
 ];
 
 export default function Contacts() {
+  const location = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(location.pathname === "/contacts/import");
+  const [addContactModalOpen, setAddContactModalOpen] = useState(false);
+  const [createGroupModalOpen, setCreateGroupModalOpen] = useState(false);
 
   const toggleContact = (id: string) => {
     setSelectedContacts((prev) =>
@@ -118,27 +126,6 @@ export default function Contacts() {
       setSelectedContacts([]);
     } else {
       setSelectedContacts(contacts.map((c) => c.id));
-    }
-  };
-
-  const handleImport = async () => {
-    setLoadingAction("import");
-    try {
-      const response = await importContacts([]);
-      if (response.success) {
-        toast({
-          title: "Contacts imported",
-          description: `${response.data?.imported} contacts imported, ${response.data?.duplicatesRemoved} duplicates removed.`,
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Import failed",
-        description: "Please check your file and try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingAction(null);
     }
   };
 
@@ -161,13 +148,6 @@ export default function Contacts() {
     } finally {
       setLoadingAction(null);
     }
-  };
-
-  const handleAddContact = () => {
-    toast({
-      title: "Add Contact",
-      description: "Contact form would open here.",
-    });
   };
 
   const handleAddToGroup = async () => {
@@ -244,28 +224,25 @@ export default function Contacts() {
     }
   };
 
-  const handleCreateGroup = () => {
-    toast({
-      title: "Create Group",
-      description: "Group creation form would open here.",
-    });
-  };
-
   return (
+    <>
+    <ContactImportModal open={importModalOpen} onOpenChange={setImportModalOpen} />
+    <AddContactModal open={addContactModalOpen} onOpenChange={setAddContactModalOpen} />
+    <CreateGroupModal open={createGroupModalOpen} onOpenChange={setCreateGroupModalOpen} />
     <DashboardLayout
       title="Contacts"
       subtitle="Manage your contact lists and groups"
       actions={
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2" onClick={handleImport} disabled={loadingAction === "import"}>
-            {loadingAction === "import" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          <Button variant="outline" className="gap-2" onClick={() => setImportModalOpen(true)}>
+            <Upload className="h-4 w-4" />
             Import
           </Button>
           <Button variant="outline" className="gap-2" onClick={handleExport} disabled={loadingAction === "export"}>
             {loadingAction === "export" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export
           </Button>
-          <Button className="gap-2" onClick={handleAddContact}>
+          <Button className="gap-2" onClick={() => setAddContactModalOpen(true)}>
             <UserPlus className="h-4 w-4" />
             Add Contact
           </Button>
@@ -278,7 +255,7 @@ export default function Contacts() {
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-semibold text-foreground">Groups</h3>
-              <Button variant="ghost" size="icon" onClick={handleCreateGroup}>
+              <Button variant="ghost" size="icon" onClick={() => setCreateGroupModalOpen(true)}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -491,5 +468,6 @@ export default function Contacts() {
         </div>
       </div>
     </DashboardLayout>
+    </>
   );
 }

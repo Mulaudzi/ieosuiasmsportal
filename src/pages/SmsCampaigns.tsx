@@ -118,10 +118,7 @@ export default function SmsCampaigns() {
   });
 
   const handleView = (id: string) => {
-    toast({
-      title: "Opening campaign details",
-      description: `Viewing campaign ${id}`,
-    });
+    navigate(`/sms-campaigns/${id}`);
   };
 
   const handleDuplicate = async (id: string) => {

@@ -3,12 +3,14 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider, ProtectedRoute } from "@/hooks/useAuth";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import SmsCampaigns from "./pages/SmsCampaigns";
 import CreateSmsCampaign from "./pages/CreateSmsCampaign";
+import CampaignDetails from "./pages/CampaignDetails";
 import EmailCampaigns from "./pages/EmailCampaigns";
 import Contacts from "./pages/Contacts";
 import Templates from "./pages/Templates";
@@ -25,23 +27,27 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/landing" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/sms-campaigns" element={<SmsCampaigns />} />
-          <Route path="/sms-campaigns/new" element={<CreateSmsCampaign />} />
-          <Route path="/email-campaigns" element={<EmailCampaigns />} />
-          <Route path="/email-campaigns/new" element={<CreateSmsCampaign />} />
-          <Route path="/contacts" element={<Contacts />} />
-          <Route path="/contacts/import" element={<Contacts />} />
-          <Route path="/templates" element={<Templates />} />
-          <Route path="/wallet" element={<Wallet />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/landing" element={<Landing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/sms-campaigns" element={<ProtectedRoute><SmsCampaigns /></ProtectedRoute>} />
+            <Route path="/sms-campaigns/new" element={<ProtectedRoute><CreateSmsCampaign /></ProtectedRoute>} />
+            <Route path="/sms-campaigns/:id" element={<ProtectedRoute><CampaignDetails /></ProtectedRoute>} />
+            <Route path="/email-campaigns" element={<ProtectedRoute><EmailCampaigns /></ProtectedRoute>} />
+            <Route path="/email-campaigns/new" element={<ProtectedRoute><CreateSmsCampaign /></ProtectedRoute>} />
+            <Route path="/email-campaigns/:id" element={<ProtectedRoute><CampaignDetails /></ProtectedRoute>} />
+            <Route path="/contacts" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
+            <Route path="/contacts/import" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
+            <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
+            <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
