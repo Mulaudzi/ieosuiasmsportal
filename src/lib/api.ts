@@ -31,12 +31,38 @@ class ApiClient {
   }
 
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error('Invalid response from server');
+    }
+    
     if (!response.ok) {
       if (response.status === 401) {
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user');
-        window.location.href = '/login';
+        // Show toast before redirect
+        const event = new CustomEvent('auth:session-expired');
+        window.dispatchEvent(event);
+        // Delay redirect to allow toast to show
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 100);
+        throw new Error('Session expired. Please log in again.');
+      }
+      if (response.status === 422 && data.errors) {
+        const firstError = Object.values(data.errors)[0];
+        throw new Error(Array.isArray(firstError) ? firstError[0] : String(firstError));
+      }
+      if (response.status === 403) {
+        throw new Error('You do not have permission to perform this action.');
+      }
+      if (response.status === 404) {
+        throw new Error('The requested resource was not found.');
+      }
+      if (response.status >= 500) {
+        throw new Error('Server error. Please try again later.');
       }
       throw new Error(data.error || data.message || 'An error occurred');
     }
@@ -93,9 +119,28 @@ export const getWalletHistory = () => api.get<any[]>('/wallet/history');
 export const saveSettings = (section: string, data: any) => api.put<any>(`/settings/${section}`, data);
 export const exportReport = (type: string) => api.get<any>(`/reports/export/${type}`);
 
+// Templates
+export const getTemplates = (type?: string) => api.get<any[]>('/templates', type ? { type } : undefined);
+export const getTemplate = (id: string) => api.get<any>(`/templates/${id}`);
+export const createTemplate = (data: { name: string; content: string; type: string }) => api.post<any>('/templates', data);
+export const updateTemplate = (id: string, data: { name?: string; content?: string; type?: string }) => api.put<any>(`/templates/${id}`, data);
+export const deleteTemplate = (id: string) => api.delete(`/templates/${id}`);
+
+// Profile
+export const getProfile = () => api.get<any>('/settings/profile');
+export const updateProfile = (data: { name?: string; email?: string; phone?: string }) => api.put<any>('/settings/profile', data);
+export const uploadBranding = (formData: FormData) => api.upload<any>('/settings/branding', formData);
+
 export const handleApiError = (error: unknown) => {
   toast({ title: "Error", description: error instanceof Error ? error.message : 'An error occurred', variant: "destructive" });
 };
+
+// Listen for session expired events
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:session-expired', () => {
+    toast({ title: "Session Expired", description: "Please log in again to continue.", variant: "destructive" });
+  });
+}
 
 // Legacy type exports for compatibility
 export interface DashboardStats { balance: number; smsSent: number; emailsSent: number; queued: number; delivered: number; failed: number; deliveryRate: number; contacts: number; }
