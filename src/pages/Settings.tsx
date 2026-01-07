@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,12 +15,161 @@ import {
   Check,
   Upload,
   Loader2,
+  X,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { saveSettings } from "@/lib/api";
+import { saveSettings, updateProfile, uploadBranding, handleApiError } from "@/lib/api";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+const profileSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Invalid email address"),
+  phone: z.string().optional(),
+});
+
+type ProfileFormData = z.infer<typeof profileSchema>;
+
+const organizationSchema = z.object({
+  orgName: z.string().min(1, "Organization name is required"),
+  industry: z.string().optional(),
+  address: z.string().optional(),
+  website: z.string().url("Invalid URL").optional().or(z.literal("")),
+});
+
+type OrganizationFormData = z.infer<typeof organizationSchema>;
 
 export default function Settings() {
   const [savingSection, setSavingSection] = useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const profileForm = useForm<ProfileFormData>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: {
+      firstName: "John",
+      lastName: "Doe",
+      email: "john@company.com",
+      phone: "+1 (555) 123-4567",
+    },
+  });
+
+  const orgForm = useForm<OrganizationFormData>({
+    resolver: zodResolver(organizationSchema),
+    defaultValues: {
+      orgName: "Acme Corporation",
+      industry: "E-commerce",
+      address: "123 Business Street, Suite 100\nNew York, NY 10001",
+      website: "https://acme.com",
+    },
+  });
+
+  const handleProfileSubmit = async (data: ProfileFormData) => {
+    setSavingSection("profile");
+    try {
+      const response = await updateProfile({
+        name: `${data.firstName} ${data.lastName}`,
+        email: data.email,
+        phone: data.phone,
+      });
+      if (response.success) {
+        toast({
+          title: "Profile updated",
+          description: "Your profile settings have been saved.",
+        });
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  const handleOrganizationSubmit = async (data: OrganizationFormData) => {
+    setSavingSection("organization");
+    try {
+      const response = await saveSettings("organization", data);
+      if (response.success) {
+        toast({
+          title: "Organization updated",
+          description: "Your organization settings have been saved.",
+        });
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Invalid file", description: "Please select an image file.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 2MB.", variant: "destructive" });
+      return;
+    }
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onloadend = () => setAvatarPreview(reader.result as string);
+    reader.readAsDataURL(file);
+
+    // Upload
+    const formData = new FormData();
+    formData.append("avatar", file);
+
+    try {
+      const response = await uploadBranding(formData);
+      if (response.success) {
+        toast({ title: "Avatar uploaded", description: "Your profile photo has been updated." });
+      }
+    } catch (error) {
+      handleApiError(error);
+      setAvatarPreview(null);
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Invalid file", description: "Please select an image file.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 5MB.", variant: "destructive" });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => setLogoPreview(reader.result as string);
+    reader.readAsDataURL(file);
+
+    const formData = new FormData();
+    formData.append("logo", file);
+
+    try {
+      const response = await uploadBranding(formData);
+      if (response.success) {
+        toast({ title: "Logo uploaded", description: "Your organization logo has been updated." });
+      }
+    } catch (error) {
+      handleApiError(error);
+      setLogoPreview(null);
+    }
+  };
 
   const handleSave = async (section: string) => {
     setSavingSection(section);
@@ -33,11 +182,7 @@ export default function Settings() {
         });
       }
     } catch (error) {
-      toast({
-        title: "Save failed",
-        description: "Please try again.",
-        variant: "destructive",
-      });
+      handleApiError(error);
     } finally {
       setSavingSection(null);
     }
@@ -87,123 +232,238 @@ export default function Settings() {
         </TabsList>
 
         <TabsContent value="profile">
-          <div className="rounded-xl border border-border bg-card p-6">
-            <h3 className="text-lg font-semibold text-foreground">
-              Profile Information
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Update your personal information
-            </p>
+          <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)}>
+            <div className="rounded-xl border border-border bg-card p-6">
+              <h3 className="text-lg font-semibold text-foreground">
+                Profile Information
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Update your personal information
+              </p>
 
-            <div className="mt-6 space-y-6">
-              <div className="flex items-center gap-6">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-2xl font-bold text-primary">
-                  JD
+              <div className="mt-6 space-y-6">
+                <div className="flex items-center gap-6">
+                  <div className="relative">
+                    {avatarPreview ? (
+                      <div className="relative">
+                        <img
+                          src={avatarPreview}
+                          alt="Avatar preview"
+                          className="h-20 w-20 rounded-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setAvatarPreview(null)}
+                          className="absolute -right-1 -top-1 rounded-full bg-destructive p-1 text-destructive-foreground"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-2xl font-bold text-primary">
+                        JD
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <input
+                      type="file"
+                      ref={avatarInputRef}
+                      onChange={handleAvatarUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      className="gap-2"
+                      onClick={() => avatarInputRef.current?.click()}
+                    >
+                      <Upload className="h-4 w-4" />
+                      Upload Photo
+                    </Button>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      JPG, PNG or GIF. Max 2MB.
+                    </p>
+                  </div>
                 </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input 
+                      id="firstName" 
+                      {...profileForm.register("firstName")}
+                      className="mt-1.5" 
+                    />
+                    {profileForm.formState.errors.firstName && (
+                      <p className="mt-1 text-xs text-destructive">
+                        {profileForm.formState.errors.firstName.message}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input 
+                      id="lastName" 
+                      {...profileForm.register("lastName")}
+                      className="mt-1.5" 
+                    />
+                    {profileForm.formState.errors.lastName && (
+                      <p className="mt-1 text-xs text-destructive">
+                        {profileForm.formState.errors.lastName.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 <div>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Upload className="h-4 w-4" />
-                    Upload Photo
-                  </Button>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    JPG, PNG or GIF. Max 2MB.
-                  </p>
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    {...profileForm.register("email")}
+                    className="mt-1.5"
+                  />
+                  {profileForm.formState.errors.email && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {profileForm.formState.errors.email.message}
+                    </p>
+                  )}
                 </div>
-              </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" defaultValue="John" className="mt-1.5" />
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    {...profileForm.register("phone")}
+                    className="mt-1.5"
+                  />
                 </div>
-                <div>
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" defaultValue="Doe" className="mt-1.5" />
-                </div>
-              </div>
 
-              <div>
-                <Label htmlFor="email">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  defaultValue="john@company.com"
-                  className="mt-1.5"
-                />
+                <Button type="submit" disabled={savingSection === "profile"}>
+                  {savingSection === "profile" && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Save Changes
+                </Button>
               </div>
-
-              <div>
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  defaultValue="+1 (555) 123-4567"
-                  className="mt-1.5"
-                />
-              </div>
-
-              <Button onClick={() => handleSave("organization")} disabled={savingSection === "organization"}>
-                {savingSection === "organization" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save Changes
-              </Button>
             </div>
-          </div>
+          </form>
         </TabsContent>
 
         <TabsContent value="organization">
-          <div className="rounded-xl border border-border bg-card p-6">
-            <h3 className="text-lg font-semibold text-foreground">
-              Organization Details
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Manage your organization information
-            </p>
+          <form onSubmit={orgForm.handleSubmit(handleOrganizationSubmit)}>
+            <div className="rounded-xl border border-border bg-card p-6">
+              <h3 className="text-lg font-semibold text-foreground">
+                Organization Details
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Manage your organization information and branding
+              </p>
 
-            <div className="mt-6 space-y-6">
-              <div>
-                <Label htmlFor="orgName">Organization Name</Label>
-                <Input
-                  id="orgName"
-                  defaultValue="Acme Corporation"
-                  className="mt-1.5"
-                />
+              <div className="mt-6 space-y-6">
+                {/* Logo Upload */}
+                <div>
+                  <Label>Organization Logo</Label>
+                  <div className="mt-2 flex items-center gap-4">
+                    {logoPreview ? (
+                      <div className="relative">
+                        <img
+                          src={logoPreview}
+                          alt="Logo preview"
+                          className="h-16 w-32 rounded-lg border border-border object-contain p-2"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setLogoPreview(null)}
+                          className="absolute -right-1 -top-1 rounded-full bg-destructive p-1 text-destructive-foreground"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex h-16 w-32 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/50">
+                        <span className="text-xs text-muted-foreground">No logo</span>
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      ref={logoInputRef}
+                      onChange={handleLogoUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => logoInputRef.current?.click()}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload Logo
+                    </Button>
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Recommended: 200x50px PNG or SVG. Max 5MB.
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="orgName">Organization Name</Label>
+                  <Input
+                    id="orgName"
+                    {...orgForm.register("orgName")}
+                    className="mt-1.5"
+                  />
+                  {orgForm.formState.errors.orgName && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {orgForm.formState.errors.orgName.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="industry">Industry</Label>
+                  <Input
+                    id="industry"
+                    {...orgForm.register("industry")}
+                    className="mt-1.5"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="address">Address</Label>
+                  <Textarea
+                    id="address"
+                    {...orgForm.register("address")}
+                    className="mt-1.5"
+                    rows={3}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="website">Website</Label>
+                  <Input
+                    id="website"
+                    type="url"
+                    {...orgForm.register("website")}
+                    className="mt-1.5"
+                  />
+                  {orgForm.formState.errors.website && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {orgForm.formState.errors.website.message}
+                    </p>
+                  )}
+                </div>
+
+                <Button type="submit" disabled={savingSection === "organization"}>
+                  {savingSection === "organization" && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Save Changes
+                </Button>
               </div>
-
-              <div>
-                <Label htmlFor="industry">Industry</Label>
-                <Input
-                  id="industry"
-                  defaultValue="E-commerce"
-                  className="mt-1.5"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="address">Address</Label>
-                <Textarea
-                  id="address"
-                  defaultValue="123 Business Street, Suite 100&#10;New York, NY 10001"
-                  className="mt-1.5"
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  type="url"
-                  defaultValue="https://acme.com"
-                  className="mt-1.5"
-                />
-              </div>
-
-              <Button onClick={() => handleSave("profile")} disabled={savingSection === "profile"}>
-                {savingSection === "profile" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save Changes
-              </Button>
             </div>
-          </div>
+          </form>
         </TabsContent>
 
         <TabsContent value="senderids">
@@ -218,7 +478,6 @@ export default function Settings() {
                 </p>
               </div>
               <Button onClick={handleAddSenderId}>Add Sender ID</Button>
-              
             </div>
 
             <div className="mt-6 space-y-4">
@@ -310,7 +569,7 @@ export default function Settings() {
               </div>
 
               <Button onClick={() => handleSave("notifications")} disabled={savingSection === "notifications"}>
-                {savingSection === "notifications" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {savingSection === "notifications" && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Save Preferences
               </Button>
             </div>
@@ -374,7 +633,7 @@ export default function Settings() {
               </div>
 
               <Button onClick={() => handleSave("compliance")} disabled={savingSection === "compliance"}>
-                {savingSection === "compliance" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {savingSection === "compliance" && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Save Settings
               </Button>
             </div>
