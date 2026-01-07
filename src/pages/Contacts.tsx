@@ -13,17 +13,18 @@ import {
 import {
   Plus,
   Search,
-  Filter,
   Upload,
   Download,
   Users,
-  MoreHorizontal,
   Edit,
   Trash2,
   UserPlus,
   Ban,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
+import { deleteContacts, addContactsToGroup, exportContacts, importContacts } from "@/lib/api";
 
 interface Contact {
   id: string;
@@ -104,6 +105,7 @@ export default function Contacts() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const toggleContact = (id: string) => {
     setSelectedContacts((prev) =>
@@ -119,21 +121,151 @@ export default function Contacts() {
     }
   };
 
+  const handleImport = async () => {
+    setLoadingAction("import");
+    try {
+      const response = await importContacts([]);
+      if (response.success) {
+        toast({
+          title: "Contacts imported",
+          description: `${response.data?.imported} contacts imported, ${response.data?.duplicatesRemoved} duplicates removed.`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Import failed",
+        description: "Please check your file and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleExport = async () => {
+    setLoadingAction("export");
+    try {
+      const response = await exportContacts(selectedContacts.length > 0 ? selectedContacts : undefined);
+      if (response.success) {
+        toast({
+          title: "Export ready",
+          description: "Your contacts have been exported.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleAddContact = () => {
+    toast({
+      title: "Add Contact",
+      description: "Contact form would open here.",
+    });
+  };
+
+  const handleAddToGroup = async () => {
+    if (selectedContacts.length === 0) return;
+    setLoadingAction("addToGroup");
+    try {
+      const response = await addContactsToGroup(selectedContacts, "Customers");
+      if (response.success) {
+        toast({
+          title: "Contacts added to group",
+          description: `${selectedContacts.length} contacts added.`,
+        });
+        setSelectedContacts([]);
+      }
+    } catch (error) {
+      toast({
+        title: "Action failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedContacts.length === 0) return;
+    setLoadingAction("bulkDelete");
+    try {
+      const response = await deleteContacts(selectedContacts);
+      if (response.success) {
+        toast({
+          title: "Contacts deleted",
+          description: `${response.data?.deleted} contacts removed.`,
+        });
+        setSelectedContacts([]);
+      }
+    } catch (error) {
+      toast({
+        title: "Delete failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleEditContact = (id: string) => {
+    toast({
+      title: "Edit Contact",
+      description: `Editing contact ${id}`,
+    });
+  };
+
+  const handleDeleteContact = async (id: string) => {
+    setLoadingAction(`delete-${id}`);
+    try {
+      const response = await deleteContacts([id]);
+      if (response.success) {
+        toast({
+          title: "Contact deleted",
+          description: "The contact has been removed.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Delete failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleCreateGroup = () => {
+    toast({
+      title: "Create Group",
+      description: "Group creation form would open here.",
+    });
+  };
+
   return (
     <DashboardLayout
       title="Contacts"
       subtitle="Manage your contact lists and groups"
       actions={
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2">
-            <Upload className="h-4 w-4" />
+          <Button variant="outline" className="gap-2" onClick={handleImport} disabled={loadingAction === "import"}>
+            {loadingAction === "import" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Import
           </Button>
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
+          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={loadingAction === "export"}>
+            {loadingAction === "export" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export
           </Button>
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={handleAddContact}>
             <UserPlus className="h-4 w-4" />
             Add Contact
           </Button>
@@ -146,7 +278,7 @@ export default function Contacts() {
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-semibold text-foreground">Groups</h3>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" onClick={handleCreateGroup}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -216,13 +348,15 @@ export default function Contacts() {
                 {selectedContacts.length} selected
               </span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleAddToGroup} disabled={loadingAction === "addToGroup"}>
+                  {loadingAction === "addToGroup" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
                   Add to Group
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleExport} disabled={loadingAction === "export"}>
                   Export
                 </Button>
-                <Button variant="destructive" size="sm">
+                <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={loadingAction === "bulkDelete"}>
+                  {loadingAction === "bulkDelete" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
                   Delete
                 </Button>
               </div>
@@ -316,11 +450,20 @@ export default function Contacts() {
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" onClick={() => handleEditContact(contact.id)}>
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon">
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => handleDeleteContact(contact.id)}
+                            disabled={loadingAction === `delete-${contact.id}`}
+                          >
+                            {loadingAction === `delete-${contact.id}` ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            )}
                           </Button>
                         </div>
                       </td>

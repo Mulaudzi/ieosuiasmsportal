@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { MetricCard } from "@/components/dashboard/MetricCard";
@@ -11,8 +12,11 @@ import {
   Download,
   Clock,
   CheckCircle,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
+import { buyCredits, exportContacts } from "@/lib/api";
 
 const packages = [
   { credits: 1000, price: 25, popular: false },
@@ -65,17 +69,66 @@ const transactions = [
 ];
 
 export default function Wallet() {
+  const [loadingPackage, setLoadingPackage] = useState<number | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleBuyCredits = async (credits: number, price: number) => {
+    setLoadingPackage(credits);
+    try {
+      const response = await buyCredits({ credits, price });
+      if (response.success) {
+        toast({
+          title: "Purchase successful!",
+          description: `${credits.toLocaleString()} credits added. New balance: ${response.data?.newBalance.toLocaleString()}`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Purchase failed",
+        description: "Please try again or contact support.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingPackage(null);
+    }
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const response = await exportContacts();
+      if (response.success) {
+        toast({
+          title: "Export ready",
+          description: "Your transaction history has been exported.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const scrollToBuy = () => {
+    document.getElementById('buy-credits')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
     <DashboardLayout
       title="Wallet"
       subtitle="Manage your credits and view transaction history"
       actions={
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
+          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting}>
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export
           </Button>
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={scrollToBuy}>
             <Plus className="h-4 w-4" />
             Buy Credits
           </Button>
@@ -109,7 +162,7 @@ export default function Wallet() {
       </div>
 
       {/* Buy Credits */}
-      <div className="mt-8">
+      <div className="mt-8" id="buy-credits">
         <h2 className="mb-4 text-lg font-semibold text-foreground">
           Buy Credits
         </h2>
@@ -148,8 +201,14 @@ export default function Wallet() {
                     pkg.popular ? "" : "variant-outline"
                   )}
                   variant={pkg.popular ? "default" : "outline"}
+                  onClick={() => handleBuyCredits(pkg.credits, pkg.price)}
+                  disabled={loadingPackage === pkg.credits}
                 >
-                  Buy Now
+                  {loadingPackage === pkg.credits ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Buy Now"
+                  )}
                 </Button>
               </div>
             </div>
