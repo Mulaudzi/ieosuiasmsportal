@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import {
   Loader2,
   Users,
   TrendingUp,
+  Pause,
+  Play,
 } from "lucide-react";
 import {
   AreaChart,
@@ -40,6 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getCampaign } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
+import { useDlrPolling } from "@/hooks/useDlrPolling";
 
 interface MessageLog {
   id: string;
@@ -94,8 +97,30 @@ export default function CampaignDetails() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [pollingEnabled, setPollingEnabled] = useState(true);
 
   const isSms = type === "sms";
+
+  // Real-time DLR polling every 10 seconds
+  const handlePollingUpdate = useCallback((data: any) => {
+    setCampaign((prev: any) => ({
+      ...prev,
+      ...data,
+      message: prev?.message || "🔥 Flash Sale! Get 50% off all items for the next 24 hours. Shop now at example.com/sale",
+      senderId: prev?.senderId || "IEOSUIA",
+      sentAt: prev?.sentAt || "Jan 7, 2026 10:30 AM",
+    }));
+  }, []);
+
+  const { stopPolling, startPolling, refetch } = useDlrPolling({
+    campaignId: id || "",
+    enabled: pollingEnabled && !loading,
+    interval: 10000, // 10 seconds
+    onUpdate: handlePollingUpdate,
+    onError: (error) => {
+      console.error("Polling error:", error);
+    },
+  });
 
   useEffect(() => {
     loadCampaign();
@@ -125,12 +150,21 @@ export default function CampaignDetails() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadCampaign();
+    await refetch();
     setRefreshing(false);
     toast({
       title: "Campaign refreshed",
       description: "Delivery status updated.",
     });
+  };
+
+  const togglePolling = () => {
+    if (pollingEnabled) {
+      stopPolling();
+    } else {
+      startPolling();
+    }
+    setPollingEnabled(!pollingEnabled);
   };
 
   const filteredLogs = mockMessageLogs.filter((log) => {
@@ -162,6 +196,15 @@ export default function CampaignDetails() {
       subtitle={`Campaign ID: ${id}`}
       actions={
         <div className="flex gap-3">
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="gap-2" 
+            onClick={togglePolling}
+          >
+            {pollingEnabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {pollingEnabled ? "Pause Auto-refresh" : "Resume Auto-refresh"}
+          </Button>
           <Button variant="outline" className="gap-2" onClick={handleRefresh} disabled={refreshing}>
             {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Refresh
