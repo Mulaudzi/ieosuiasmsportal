@@ -11,6 +11,7 @@ use App\Http\Controllers\OptOutController;
 use App\Http\Controllers\TemplateController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\AdminController;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,6 +32,10 @@ Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
     Route::get('/check', [AuthController::class, 'check']);
+    Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
+    Route::post('/resend-otp', [AuthController::class, 'resendOtp']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 });
 
 // DLR Webhook (called by SMS gateway)
@@ -42,12 +47,15 @@ Route::prefix('payments')->group(function () {
     Route::post('/ozow/notify', [WalletController::class, 'ozowNotify']);
 });
 
+// Public opt-out endpoint (for unsubscribe links)
+Route::post('/optout/public', [OptOutController::class, 'publicOptOut']);
+
 
 // =====================================================
 // PROTECTED ROUTES (Require authentication)
 // =====================================================
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
 
     // Auth
     Route::prefix('auth')->group(function () {
@@ -62,21 +70,31 @@ Route::middleware('auth:sanctum')->group(function () {
     // SMS Campaigns
     Route::prefix('sms/campaigns')->group(function () {
         Route::get('/', [CampaignController::class, 'index'])->defaults('channel', 'sms');
-        Route::post('/create', [CampaignController::class, 'createSmsCampaign']);
+        Route::post('/', [CampaignController::class, 'createSmsCampaign']);
+        Route::post('/create', [CampaignController::class, 'createSmsCampaign']); // Alias
         Route::get('/{id}', [CampaignController::class, 'show']);
+        Route::put('/{id}', [CampaignController::class, 'update']);
+        Route::delete('/{id}', [CampaignController::class, 'destroy']);
+        Route::post('/{id}/cancel', [CampaignController::class, 'cancel']);
+        Route::post('/{id}/duplicate', [CampaignController::class, 'duplicate']);
     });
 
     // Email Campaigns
     Route::prefix('email/campaigns')->group(function () {
         Route::get('/', [CampaignController::class, 'index'])->defaults('channel', 'email');
-        Route::post('/create', [CampaignController::class, 'createEmailCampaign']);
+        Route::post('/', [CampaignController::class, 'createEmailCampaign']);
+        Route::post('/create', [CampaignController::class, 'createEmailCampaign']); // Alias
         Route::get('/{id}', [CampaignController::class, 'show']);
+        Route::put('/{id}', [CampaignController::class, 'update']);
+        Route::delete('/{id}', [CampaignController::class, 'destroy']);
     });
 
     // Generic Campaign Routes
     Route::prefix('campaigns')->group(function () {
         Route::get('/', [CampaignController::class, 'index']);
         Route::get('/{id}', [CampaignController::class, 'show']);
+        Route::get('/{id}/messages', [CampaignController::class, 'messages']);
+        Route::get('/{id}/stats', [CampaignController::class, 'stats']);
         Route::delete('/{id}', [CampaignController::class, 'destroy']);
         Route::post('/{id}/duplicate', [CampaignController::class, 'duplicate']);
     });
@@ -85,30 +103,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('contacts')->group(function () {
         Route::get('/', [ContactController::class, 'index']);
         Route::post('/', [ContactController::class, 'store']);
+        Route::get('/{id}', [ContactController::class, 'show']);
+        Route::put('/{id}', [ContactController::class, 'update']);
+        Route::delete('/{id}', [ContactController::class, 'destroy']);
         Route::post('/import', [ContactController::class, 'import']);
         Route::get('/export', [ContactController::class, 'export']);
-        Route::delete('/', [ContactController::class, 'destroy']);
+        Route::post('/bulk-delete', [ContactController::class, 'bulkDelete']);
         
         // Contact Groups
         Route::get('/groups', [ContactController::class, 'groups']);
         Route::post('/groups', [ContactController::class, 'createGroup']);
+        Route::put('/groups/{id}', [ContactController::class, 'updateGroup']);
+        Route::delete('/groups/{id}', [ContactController::class, 'deleteGroup']);
         Route::post('/groups/{id}/add', [ContactController::class, 'addToGroup']);
-    });
-
-    // Wallet
-    Route::prefix('wallet')->group(function () {
-        Route::get('/', [WalletController::class, 'index']);
-        Route::get('/history', [WalletController::class, 'history']);
-        Route::post('/buy', [WalletController::class, 'buy']);
-        Route::post('/confirm-eft', [WalletController::class, 'confirmEft']); // Admin only
-    });
-
-    // Opt-Outs
-    Route::prefix('optouts')->group(function () {
-        Route::get('/', [OptOutController::class, 'index']);
-        Route::post('/', [OptOutController::class, 'store']);
-        Route::delete('/{id}', [OptOutController::class, 'destroy']);
-        Route::get('/export', [OptOutController::class, 'export']);
+        Route::post('/groups/{id}/remove', [ContactController::class, 'removeFromGroup']);
     });
 
     // Templates
@@ -118,44 +126,68 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}', [TemplateController::class, 'show']);
         Route::put('/{id}', [TemplateController::class, 'update']);
         Route::delete('/{id}', [TemplateController::class, 'destroy']);
+        Route::post('/{id}/duplicate', [TemplateController::class, 'duplicate']);
     });
 
-    // Settings
-    Route::prefix('settings')->group(function () {
-        Route::get('/', [SettingsController::class, 'index']);
-        Route::put('/', [SettingsController::class, 'update']);
-        Route::put('/password', [SettingsController::class, 'updatePassword']);
-        Route::post('/api-key/regenerate', [SettingsController::class, 'regenerateApiKey']);
+    // Wallet
+    Route::prefix('wallet')->group(function () {
+        Route::get('/', [WalletController::class, 'index']);
+        Route::get('/balance', [WalletController::class, 'index']); // Alias
+        Route::get('/history', [WalletController::class, 'history']);
+        Route::post('/buy', [WalletController::class, 'buy']);
+    });
+
+    // Opt-Outs
+    Route::prefix('optouts')->group(function () {
+        Route::get('/', [OptOutController::class, 'index']);
+        Route::post('/', [OptOutController::class, 'store']);
+        Route::post('/bulk', [OptOutController::class, 'bulkStore']);
+        Route::post('/check', [OptOutController::class, 'check']);
+        Route::delete('/{id}', [OptOutController::class, 'destroy']);
     });
 
     // Reports
     Route::prefix('reports')->group(function () {
-        Route::get('/summary', [ReportController::class, 'summary']);
         Route::get('/campaigns', [ReportController::class, 'campaigns']);
         Route::get('/delivery', [ReportController::class, 'delivery']);
-        Route::get('/optouts', [ReportController::class, 'optouts']);
-        Route::get('/export', [ReportController::class, 'export']);
+        Route::get('/optouts', [ReportController::class, 'optoutsAudit']);
+        Route::get('/export/{type}', [ReportController::class, 'export']);
     });
 
-});
+    // Settings
+    Route::prefix('settings')->group(function () {
+        Route::get('/profile', [SettingsController::class, 'profile']);
+        Route::put('/profile', [SettingsController::class, 'updateProfile']);
+        Route::post('/branding', [SettingsController::class, 'uploadBranding']);
+        Route::get('/sender-ids', [SettingsController::class, 'senderIds']);
+        Route::post('/notifications', [SettingsController::class, 'notifications']);
+        Route::get('/api-keys', [SettingsController::class, 'apiKeys']);
+        Route::post('/api-keys', [SettingsController::class, 'createApiKey']);
+        Route::delete('/api-keys/{id}', [SettingsController::class, 'revokeApiKey']);
+    });
 
 
-// =====================================================
-// ADMIN ROUTES (Require admin role)
-// =====================================================
+    // =====================================================
+    // ADMIN ROUTES (Require admin role)
+    // =====================================================
 
-Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
-    
-    // User management
-    Route::get('/users', [AdminController::class, 'users']);
-    Route::get('/users/{id}', [AdminController::class, 'showUser']);
-    Route::put('/users/{id}', [AdminController::class, 'updateUser']);
-    Route::delete('/users/{id}', [AdminController::class, 'deleteUser']);
-    
-    // System stats
-    Route::get('/stats', [AdminController::class, 'systemStats']);
-    
-    // EFT confirmation
-    Route::post('/wallet/confirm-eft', [WalletController::class, 'confirmEft']);
-    
+    Route::middleware('role:admin')->prefix('admin')->group(function () {
+        Route::get('/stats', [AdminController::class, 'stats']);
+        Route::get('/health', [AdminController::class, 'health']);
+        
+        // User Management
+        Route::get('/users', [AdminController::class, 'users']);
+        Route::get('/users/{id}', [AdminController::class, 'showUser']);
+        Route::put('/users/{id}/role', [AdminController::class, 'updateRole']);
+        Route::post('/users/{id}/suspend', [AdminController::class, 'toggleSuspension']);
+        Route::post('/users/{id}/credits', [AdminController::class, 'addCredits']);
+        
+        // Wallet Admin
+        Route::post('/wallet/confirm-eft', [WalletController::class, 'confirmEft']);
+        Route::get('/wallet/pending-eft', [AdminController::class, 'pendingEftPayments']);
+        
+        // Audit Logs
+        Route::get('/audit-logs', [AdminController::class, 'auditLogs']);
+    });
+
 });
