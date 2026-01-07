@@ -8,6 +8,8 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import VerifyEmail from "./pages/VerifyEmail";
+import VerifyEmailReminder from "./pages/VerifyEmailReminder";
+import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import SmsCampaigns from "./pages/SmsCampaigns";
 import CreateSmsCampaign from "./pages/CreateSmsCampaign";
@@ -34,6 +36,8 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/verify-email-reminder" element={<ProtectedRoute><VerifyEmailReminder /></ProtectedRoute>} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/sms-campaigns" element={<ProtectedRoute><SmsCampaigns /></ProtectedRoute>} />
             <Route path="/sms-campaigns/new" element={<ProtectedRoute><CreateSmsCampaign /></ProtectedRoute>} />

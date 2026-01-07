@@ -1,23 +1,27 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface User {
   id: string;
   name?: string;
   email: string;
   email_verified?: boolean;
+  email_verified_at?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  isEmailVerified: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (data: { name: string; email: string; password: string; accountType: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
   resendVerification: () => Promise<{ success: boolean; error?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string, otp: string, password: string) => Promise<{ success: boolean; error?: string }>;
   updateUser: (user: User) => void;
 }
 
@@ -157,6 +161,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const forgotPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await apiRequest("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+
+      if (response.success) {
+        return { success: true };
+      }
+      return { success: false, error: response.message || "Failed to send reset code" };
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      return { success: false, error: "Network error. Please try again." };
+    }
+  };
+
+  const resetPassword = async (email: string, otp: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await apiRequest("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ email, otp, password, password_confirmation: password }),
+      });
+
+      if (response.success) {
+        return { success: true };
+      }
+      return { success: false, error: response.message || "Failed to reset password" };
+    } catch (error) {
+      console.error("Reset password error:", error);
+      return { success: false, error: "Network error. Please try again." };
+    }
+  };
+
   const logout = async (): Promise<void> => {
     try {
       await apiRequest("/auth/logout", { method: "POST" });
@@ -175,18 +213,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
   };
 
+  const isEmailVerified = !!(user?.email_verified || user?.email_verified_at);
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         isAuthenticated: !!token,
+        isEmailVerified,
         isLoading,
         login,
         register,
         logout,
         verifyEmail,
         resendVerification,
+        forgotPassword,
+        resetPassword,
         updateUser,
       }}
     >
@@ -204,15 +247,18 @@ export function useAuth() {
 }
 
 // Protected Route wrapper component
-export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+export function ProtectedRoute({ children, requireVerified = false }: { children: ReactNode; requireVerified?: boolean }) {
+  const { isAuthenticated, isEmailVerified, isLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       navigate("/login", { replace: true });
+    } else if (!isLoading && isAuthenticated && requireVerified && !isEmailVerified) {
+      navigate("/verify-email-reminder", { replace: true, state: { from: location } });
     }
-  }, [isAuthenticated, isLoading, navigate]);
+  }, [isAuthenticated, isEmailVerified, isLoading, navigate, requireVerified, location]);
 
   if (isLoading) {
     return (
@@ -223,6 +269,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!isAuthenticated) {
+    return null;
+  }
+
+  if (requireVerified && !isEmailVerified) {
     return null;
   }
 

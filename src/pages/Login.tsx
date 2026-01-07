@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Zap, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { login } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -30,8 +31,8 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      const response = await login(formData.email, formData.password);
-      if (response.success) {
+      const result = await login(formData.email, formData.password);
+      if (result.success) {
         toast({
           title: "Welcome back!",
           description: "You have been logged in successfully.",
@@ -40,7 +41,7 @@ export default function Login() {
       } else {
         toast({
           title: "Login failed",
-          description: response.error || "Invalid credentials.",
+          description: result.error || "Invalid credentials.",
           variant: "destructive",
         });
       }
