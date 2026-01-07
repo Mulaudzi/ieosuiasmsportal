@@ -133,6 +133,60 @@ class AuthController {
         Response::success(['message' => 'Password reset successfully']);
     }
     
+    public function verifyEmail(): void {
+        $data = Request::validate([
+            'token' => 'required',
+        ]);
+        
+        $user = table('users')
+            ->where('email_verification_token', $data['token'])
+            ->first();
+        
+        if (!$user) {
+            Response::error('Invalid verification token', 400);
+        }
+        
+        if ($user['email_verified_at']) {
+            Response::success(['message' => 'Email already verified']);
+        }
+        
+        // Check if token is expired (24 hours)
+        if (isset($user['email_verification_sent_at'])) {
+            $sentAt = strtotime($user['email_verification_sent_at']);
+            if (time() - $sentAt > 86400) {
+                Response::error('Verification token has expired', 400);
+            }
+        }
+        
+        table('users')->where('id', $user['id'])->update([
+            'email_verified_at' => date('Y-m-d H:i:s'),
+            'email_verification_token' => null,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        Response::success(['message' => 'Email verified successfully']);
+    }
+    
+    public function resendVerification(): void {
+        $user = Auth::user();
+        
+        if ($user['email_verified_at']) {
+            Response::error('Email already verified', 400);
+        }
+        
+        $token = bin2hex(random_bytes(32));
+        
+        table('users')->where('id', $user['id'])->update([
+            'email_verification_token' => $token,
+            'email_verification_sent_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        // TODO: Send verification email with token
+        
+        Response::success(['message' => 'Verification email sent']);
+    }
+    
     private static function formatUser(array $user): array {
         return [
             'id' => $user['id'],

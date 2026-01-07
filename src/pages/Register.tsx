@@ -13,10 +13,11 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Zap, Loader2, Eye, EyeOff, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { register } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Register() {
   const navigate = useNavigate();
+  const { register } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -86,23 +87,23 @@ export default function Register() {
 
     setIsLoading(true);
     try {
-      const response = await register({
+      const result = await register({
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        account_type: formData.accountType,
+        accountType: formData.accountType,
       });
       
-      if (response.success) {
+      if (result.success) {
         toast({
           title: "Account created!",
-          description: "Welcome to IEOSUIA SMS. You can now login.",
+          description: "Please check your email to verify your account.",
         });
-        navigate("/login");
+        navigate("/verify-email-reminder");
       } else {
         toast({
           title: "Registration failed",
-          description: response.error || "Please try again.",
+          description: result.error || "Please try again.",
           variant: "destructive",
         });
       }
