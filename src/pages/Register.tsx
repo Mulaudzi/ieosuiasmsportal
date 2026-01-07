@@ -90,7 +90,7 @@ export default function Register() {
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        accountType: formData.accountType,
+        account_type: formData.accountType,
       });
       
       if (response.success) {

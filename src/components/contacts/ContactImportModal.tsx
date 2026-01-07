@@ -155,11 +155,18 @@ export function ContactImportModal({ open, onOpenChange, onSuccess }: ContactImp
   const handleImport = async () => {
     setStep("importing");
     try {
-      const response = await importContacts(parsedContacts);
+      // Convert parsed contacts to FormData for upload
+      const formData = new FormData();
+      if (file) {
+        formData.append('file', file);
+      }
+      formData.append('has_header', skipFirstRow ? 'true' : 'false');
+      
+      const response = await importContacts(formData);
       if (response.success) {
         toast({
           title: "Import successful",
-          description: `${response.data?.imported} contacts imported, ${response.data?.duplicatesRemoved} duplicates removed.`,
+          description: `${response.data?.imported} contacts imported, ${response.data?.duplicatesSkipped || 0} duplicates skipped.`,
         });
         onSuccess?.();
         handleClose();

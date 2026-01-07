@@ -58,7 +58,7 @@ export default function Reports() {
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const response = await exportReport("delivery", dateRange);
+      const response = await exportReport("campaigns");
       if (response.success) {
         toast({
           title: "Report exported",
