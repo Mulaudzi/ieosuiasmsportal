@@ -4,6 +4,12 @@
  */
 
 class AuthController {
+    private EmailService $emailService;
+    
+    public function __construct() {
+        $this->emailService = new EmailService();
+    }
+    
     public function register(): void {
         $data = Request::validate([
             'name' => 'required|min:2|max:100',
@@ -12,12 +18,21 @@ class AuthController {
             'phone' => 'max:20',
         ]);
         
+        // Rate limit registration by IP
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        RateLimiter::checkOrFail("register:{$ip}", 5, 60);
+        
+        // Generate verification token
+        $verificationToken = bin2hex(random_bytes(32));
+        
         $userId = table('users')->insert([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Auth::hashPassword($data['password']),
             'phone' => $data['phone'] ?? null,
             'account_type' => 'standard',
+            'email_verification_token' => $verificationToken,
+            'email_verification_sent_at' => date('Y-m-d H:i:s'),
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
@@ -31,6 +46,13 @@ class AuthController {
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
+        
+        // Send verification email
+        $this->emailService->sendVerificationEmail(
+            $data['email'],
+            $data['name'],
+            $verificationToken
+        );
         
         $user = table('users')->where('id', $userId)->first();
         $token = Auth::generateToken($user);
@@ -47,11 +69,17 @@ class AuthController {
             'password' => 'required',
         ]);
         
+        // Rate limit login attempts by email
+        RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
+        
         $token = Auth::attempt($data['email'], $data['password']);
         
         if (!$token) {
             Response::error('Invalid credentials', 401);
         }
+        
+        // Clear rate limit on successful login
+        RateLimiter::clear("login:{$data['email']}");
         
         $user = table('users')->where('email', $data['email'])->first();
         
@@ -85,6 +113,13 @@ class AuthController {
             'email' => 'required|email',
         ]);
         
+        // Rate limit: 3 attempts per email per 15 minutes
+        RateLimiter::checkOrFail("forgot_password:{$data['email']}", 3, 15);
+        
+        // Rate limit: 10 attempts per IP per hour
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        RateLimiter::checkOrFail("forgot_password_ip:{$ip}", 10, 60);
+        
         $user = table('users')->where('email', $data['email'])->first();
         
         // Always return success to prevent email enumeration
@@ -97,7 +132,12 @@ class AuthController {
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
             
-            // TODO: Send email with OTP
+            // Send password reset email
+            $this->emailService->sendPasswordResetEmail(
+                $user['email'],
+                $user['name'],
+                $otp
+            );
         }
         
         Response::success(['message' => 'If the email exists, a reset code has been sent']);
@@ -109,6 +149,9 @@ class AuthController {
             'otp' => 'required|min:6|max:6',
             'password' => 'required|min:8|confirmed',
         ]);
+        
+        // Rate limit: 5 attempts per email per 15 minutes
+        RateLimiter::checkOrFail("reset_password:{$data['email']}", 5, 15);
         
         $user = table('users')
             ->where('email', $data['email'])
@@ -130,6 +173,10 @@ class AuthController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
+        // Clear rate limits on successful reset
+        RateLimiter::clear("reset_password:{$data['email']}");
+        RateLimiter::clear("forgot_password:{$data['email']}");
+        
         Response::success(['message' => 'Password reset successfully']);
     }
     
@@ -137,6 +184,10 @@ class AuthController {
         $data = Request::validate([
             'token' => 'required',
         ]);
+        
+        // Rate limit verification attempts by IP
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        RateLimiter::checkOrFail("verify_email:{$ip}", 10, 15);
         
         $user = table('users')
             ->where('email_verification_token', $data['token'])
@@ -170,6 +221,9 @@ class AuthController {
     public function resendVerification(): void {
         $user = Auth::user();
         
+        // Rate limit: 3 resends per 15 minutes
+        RateLimiter::checkOrFail("resend_verification:{$user['id']}", 3, 15);
+        
         if ($user['email_verified_at']) {
             Response::error('Email already verified', 400);
         }
@@ -182,7 +236,12 @@ class AuthController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        // TODO: Send verification email with token
+        // Send verification email
+        $this->emailService->sendVerificationEmail(
+            $user['email'],
+            $user['name'],
+            $token
+        );
         
         Response::success(['message' => 'Verification email sent']);
     }
@@ -194,6 +253,7 @@ class AuthController {
             'email' => $user['email'],
             'phone' => $user['phone'] ?? null,
             'account_type' => $user['account_type'],
+            'email_verified_at' => $user['email_verified_at'] ?? null,
             'created_at' => $user['created_at'],
         ];
     }
