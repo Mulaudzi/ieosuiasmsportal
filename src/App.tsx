@@ -3,6 +3,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Landing from "./pages/Landing";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import SmsCampaigns from "./pages/SmsCampaigns";
 import CreateSmsCampaign from "./pages/CreateSmsCampaign";
@@ -23,6 +26,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          <Route path="/landing" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/" element={<Dashboard />} />
           <Route path="/sms-campaigns" element={<SmsCampaigns />} />
           <Route path="/sms-campaigns/new" element={<CreateSmsCampaign />} />
