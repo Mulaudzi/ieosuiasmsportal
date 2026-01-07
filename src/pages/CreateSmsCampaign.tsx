@@ -23,9 +23,12 @@ import {
   CreditCard,
   Send,
   FileText,
+  Loader2,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
+import { createSmsCampaign } from "@/lib/api";
 
 const steps = [
   { id: 1, name: "Campaign Setup", icon: FileText },
@@ -36,7 +39,9 @@ const steps = [
 ];
 
 export default function CreateSmsCampaign() {
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -62,6 +67,43 @@ export default function CreateSmsCampaign() {
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.message) {
+      toast({
+        title: "Missing required fields",
+        description: "Please fill in campaign name and message.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await createSmsCampaign(formData);
+      if (response.success) {
+        toast({
+          title: "Campaign created successfully!",
+          description: `Campaign ID: ${response.data?.campaignId}. Estimated cost: ${response.data?.estimatedCost} credits.`,
+        });
+        navigate("/sms-campaigns");
+      } else {
+        toast({
+          title: "Failed to create campaign",
+          description: response.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -525,9 +567,13 @@ export default function CreateSmsCampaign() {
               <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
-            <Button className="gap-2">
-              <Send className="h-4 w-4" />
-              Send Campaign
+            <Button onClick={handleSubmit} disabled={isSubmitting} className="gap-2">
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              {isSubmitting ? "Sending..." : "Send Campaign"}
             </Button>
           )}
         </div>

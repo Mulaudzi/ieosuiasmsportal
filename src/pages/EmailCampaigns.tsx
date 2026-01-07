@@ -14,14 +14,16 @@ import {
   Search,
   Filter,
   Mail,
-  MoreHorizontal,
   Eye,
   Copy,
   Trash2,
   Calendar,
+  Loader2,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
+import { deleteCampaign, duplicateCampaign } from "@/lib/api";
 
 interface Campaign {
   id: string;
@@ -98,8 +100,10 @@ const statusConfig = {
 };
 
 export default function EmailCampaigns() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const filteredCampaigns = campaigns.filter((campaign) => {
     const matchesSearch = campaign.name
@@ -109,6 +113,55 @@ export default function EmailCampaigns() {
       statusFilter === "all" || campaign.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const handleView = (id: string) => {
+    toast({
+      title: "Opening campaign details",
+      description: `Viewing email campaign ${id}`,
+    });
+  };
+
+  const handleDuplicate = async (id: string) => {
+    setLoadingAction(`copy-${id}`);
+    try {
+      const response = await duplicateCampaign(id);
+      if (response.success) {
+        toast({
+          title: "Campaign duplicated",
+          description: `New campaign created: ${response.data?.campaignId}`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to duplicate campaign",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setLoadingAction(`delete-${id}`);
+    try {
+      const response = await deleteCampaign(id);
+      if (response.success) {
+        toast({
+          title: "Campaign deleted",
+          description: "The email campaign has been removed.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete campaign",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
 
   return (
     <DashboardLayout
@@ -271,14 +324,32 @@ export default function EmailCampaigns() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon">
+                      <Button variant="ghost" size="icon" onClick={() => handleView(campaign.id)}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon">
-                        <Copy className="h-4 w-4" />
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleDuplicate(campaign.id)}
+                        disabled={loadingAction === `copy-${campaign.id}`}
+                      >
+                        {loadingAction === `copy-${campaign.id}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
                       </Button>
-                      <Button variant="ghost" size="icon">
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleDelete(campaign.id)}
+                        disabled={loadingAction === `delete-${campaign.id}`}
+                      >
+                        {loadingAction === `delete-${campaign.id}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        )}
                       </Button>
                     </div>
                   </td>

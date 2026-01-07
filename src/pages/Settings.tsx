@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,9 +14,49 @@ import {
   Key,
   Check,
   Upload,
+  Loader2,
 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import { saveSettings } from "@/lib/api";
 
 export default function Settings() {
+  const [savingSection, setSavingSection] = useState<string | null>(null);
+
+  const handleSave = async (section: string) => {
+    setSavingSection(section);
+    try {
+      const response = await saveSettings(section, {});
+      if (response.success) {
+        toast({
+          title: "Settings saved",
+          description: `Your ${section} settings have been updated.`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Save failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  const handleAddSenderId = () => {
+    toast({
+      title: "Add Sender ID",
+      description: "Sender ID registration form would open here.",
+    });
+  };
+
+  const handleEditSenderId = (id: string) => {
+    toast({
+      title: "Edit Sender ID",
+      description: `Editing sender ID: ${id}`,
+    });
+  };
+
   return (
     <DashboardLayout
       title="Settings"
@@ -101,7 +142,10 @@ export default function Settings() {
                 />
               </div>
 
-              <Button>Save Changes</Button>
+              <Button onClick={() => handleSave("organization")} disabled={savingSection === "organization"}>
+                {savingSection === "organization" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save Changes
+              </Button>
             </div>
           </div>
         </TabsContent>
@@ -154,7 +198,10 @@ export default function Settings() {
                 />
               </div>
 
-              <Button>Save Changes</Button>
+              <Button onClick={() => handleSave("profile")} disabled={savingSection === "profile"}>
+                {savingSection === "profile" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save Changes
+              </Button>
             </div>
           </div>
         </TabsContent>
@@ -170,7 +217,8 @@ export default function Settings() {
                   Manage your registered sender IDs
                 </p>
               </div>
-              <Button>Add Sender ID</Button>
+              <Button onClick={handleAddSenderId}>Add Sender ID</Button>
+              
             </div>
 
             <div className="mt-6 space-y-4">
@@ -195,7 +243,7 @@ export default function Settings() {
                       <Check className="h-3 w-3" />
                       Verified
                     </span>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => handleEditSenderId(senderId)}>
                       Edit
                     </Button>
                   </div>
@@ -261,7 +309,10 @@ export default function Settings() {
                 <Switch />
               </div>
 
-              <Button>Save Preferences</Button>
+              <Button onClick={() => handleSave("notifications")} disabled={savingSection === "notifications"}>
+                {savingSection === "notifications" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save Preferences
+              </Button>
             </div>
           </div>
         </TabsContent>
@@ -322,7 +373,10 @@ export default function Settings() {
                 </p>
               </div>
 
-              <Button>Save Settings</Button>
+              <Button onClick={() => handleSave("compliance")} disabled={savingSection === "compliance"}>
+                {savingSection === "compliance" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save Settings
+              </Button>
             </div>
           </div>
         </TabsContent>

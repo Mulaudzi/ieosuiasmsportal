@@ -1,6 +1,6 @@
+import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -29,8 +29,10 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  TrendingUp,
+  Loader2,
 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import { exportReport } from "@/lib/api";
 
 const dailyData = [
   { date: "Jan 1", sms: 12500, email: 8200, delivered: 19800, failed: 900 },
@@ -50,13 +52,37 @@ const deliveryData = [
 ];
 
 export default function Reports() {
+  const [dateRange, setDateRange] = useState("7d");
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const response = await exportReport("delivery", dateRange);
+      if (response.success) {
+        toast({
+          title: "Report exported",
+          description: "Your report has been generated and is ready for download.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <DashboardLayout
       title="Reports"
       subtitle="Analytics and delivery reports for all your campaigns"
       actions={
         <div className="flex gap-3">
-          <Select defaultValue="7d">
+          <Select value={dateRange} onValueChange={setDateRange}>
             <SelectTrigger className="w-40">
               <Calendar className="mr-2 h-4 w-4" />
               <SelectValue />
@@ -68,8 +94,8 @@ export default function Reports() {
               <SelectItem value="90d">Last 90 days</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
+          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting}>
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export Report
           </Button>
         </div>
