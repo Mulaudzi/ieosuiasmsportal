@@ -1,11 +1,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { login as apiLogin, register as apiRegister, logout as apiLogout } from "@/lib/api";
 
 interface User {
   id: string;
   name?: string;
   email: string;
+  email_verified?: boolean;
 }
 
 interface AuthContextType {
@@ -13,15 +13,19 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (data: { name: string; email: string; password: string; accountType: string }) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (data: { name: string; email: string; password: string; accountType: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
+  resendVerification: () => Promise<{ success: boolean; error?: string }>;
+  updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -40,45 +44,122 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    };
+
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    return response.json();
+  };
+
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiLogin(email, password);
+      const response = await apiRequest("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+
       if (response.success && response.data) {
-        const userData: User = { id: response.data.user?.id || 'user', email, name: response.data.user?.name };
+        const userData: User = {
+          id: response.data.user?.id || "user",
+          email,
+          name: response.data.user?.name,
+          email_verified: response.data.user?.email_verified,
+        };
         setToken(response.data.token);
         setUser(userData);
         localStorage.setItem(TOKEN_KEY, response.data.token);
         localStorage.setItem(USER_KEY, JSON.stringify(userData));
-        return true;
+        return { success: true };
       }
-      return false;
+      return { success: false, error: response.message || "Login failed" };
     } catch (error) {
       console.error("Login error:", error);
-      return false;
+      return { success: false, error: "Network error. Please try again." };
     }
   };
 
-  const register = async (data: { name: string; email: string; password: string; accountType: string }): Promise<boolean> => {
+  const register = async (data: { name: string; email: string; password: string; accountType: string }): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiRegister({ name: data.name, email: data.email, password: data.password, account_type: data.accountType });
+      const response = await apiRequest("/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          password: data.password,
+          account_type: data.accountType,
+        }),
+      });
+
       if (response.success && response.data) {
-        const userData: User = { id: response.data.user?.id || 'user', name: data.name, email: data.email };
+        const userData: User = {
+          id: response.data.user?.id || "user",
+          name: data.name,
+          email: data.email,
+          email_verified: false,
+        };
         setToken(response.data.token);
         setUser(userData);
         localStorage.setItem(TOKEN_KEY, response.data.token);
         localStorage.setItem(USER_KEY, JSON.stringify(userData));
-        return true;
+        return { success: true };
       }
-      return false;
+      return { success: false, error: response.message || "Registration failed" };
     } catch (error) {
       console.error("Register error:", error);
-      return false;
+      return { success: false, error: "Network error. Please try again." };
+    }
+  };
+
+  const verifyEmail = async (verificationToken: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await apiRequest("/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify({ token: verificationToken }),
+      });
+
+      if (response.success) {
+        // Update user state to reflect verified email
+        if (user) {
+          const updatedUser = { ...user, email_verified: true };
+          setUser(updatedUser);
+          localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+        }
+        return { success: true };
+      }
+      return { success: false, error: response.message || "Verification failed" };
+    } catch (error) {
+      console.error("Verify email error:", error);
+      return { success: false, error: "Network error. Please try again." };
+    }
+  };
+
+  const resendVerification = async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await apiRequest("/auth/resend-verification", {
+        method: "POST",
+      });
+
+      if (response.success) {
+        return { success: true };
+      }
+      return { success: false, error: response.message || "Failed to resend verification email" };
+    } catch (error) {
+      console.error("Resend verification error:", error);
+      return { success: false, error: "Network error. Please try again." };
     }
   };
 
   const logout = async (): Promise<void> => {
     try {
-      await apiLogout();
+      await apiRequest("/auth/logout", { method: "POST" });
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
@@ -87,6 +168,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
     }
+  };
+
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+    localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
   };
 
   return (
@@ -99,6 +185,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        verifyEmail,
+        resendVerification,
+        updateUser,
       }}
     >
       {children}
