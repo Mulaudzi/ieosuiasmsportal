@@ -215,6 +215,9 @@ class AuthController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
+        // Send welcome email after successful verification
+        $this->emailService->sendWelcomeEmail($user['email'], $user['name']);
+        
         Response::success(['message' => 'Email verified successfully']);
     }
     

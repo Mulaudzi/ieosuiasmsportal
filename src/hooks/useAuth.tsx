@@ -5,8 +5,11 @@ interface User {
   id: string;
   name?: string;
   email: string;
+  phone?: string;
+  account_type?: string;
   email_verified?: boolean;
   email_verified_at?: string | null;
+  created_at?: string;
 }
 
 interface AuthContextType {
@@ -22,7 +25,7 @@ interface AuthContextType {
   resendVerification: () => Promise<{ success: boolean; error?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string, otp: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  updateUser: (user: User) => void;
+  updateUser: (data: Partial<User> & { password?: string; current_password?: string; password_confirmation?: string }) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -208,9 +211,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateUser = (updatedUser: User) => {
-    setUser(updatedUser);
-    localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+  const updateUser = async (data: Partial<User> & { password?: string; current_password?: string; password_confirmation?: string }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await apiRequest("/auth/user", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+
+      if (response.success && response.data?.user) {
+        const updatedUser: User = {
+          ...user!,
+          ...response.data.user,
+        };
+        setUser(updatedUser);
+        localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+        return { success: true };
+      }
+      return { success: false, error: response.message || "Update failed" };
+    } catch (error) {
+      console.error("Update user error:", error);
+      return { success: false, error: "Network error. Please try again." };
+    }
   };
 
   const isEmailVerified = !!(user?.email_verified || user?.email_verified_at);

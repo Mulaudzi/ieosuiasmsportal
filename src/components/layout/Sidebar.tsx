@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -11,10 +11,10 @@ import {
   LogOut,
   ChevronRight,
   Zap,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { toast } from "@/hooks/use-toast";
-import { logout } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -29,23 +29,19 @@ const navigation = [
 
 export function Sidebar() {
   const location = useLocation();
-  const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const handleLogout = async () => {
-    try {
-      await logout();
-      toast({
-        title: "Logged out",
-        description: "You have been successfully logged out.",
-      });
-      // In a real app, this would redirect to login
-    } catch (error) {
-      toast({
-        title: "Logout failed",
-        description: "Please try again.",
-        variant: "destructive",
-      });
-    }
+    await logout();
+  };
+  
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   return (
@@ -114,17 +110,20 @@ export function Sidebar() {
         {/* User Section */}
         <div className="border-t border-sidebar-border p-3">
           <div className="flex items-center gap-3 rounded-lg px-3 py-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-accent text-sm font-medium text-sidebar-primary-foreground">
-              JD
-            </div>
-            <div className="flex-1 min-w-0">
+            <Link 
+              to="/profile"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-accent text-sm font-medium text-sidebar-primary-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
+            >
+              {user ? getInitials(user.name) : 'U'}
+            </Link>
+            <Link to="/profile" className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
               <p className="truncate text-sm font-medium text-sidebar-primary-foreground">
-                John Doe
+                {user?.name || 'User'}
               </p>
               <p className="truncate text-xs text-sidebar-muted">
-                john@company.com
+                {user?.email || 'user@example.com'}
               </p>
-            </div>
+            </Link>
             <button 
               className="rounded-lg p-2 text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-primary-foreground"
               onClick={handleLogout}
