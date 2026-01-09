@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import {
@@ -9,7 +9,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Upload, X } from "lucide-react";
+import { Loader2, Upload, X, ImageIcon } from "lucide-react";
 
 interface AvatarUploadModalProps {
   open: boolean;
@@ -41,29 +41,58 @@ export function AvatarUploadModal({ open, onClose, onUpload }: AvatarUploadModal
   const [imgSrc, setImgSrc] = useState<string>("");
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processFile = (file: File) => {
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      return;
+    }
+    
+    // Validate file size (max 5MB before crop)
+    if (file.size > 5 * 1024 * 1024) {
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      setImgSrc(reader.result?.toString() || "");
+      setPreviewUrl("");
+    });
+    reader.readAsDataURL(file);
+  };
 
   const onSelectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      
-      // Validate file type
-      if (!file.type.startsWith("image/")) {
-        return;
-      }
-      
-      // Validate file size (max 5MB before crop)
-      if (file.size > 5 * 1024 * 1024) {
-        return;
-      }
-      
-      const reader = new FileReader();
-      reader.addEventListener("load", () => {
-        setImgSrc(reader.result?.toString() || "");
-      });
-      reader.readAsDataURL(file);
+      processFile(e.target.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processFile(files[0]);
     }
   };
 
@@ -71,6 +100,49 @@ export function AvatarUploadModal({ open, onClose, onUpload }: AvatarUploadModal
     const { width, height } = e.currentTarget;
     setCrop(centerAspectCrop(width, height, 1));
   }, []);
+
+  // Generate preview whenever crop changes
+  useEffect(() => {
+    const generatePreview = async () => {
+      const image = imgRef.current;
+      const canvas = previewCanvasRef.current;
+      if (!image || !completedCrop || !canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const scaleX = image.naturalWidth / image.width;
+      const scaleY = image.naturalHeight / image.height;
+
+      // Set canvas size for preview
+      const previewSize = 128;
+      canvas.width = previewSize;
+      canvas.height = previewSize;
+
+      ctx.imageSmoothingQuality = "high";
+
+      const cropX = completedCrop.x * scaleX;
+      const cropY = completedCrop.y * scaleY;
+      const cropWidth = completedCrop.width * scaleX;
+      const cropHeight = completedCrop.height * scaleY;
+
+      ctx.drawImage(
+        image,
+        cropX,
+        cropY,
+        cropWidth,
+        cropHeight,
+        0,
+        0,
+        previewSize,
+        previewSize
+      );
+
+      setPreviewUrl(canvas.toDataURL("image/jpeg", 0.9));
+    };
+
+    generatePreview();
+  }, [completedCrop]);
 
   const getCroppedImg = useCallback(async (): Promise<string | null> => {
     const image = imgRef.current;
@@ -127,6 +199,8 @@ export function AvatarUploadModal({ open, onClose, onUpload }: AvatarUploadModal
     setImgSrc("");
     setCrop(undefined);
     setCompletedCrop(undefined);
+    setPreviewUrl("");
+    setIsDragOver(false);
     onClose();
   };
 
@@ -136,7 +210,7 @@ export function AvatarUploadModal({ open, onClose, onUpload }: AvatarUploadModal
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Upload Profile Photo</DialogTitle>
         </DialogHeader>
@@ -150,46 +224,89 @@ export function AvatarUploadModal({ open, onClose, onUpload }: AvatarUploadModal
             className="hidden"
           />
 
+          {/* Hidden canvas for generating preview */}
+          <canvas ref={previewCanvasRef} className="hidden" />
+
           {!imgSrc ? (
             <div
               onClick={triggerFileInput}
-              className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-muted-foreground/25 rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
+                isDragOver 
+                  ? "border-primary bg-primary/10 scale-[1.02]" 
+                  : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
+              }`}
             >
-              <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-sm font-medium text-foreground">Click to upload an image</p>
+              <div className={`transition-transform duration-200 ${isDragOver ? "scale-110" : ""}`}>
+                <Upload className={`h-12 w-12 mb-4 mx-auto ${isDragOver ? "text-primary" : "text-muted-foreground"}`} />
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                {isDragOver ? "Drop image here" : "Drag & drop or click to upload"}
+              </p>
               <p className="text-xs text-muted-foreground mt-1">JPG, PNG, GIF up to 5MB</p>
             </div>
           ) : (
-            <div className="relative">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 right-2 z-10 bg-background/80 hover:bg-background"
-                onClick={() => setImgSrc("")}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-              <div className="flex justify-center">
-                <ReactCrop
-                  crop={crop}
-                  onChange={(_, percentCrop) => setCrop(percentCrop)}
-                  onComplete={(c) => setCompletedCrop(c)}
-                  aspect={1}
-                  circularCrop
-                  className="max-h-64"
+            <div className="space-y-4">
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 z-10 bg-background/80 hover:bg-background"
+                  onClick={() => {
+                    setImgSrc("");
+                    setPreviewUrl("");
+                  }}
                 >
-                  <img
-                    ref={imgRef}
-                    alt="Crop preview"
-                    src={imgSrc}
-                    onLoad={onImageLoad}
-                    className="max-h-64"
-                  />
-                </ReactCrop>
+                  <X className="h-4 w-4" />
+                </Button>
+                <div className="flex justify-center">
+                  <ReactCrop
+                    crop={crop}
+                    onChange={(_, percentCrop) => setCrop(percentCrop)}
+                    onComplete={(c) => setCompletedCrop(c)}
+                    aspect={1}
+                    circularCrop
+                    className="max-h-56"
+                  >
+                    <img
+                      ref={imgRef}
+                      alt="Crop preview"
+                      src={imgSrc}
+                      onLoad={onImageLoad}
+                      className="max-h-56"
+                    />
+                  </ReactCrop>
+                </div>
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Drag to adjust the crop area
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                Drag to adjust the crop area
-              </p>
+
+              {/* Preview Section */}
+              {previewUrl && (
+                <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+                  <div className="flex-shrink-0">
+                    <div className="relative">
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="h-16 w-16 rounded-full object-cover ring-2 ring-background shadow-lg"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                      Preview
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      This is how your profile photo will appear
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
