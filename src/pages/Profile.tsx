@@ -4,18 +4,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Mail, Phone, Calendar, Shield, CheckCircle2, AlertCircle, User, Key, Save } from "lucide-react";
+import { Loader2, Mail, Phone, Calendar, Shield, CheckCircle2, AlertCircle, User, Key, Save, Camera } from "lucide-react";
 import { format } from "date-fns";
+import { AvatarUploadModal } from "@/components/profile/AvatarUploadModal";
+
+const API_URL = import.meta.env.VITE_API_URL || "https://sms.ieosuia.com/api";
 
 export default function Profile() {
-  const { user, updateUser, isEmailVerified, resendVerification } = useAuth();
+  const { user, updateUser, isEmailVerified, resendVerification, token } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || "",
     phone: user?.phone || "",
@@ -31,6 +35,41 @@ export default function Profile() {
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  const handleAvatarUpload = async (imageData: string) => {
+    try {
+      const response = await fetch(`${API_URL}/auth/avatar`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ avatar: imageData }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.data?.user) {
+        // Update local user state
+        await updateUser({
+          avatar_url: data.data.avatar_url,
+        });
+        toast({
+          title: "Avatar updated",
+          description: "Your profile photo has been updated successfully.",
+        });
+      } else {
+        throw new Error(data.message || "Failed to upload avatar");
+      }
+    } catch (error) {
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Failed to upload avatar.",
+        variant: "destructive",
+      });
+      throw error;
+    }
   };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -169,11 +208,24 @@ export default function Profile() {
           {/* Profile Overview Card */}
           <Card className="lg:col-span-1">
             <CardHeader className="text-center">
-              <Avatar className="h-24 w-24 mx-auto mb-4">
-                <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
-                  {getInitials(user.name)}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative mx-auto mb-4">
+                <Avatar className="h-24 w-24">
+                  {user.avatar_url && (
+                    <AvatarImage src={user.avatar_url} alt={user.name} />
+                  )}
+                  <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
+                    {getInitials(user.name || 'U')}
+                  </AvatarFallback>
+                </Avatar>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full shadow-md"
+                  onClick={() => setIsAvatarModalOpen(true)}
+                >
+                  <Camera className="h-4 w-4" />
+                </Button>
+              </div>
               <CardTitle>{user.name}</CardTitle>
               <CardDescription>{user.email}</CardDescription>
             </CardHeader>
@@ -367,6 +419,12 @@ export default function Profile() {
             </Card>
           </div>
         </div>
+
+        <AvatarUploadModal
+          open={isAvatarModalOpen}
+          onClose={() => setIsAvatarModalOpen(false)}
+          onUpload={handleAvatarUpload}
+        />
     </DashboardLayout>
   );
 }
