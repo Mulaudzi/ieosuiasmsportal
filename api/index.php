@@ -56,6 +56,8 @@ $router->group(['middleware' => 'auth'], function($router) {
     // Auth
     $router->post('/auth/logout', 'AuthController@logout');
     $router->get('/auth/user', 'AuthController@user');
+    $router->put('/auth/user', 'AuthController@updateUser');
+    $router->post('/auth/avatar', 'AuthController@uploadAvatar');
     $router->post('/auth/resend-verification', 'AuthController@resendVerification');
     
     // Dashboard

@@ -6,6 +6,7 @@ interface User {
   name?: string;
   email: string;
   phone?: string;
+  avatar_url?: string;
   account_type?: string;
   email_verified?: boolean;
   email_verified_at?: string | null;

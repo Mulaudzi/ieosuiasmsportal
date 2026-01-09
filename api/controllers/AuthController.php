@@ -108,6 +108,192 @@ class AuthController {
         ]);
     }
     
+    public function updateUser(): void {
+        $user = Auth::user();
+        
+        $data = Request::validate([
+            'name' => 'max:100',
+            'phone' => 'max:20',
+            'current_password' => 'min:1',
+            'password' => 'min:8',
+            'password_confirmation' => 'min:8',
+        ]);
+        
+        // Handle password change
+        if (!empty($data['password'])) {
+            if (empty($data['current_password'])) {
+                Response::error('Current password is required', 400);
+            }
+            
+            if (!password_verify($data['current_password'], $user['password'])) {
+                Response::error('Current password is incorrect', 400);
+            }
+            
+            if ($data['password'] !== ($data['password_confirmation'] ?? '')) {
+                Response::error('Passwords do not match', 400);
+            }
+            
+            table('users')->where('id', $user['id'])->update([
+                'password' => Auth::hashPassword($data['password']),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+        }
+        
+        // Handle profile update
+        $updateData = [];
+        if (isset($data['name']) && !empty($data['name'])) {
+            $updateData['name'] = $data['name'];
+        }
+        if (isset($data['phone'])) {
+            $updateData['phone'] = $data['phone'];
+        }
+        
+        if (!empty($updateData)) {
+            $updateData['updated_at'] = date('Y-m-d H:i:s');
+            table('users')->where('id', $user['id'])->update($updateData);
+        }
+        
+        // Fetch updated user
+        $updatedUser = table('users')->where('id', $user['id'])->first();
+        
+        Response::success([
+            'user' => self::formatUser($updatedUser),
+            'message' => 'Profile updated successfully',
+        ]);
+    }
+    
+    public function uploadAvatar(): void {
+        $user = Auth::user();
+        
+        // Check if base64 image data is provided
+        $input = Request::all();
+        
+        if (isset($input['avatar']) && strpos($input['avatar'], 'data:image') === 0) {
+            // Handle base64 image
+            $imageData = $input['avatar'];
+            
+            // Extract base64 data
+            if (preg_match('/^data:image\/(\w+);base64,/', $imageData, $matches)) {
+                $extension = $matches[1];
+                $imageData = substr($imageData, strpos($imageData, ',') + 1);
+                $imageData = base64_decode($imageData);
+                
+                if ($imageData === false) {
+                    Response::error('Invalid image data', 400);
+                }
+                
+                // Validate extension
+                $allowedExtensions = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
+                if (!in_array(strtolower($extension), $allowedExtensions)) {
+                    Response::error('Invalid image type. Allowed: JPG, PNG, GIF, WebP', 400);
+                }
+                
+                // Validate size (max 2MB)
+                if (strlen($imageData) > 2 * 1024 * 1024) {
+                    Response::error('Image too large. Maximum size: 2MB', 400);
+                }
+                
+                // Create uploads directory
+                $uploadsDir = __DIR__ . '/../uploads/avatars';
+                if (!is_dir($uploadsDir)) {
+                    mkdir($uploadsDir, 0755, true);
+                }
+                
+                // Delete old avatar if exists
+                if (!empty($user['avatar_url'])) {
+                    $oldFilename = basename($user['avatar_url']);
+                    $oldPath = $uploadsDir . '/' . $oldFilename;
+                    if (file_exists($oldPath)) {
+                        unlink($oldPath);
+                    }
+                }
+                
+                // Generate unique filename
+                $filename = $user['id'] . '_' . time() . '.' . $extension;
+                $filepath = $uploadsDir . '/' . $filename;
+                
+                if (!file_put_contents($filepath, $imageData)) {
+                    Response::error('Failed to save image', 500);
+                }
+                
+                // Update user
+                $avatarUrl = env('APP_URL') . '/uploads/avatars/' . $filename;
+                table('users')->where('id', $user['id'])->update([
+                    'avatar_url' => $avatarUrl,
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+                
+                // Fetch updated user
+                $updatedUser = table('users')->where('id', $user['id'])->first();
+                
+                Response::success([
+                    'user' => self::formatUser($updatedUser),
+                    'avatar_url' => $avatarUrl,
+                    'message' => 'Avatar uploaded successfully',
+                ]);
+                return;
+            }
+        }
+        
+        // Handle file upload
+        $file = Request::file('avatar');
+        
+        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
+            Response::error('No file uploaded', 400);
+        }
+        
+        // Validate file type
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!in_array($file['type'], $allowedTypes)) {
+            Response::error('Invalid file type. Allowed: JPG, PNG, GIF, WebP', 400);
+        }
+        
+        // Validate file size (max 2MB)
+        if ($file['size'] > 2 * 1024 * 1024) {
+            Response::error('File too large. Maximum size: 2MB', 400);
+        }
+        
+        // Create uploads directory
+        $uploadsDir = __DIR__ . '/../uploads/avatars';
+        if (!is_dir($uploadsDir)) {
+            mkdir($uploadsDir, 0755, true);
+        }
+        
+        // Delete old avatar if exists
+        if (!empty($user['avatar_url'])) {
+            $oldFilename = basename($user['avatar_url']);
+            $oldPath = $uploadsDir . '/' . $oldFilename;
+            if (file_exists($oldPath)) {
+                unlink($oldPath);
+            }
+        }
+        
+        // Generate unique filename
+        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+        $filename = $user['id'] . '_' . time() . '.' . $extension;
+        $filepath = $uploadsDir . '/' . $filename;
+        
+        if (!move_uploaded_file($file['tmp_name'], $filepath)) {
+            Response::error('Failed to save file', 500);
+        }
+        
+        // Update user
+        $avatarUrl = env('APP_URL') . '/uploads/avatars/' . $filename;
+        table('users')->where('id', $user['id'])->update([
+            'avatar_url' => $avatarUrl,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        // Fetch updated user
+        $updatedUser = table('users')->where('id', $user['id'])->first();
+        
+        Response::success([
+            'user' => self::formatUser($updatedUser),
+            'avatar_url' => $avatarUrl,
+            'message' => 'Avatar uploaded successfully',
+        ]);
+    }
+    
     public function forgotPassword(): void {
         $data = Request::validate([
             'email' => 'required|email',
@@ -255,6 +441,7 @@ class AuthController {
             'name' => $user['name'],
             'email' => $user['email'],
             'phone' => $user['phone'] ?? null,
+            'avatar_url' => $user['avatar_url'] ?? null,
             'account_type' => $user['account_type'],
             'email_verified_at' => $user['email_verified_at'] ?? null,
             'created_at' => $user['created_at'],
