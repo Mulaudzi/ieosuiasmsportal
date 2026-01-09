@@ -19,9 +19,10 @@ class EmailService {
     private string $appUrl;
     
     public function __construct() {
-        $this->fromEmail = env('MAIL_FROM_ADDRESS', 'noreply@ieosuia.com');
+        $this->fromEmail = env('MAIL_FROM_ADDRESS', 'noreply@sms.ieosuia.com');
         $this->fromName = env('MAIL_FROM_NAME', 'IEOSUIA SMS Portal');
-        $this->appUrl = env('APP_URL', 'https://ieosuia.com');
+        // Use FRONTEND_URL for email links (verify, login, etc.)
+        $this->appUrl = env('FRONTEND_URL', 'https://sms.ieosuia.com');
         
         // Initialize PHPMailer if available
         if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
