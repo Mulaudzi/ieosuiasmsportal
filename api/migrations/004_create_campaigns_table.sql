@@ -1,0 +1,35 @@
+-- IEOSUIA SMS Portal - Campaigns Table Migration
+-- Migration: 004_create_campaigns_table.sql
+
+CREATE TABLE IF NOT EXISTS `campaigns` (
+    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `user_id` BIGINT UNSIGNED NOT NULL,
+    `name` VARCHAR(255) NOT NULL,
+    `type` ENUM('sms', 'email') DEFAULT 'sms',
+    `status` ENUM('draft', 'scheduled', 'processing', 'sending', 'completed', 'paused', 'failed') DEFAULT 'draft',
+    `message` TEXT NOT NULL,
+    `subject` VARCHAR(255) NULL,
+    `sender_id` VARCHAR(20) NULL,
+    `sender_email` VARCHAR(255) NULL,
+    `template_id` BIGINT UNSIGNED NULL,
+    `group_id` BIGINT UNSIGNED NULL,
+    `recipients` JSON NULL,
+    `total_recipients` INT UNSIGNED DEFAULT 0,
+    `sent_count` INT UNSIGNED DEFAULT 0,
+    `delivered_count` INT UNSIGNED DEFAULT 0,
+    `failed_count` INT UNSIGNED DEFAULT 0,
+    `total_cost` DECIMAL(12, 2) DEFAULT 0.00,
+    `scheduled_at` TIMESTAMP NULL,
+    `started_at` TIMESTAMP NULL,
+    `completed_at` TIMESTAMP NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`template_id`) REFERENCES `templates`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`group_id`) REFERENCES `contact_groups`(`id`) ON DELETE SET NULL,
+    INDEX `idx_user_id` (`user_id`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_type` (`type`),
+    INDEX `idx_scheduled_at` (`scheduled_at`),
+    INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
