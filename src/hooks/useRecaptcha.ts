@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // reCAPTCHA v3 site key from environment variable (public - safe to include in code)
-const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string || '';
 
 declare global {
   interface Window {
