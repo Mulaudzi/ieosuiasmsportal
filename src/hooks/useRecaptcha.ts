@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
-// Your reCAPTCHA v3 site key (public - safe to include in code)
-const RECAPTCHA_SITE_KEY = '6LcXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'; // Replace with your actual site key
+// reCAPTCHA v3 site key from environment variable (public - safe to include in code)
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
 
 declare global {
   interface Window {
@@ -15,8 +15,19 @@ declare global {
 export function useRecaptcha() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isConfigured, setIsConfigured] = useState(false);
 
   useEffect(() => {
+    // If no site key configured, skip loading
+    if (!RECAPTCHA_SITE_KEY) {
+      console.warn('VITE_RECAPTCHA_SITE_KEY not configured - reCAPTCHA disabled');
+      setIsLoading(false);
+      setIsConfigured(false);
+      return;
+    }
+
+    setIsConfigured(true);
+
     // Check if script is already loaded
     if (window.grecaptcha) {
       setIsLoaded(true);
@@ -50,6 +61,11 @@ export function useRecaptcha() {
   }, []);
 
   const executeRecaptcha = useCallback(async (action: string): Promise<string | null> => {
+    // If not configured, return null (backend will handle accordingly)
+    if (!isConfigured || !RECAPTCHA_SITE_KEY) {
+      return null;
+    }
+
     if (!isLoaded || !window.grecaptcha) {
       console.warn('reCAPTCHA not loaded');
       return null;
@@ -62,11 +78,12 @@ export function useRecaptcha() {
       console.error('reCAPTCHA execution failed:', error);
       return null;
     }
-  }, [isLoaded]);
+  }, [isLoaded, isConfigured]);
 
   return {
     isLoaded,
     isLoading,
+    isConfigured,
     executeRecaptcha,
   };
 }
