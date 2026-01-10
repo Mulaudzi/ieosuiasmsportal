@@ -398,7 +398,7 @@ export default function Landing() {
               <ul className="space-y-2 text-sm text-sidebar-muted">
                 <li><Link to="/privacy-policy" className="hover:text-sidebar-primary-foreground">Privacy Policy</Link></li>
                 <li><Link to="/terms-of-service" className="hover:text-sidebar-primary-foreground">Terms of Service</Link></li>
-                <li><a href="#" className="hover:text-sidebar-primary-foreground">POPIA Compliance</a></li>
+                <li><Link to="/popia-compliance" className="hover:text-sidebar-primary-foreground">POPIA Compliance</Link></li>
                 <li><Link to="/cookie-policy" className="hover:text-sidebar-primary-foreground">Cookie Policy</Link></li>
               </ul>
             </div>
