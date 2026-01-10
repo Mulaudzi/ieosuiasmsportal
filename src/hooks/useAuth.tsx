@@ -170,25 +170,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: data.message || "Login failed" };
       }
 
-      // Successful response
-      if (data.success && data.data?.token && data.data?.user) {
-        const userData: User = {
-          id: data.data.user.id,
-          email: data.data.user.email,
-          name: data.data.user.name,
-          phone: data.data.user.phone,
-          avatar_url: data.data.user.avatar_url,
-          account_type: data.data.user.account_type,
-          email_verified: data.data.user.email_verified,
-          email_verified_at: data.data.user.email_verified_at,
-          created_at: data.data.user.created_at,
+      // Successful response - handle both nested (data.data) and flat response formats
+      const userData = data.data?.user || data.user;
+      const authToken = data.data?.token || data.token;
+      
+      if (data.success && authToken && userData) {
+        const formattedUser: User = {
+          id: userData.id,
+          email: userData.email,
+          name: userData.name,
+          phone: userData.phone,
+          avatar_url: userData.avatar_url,
+          account_type: userData.account_type,
+          email_verified: userData.email_verified,
+          email_verified_at: userData.email_verified_at,
+          created_at: userData.created_at,
         };
         
         const issuedAt = Date.now();
-        setToken(data.data.token);
-        setUser(userData);
-        localStorage.setItem(TOKEN_KEY, data.data.token);
-        localStorage.setItem(USER_KEY, JSON.stringify(userData));
+        setToken(authToken);
+        setUser(formattedUser);
+        localStorage.setItem(TOKEN_KEY, authToken);
+        localStorage.setItem(USER_KEY, JSON.stringify(formattedUser));
         localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
         scheduleTokenRefresh(issuedAt);
         
@@ -228,22 +231,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: responseData.message || "Registration failed" };
       }
 
-      if (responseData.success && responseData.data?.token) {
+      // Registration successful - token and user are at top level, not nested in data
+      if (responseData.success && responseData.token) {
         const userData: User = {
-          id: responseData.data.user?.id || "user",
-          name: data.name,
-          email: data.email,
-          email_verified: false,
+          id: responseData.user?.id || "user",
+          name: responseData.user?.name || data.name,
+          email: responseData.user?.email || data.email,
+          email_verified: responseData.user?.email_verified || false,
         };
         
         const issuedAt = Date.now();
-        setToken(responseData.data.token);
+        setToken(responseData.token);
         setUser(userData);
-        localStorage.setItem(TOKEN_KEY, responseData.data.token);
+        localStorage.setItem(TOKEN_KEY, responseData.token);
         localStorage.setItem(USER_KEY, JSON.stringify(userData));
         localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
         scheduleTokenRefresh(issuedAt);
         
+        return { success: true };
+      }
+      
+      // If success is true but no token, still consider it successful (shouldn't happen but handle gracefully)
+      if (responseData.success) {
         return { success: true };
       }
       
