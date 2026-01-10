@@ -19,8 +19,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isEmailVerified: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (data: { name: string; email: string; password: string; accountType: string }) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string, recaptchaToken?: string) => Promise<{ success: boolean; error?: string }>;
+  register: (data: { name: string; email: string; password: string; accountType: string; recaptchaToken?: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
   resendVerification: () => Promise<{ success: boolean; error?: string }>;
@@ -160,11 +160,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return response.json();
   };
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string, recaptchaToken?: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await apiRequest("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
       });
 
       if (response.success && response.data) {
@@ -199,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (data: { name: string; email: string; password: string; accountType: string }): Promise<{ success: boolean; error?: string }> => {
+  const register = async (data: { name: string; email: string; password: string; accountType: string; recaptchaToken?: string }): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await apiRequest("/auth/register", {
         method: "POST",
@@ -208,6 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: data.email,
           password: data.password,
           account_type: data.accountType,
+          recaptcha_token: data.recaptchaToken,
         }),
       });
 

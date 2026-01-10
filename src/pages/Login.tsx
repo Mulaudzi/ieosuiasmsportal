@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Zap, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { executeRecaptcha, isLoaded: recaptchaLoaded } = useRecaptcha();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,7 +33,10 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      const result = await login(formData.email, formData.password);
+      // Execute reCAPTCHA
+      const recaptchaToken = await executeRecaptcha('login');
+      
+      const result = await login(formData.email, formData.password, recaptchaToken || undefined);
       if (result.success) {
         toast({
           title: "Welcome back!",

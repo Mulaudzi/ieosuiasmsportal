@@ -14,10 +14,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Zap, Loader2, Eye, EyeOff, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 export default function Register() {
   const navigate = useNavigate();
   const { register } = useAuth();
+  const { executeRecaptcha, isLoaded: recaptchaLoaded } = useRecaptcha();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -87,11 +89,15 @@ export default function Register() {
 
     setIsLoading(true);
     try {
+      // Execute reCAPTCHA
+      const recaptchaToken = await executeRecaptcha('register');
+      
       const result = await register({
         name: formData.name,
         email: formData.email,
         password: formData.password,
         accountType: formData.accountType,
+        recaptchaToken: recaptchaToken || undefined,
       });
       
       if (result.success) {

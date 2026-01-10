@@ -13,6 +13,7 @@ require_once __DIR__ . '/core/JWT.php';
 require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/RateLimiter.php';
 require_once __DIR__ . '/core/EmailValidator.php';
+require_once __DIR__ . '/core/RecaptchaValidator.php';
 require_once __DIR__ . '/services/EmailService.php';
 
 // CORS Headers
