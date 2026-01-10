@@ -58,12 +58,18 @@ class AuthController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        // Send verification email
-        $this->emailService->sendVerificationEmail(
-            $data['email'],
-            $data['name'],
-            $verificationToken
-        );
+        // Send verification email (wrapped in try/catch to not fail registration)
+        $emailSent = false;
+        try {
+            $result = $this->emailService->sendVerificationEmail(
+                $data['email'],
+                $data['name'],
+                $verificationToken
+            );
+            $emailSent = $result['success'] ?? false;
+        } catch (\Exception $e) {
+            error_log('Failed to send verification email: ' . $e->getMessage());
+        }
         
         $user = table('users')->where('id', $userId)->first();
         $token = Auth::generateToken($user);
@@ -71,6 +77,10 @@ class AuthController {
         Response::created([
             'user' => Auth::formatUserForFrontend($user),
             'token' => $token,
+            'email_sent' => $emailSent,
+            'message' => $emailSent 
+                ? 'Account created successfully. Please check your email to verify your account.'
+                : 'Account created successfully. Verification email could not be sent, please request a new one from your dashboard.',
         ]);
     }
     
@@ -93,21 +103,29 @@ class AuthController {
         // Rate limit login attempts by email (5 attempts per 15 minutes)
         RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
         
-        $token = Auth::attempt($data['email'], $data['password']);
+        // First check if user exists
+        $user = table('users')->where('email', $data['email'])->first();
         
-        if (!$token) {
+        if (!$user) {
+            Response::error('No account found with this email address', 401);
+        }
+        
+        // Verify password
+        if (!password_verify($data['password'], $user['password'])) {
             Response::error('Invalid credentials', 401);
         }
+        
+        // Generate token
+        $token = Auth::generateToken($user);
         
         // Clear rate limits on successful login
         RateLimiter::clear("login:{$data['email']}");
         RateLimiter::clear("login_ip:{$ip}");
         
-        $user = table('users')->where('email', $data['email'])->first();
-        
         Response::success([
             'user' => Auth::formatUserForFrontend($user),
             'token' => $token,
+            'message' => 'Login successful',
         ]);
     }
     
