@@ -399,11 +399,12 @@ export default function Landing() {
                 <li><Link to="/privacy-policy" className="hover:text-sidebar-primary-foreground">Privacy Policy</Link></li>
                 <li><Link to="/terms-of-service" className="hover:text-sidebar-primary-foreground">Terms of Service</Link></li>
                 <li><a href="#" className="hover:text-sidebar-primary-foreground">POPIA Compliance</a></li>
+                <li><a href="#" className="hover:text-sidebar-primary-foreground">Cookie Policy</a></li>
               </ul>
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-sidebar-border text-center text-sm text-sidebar-muted">
-            © 2026 IEOSUIA SMS PORTAL. All rights reserved.
+            © {new Date().getFullYear()} IEOSUIA SMS PORTAL. All rights reserved.
           </div>
         </div>
       </footer>
