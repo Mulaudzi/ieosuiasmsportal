@@ -59,6 +59,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->put('/auth/user', 'AuthController@updateUser');
     $router->post('/auth/avatar', 'AuthController@uploadAvatar');
     $router->post('/auth/resend-verification', 'AuthController@resendVerification');
+    $router->post('/auth/refresh', 'AuthController@refreshToken');
     
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');

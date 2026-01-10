@@ -228,7 +228,7 @@ class AuthController {
                 
                 Response::success([
                     'user' => Auth::formatUserForFrontend($updatedUser),
-                    'avatarUrl' => $avatarUrl,
+                    'avatar_url' => $avatarUrl,
                     'message' => 'Avatar uploaded successfully',
                 ]);
                 return;
@@ -289,8 +289,21 @@ class AuthController {
         
         Response::success([
             'user' => Auth::formatUserForFrontend($updatedUser),
-            'avatarUrl' => $avatarUrl,
+            'avatar_url' => $avatarUrl,
             'message' => 'Avatar uploaded successfully',
+        ]);
+    }
+    
+    /**
+     * Refresh JWT token
+     */
+    public function refreshToken(): void {
+        $user = Auth::user();
+        $token = Auth::generateToken($user);
+        
+        Response::success([
+            'token' => $token,
+            'expires_in' => 24 * 60 * 60, // 24 hours in seconds
         ]);
     }
     
