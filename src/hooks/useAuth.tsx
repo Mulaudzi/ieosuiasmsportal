@@ -207,6 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: data.name,
           email: data.email,
           password: data.password,
+          password_confirmation: data.password,
           account_type: data.accountType,
           recaptcha_token: data.recaptchaToken,
         }),
