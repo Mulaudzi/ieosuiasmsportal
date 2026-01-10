@@ -162,28 +162,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string, recaptchaToken?: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiRequest("/auth/login", {
+      const currentToken = token || localStorage.getItem(TOKEN_KEY);
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+      };
+
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
+        headers,
         body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
       });
 
-      if (response.success && response.data) {
+      const data = await response.json();
+
+      // Check HTTP status first - 401 means authentication failed
+      if (!response.ok) {
+        const errorMessage = data.message || data.error || 
+          (response.status === 401 ? "Invalid email or password" : "Login failed");
+        return { success: false, error: errorMessage };
+      }
+
+      // Only proceed if we have success response with data
+      if (data.success && data.data) {
         const userData: User = {
-          id: response.data.user?.id || "user",
+          id: data.data.user?.id || "user",
           email,
-          name: response.data.user?.name,
-          phone: response.data.user?.phone,
-          avatar_url: response.data.user?.avatar_url,
-          account_type: response.data.user?.account_type,
-          email_verified: response.data.user?.email_verified,
-          email_verified_at: response.data.user?.email_verified_at,
-          created_at: response.data.user?.created_at,
+          name: data.data.user?.name,
+          phone: data.data.user?.phone,
+          avatar_url: data.data.user?.avatar_url,
+          account_type: data.data.user?.account_type,
+          email_verified: data.data.user?.email_verified,
+          email_verified_at: data.data.user?.email_verified_at,
+          created_at: data.data.user?.created_at,
         };
         const issuedAt = Date.now();
         
-        setToken(response.data.token);
+        setToken(data.data.token);
         setUser(userData);
-        localStorage.setItem(TOKEN_KEY, response.data.token);
+        localStorage.setItem(TOKEN_KEY, data.data.token);
         localStorage.setItem(USER_KEY, JSON.stringify(userData));
         localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
         
@@ -192,8 +209,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         return { success: true };
       }
-      // Handle specific error messages from the API
-      const errorMessage = response.message || response.error || "Login failed";
+      
+      // Handle case where response.ok but data.success is false
+      const errorMessage = data.message || data.error || "Login failed";
       return { success: false, error: errorMessage };
     } catch (error) {
       console.error("Login error:", error);

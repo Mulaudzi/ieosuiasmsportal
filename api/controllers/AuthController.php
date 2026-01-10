@@ -4,10 +4,8 @@
  */
 
 class AuthController {
-    private EmailService $emailService;
-    
     public function __construct() {
-        $this->emailService = new EmailService();
+        // EmailService now uses static methods
     }
     
     public function register(): void {
@@ -61,7 +59,7 @@ class AuthController {
         // Send verification email (wrapped in try/catch to not fail registration)
         $emailSent = false;
         try {
-            $result = $this->emailService->sendVerificationEmail(
+            $result = EmailService::sendVerificationEmail(
                 $data['email'],
                 $data['name'],
                 $verificationToken
@@ -377,7 +375,7 @@ class AuthController {
             ]);
             
             // Send password reset email
-            $this->emailService->sendPasswordResetEmail(
+            EmailService::sendPasswordResetEmail(
                 $user['email'],
                 $user['name'],
                 $otp
@@ -472,7 +470,7 @@ class AuthController {
         ]);
         
         // Send welcome email after successful verification
-        $this->emailService->sendWelcomeEmail($user['email'], $user['name']);
+        EmailService::sendWelcomeEmail($user['email'], $user['name']);
         
         Response::success([
             'message' => 'Email verified successfully',
