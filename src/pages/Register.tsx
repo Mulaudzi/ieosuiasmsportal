@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Zap, Loader2, Eye, EyeOff, Check } from "lucide-react";
+import { Zap, Loader2, Eye, EyeOff, Check, X, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
@@ -32,18 +32,50 @@ export default function Register() {
     company: "",
   });
 
+  // Common weak passwords to reject
+  const commonPasswords = [
+    'password', 'password123', '123456', '12345678', 'qwerty', 'abc123',
+    'monkey', 'letmein', 'dragon', 'master', 'admin', 'welcome',
+    'login', 'password1', 'sunshine', 'princess', 'football', 'iloveyou',
+    '1234567890', 'passw0rd', 'shadow', 'superman', 'qwerty123'
+  ];
+
+  const passwordRequirements = () => {
+    const password = formData.password;
+    return {
+      minLength: password.length >= 8,
+      hasUppercase: /[A-Z]/.test(password),
+      hasLowercase: /[a-z]/.test(password),
+      hasNumber: /\d/.test(password),
+      hasSpecial: /[^a-zA-Z0-9]/.test(password),
+      notCommon: !commonPasswords.includes(password.toLowerCase()),
+    };
+  };
+
+  const requirements = passwordRequirements();
+
   const passwordStrength = () => {
     const password = formData.password;
-    if (!password) return { score: 0, label: "" };
+    if (!password) return { score: 0, label: "", isValid: false };
+    
+    const reqs = requirements;
     let score = 0;
-    if (password.length >= 8) score++;
-    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
-    if (/\d/.test(password)) score++;
-    if (/[^a-zA-Z0-9]/.test(password)) score++;
+    
+    if (reqs.minLength) score++;
+    if (reqs.hasUppercase && reqs.hasLowercase) score++;
+    if (reqs.hasNumber) score++;
+    if (reqs.hasSpecial) score++;
+    
+    // Deduct if common password
+    if (!reqs.notCommon) score = Math.min(score, 1);
     
     const labels = ["", "Weak", "Fair", "Good", "Strong"];
     const colors = ["", "bg-destructive", "bg-warning", "bg-info", "bg-success"];
-    return { score, label: labels[score], color: colors[score] };
+    
+    // Password is valid if score >= 3 (Good or Strong) and not common
+    const isValid = score >= 3 && reqs.notCommon && reqs.minLength;
+    
+    return { score, label: labels[score], color: colors[score], isValid };
   };
 
   const strength = passwordStrength();
@@ -69,10 +101,19 @@ export default function Register() {
       return;
     }
 
-    if (formData.password.length < 8) {
+    if (!strength.isValid) {
       toast({
-        title: "Password too short",
-        description: "Password must be at least 8 characters.",
+        title: "Password too weak",
+        description: "Password must be at least 8 characters with uppercase, lowercase, number, and special character.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!requirements.notCommon) {
+      toast({
+        title: "Common password detected",
+        description: "Please choose a more unique password.",
         variant: "destructive",
       });
       return;
@@ -272,18 +313,68 @@ export default function Register() {
                 </button>
               </div>
               {formData.password && (
-                <div className="mt-2">
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div
-                        key={i}
-                        className={`h-1 flex-1 rounded-full ${
-                          i <= strength.score ? strength.color : "bg-muted"
-                        }`}
-                      />
-                    ))}
+                <div className="mt-3 space-y-3">
+                  {/* Strength bar */}
+                  <div>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div
+                          key={i}
+                          className={`h-1.5 flex-1 rounded-full transition-all ${
+                            i <= strength.score ? strength.color : "bg-muted"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className={`text-xs font-medium ${
+                        strength.score >= 3 ? 'text-success' : strength.score >= 2 ? 'text-warning' : 'text-destructive'
+                      }`}>
+                        {strength.label}
+                      </p>
+                      {strength.isValid && (
+                        <span className="text-xs text-success flex items-center gap-1">
+                          <Check className="h-3 w-3" /> Ready
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{strength.label}</p>
+                  
+                  {/* Requirements checklist */}
+                  <div className="rounded-lg border border-border bg-muted/30 p-3">
+                    <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Password requirements:
+                    </p>
+                    <ul className="space-y-1.5">
+                      <li className={`text-xs flex items-center gap-2 ${requirements.minLength ? 'text-success' : 'text-muted-foreground'}`}>
+                        {requirements.minLength ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        At least 8 characters
+                      </li>
+                      <li className={`text-xs flex items-center gap-2 ${requirements.hasUppercase ? 'text-success' : 'text-muted-foreground'}`}>
+                        {requirements.hasUppercase ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        One uppercase letter (A-Z)
+                      </li>
+                      <li className={`text-xs flex items-center gap-2 ${requirements.hasLowercase ? 'text-success' : 'text-muted-foreground'}`}>
+                        {requirements.hasLowercase ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        One lowercase letter (a-z)
+                      </li>
+                      <li className={`text-xs flex items-center gap-2 ${requirements.hasNumber ? 'text-success' : 'text-muted-foreground'}`}>
+                        {requirements.hasNumber ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        One number (0-9)
+                      </li>
+                      <li className={`text-xs flex items-center gap-2 ${requirements.hasSpecial ? 'text-success' : 'text-muted-foreground'}`}>
+                        {requirements.hasSpecial ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        One special character (!@#$%^&*)
+                      </li>
+                      {!requirements.notCommon && (
+                        <li className="text-xs flex items-center gap-2 text-destructive">
+                          <X className="h-3 w-3" />
+                          Password is too common
+                        </li>
+                      )}
+                    </ul>
+                  </div>
                 </div>
               )}
             </div>
