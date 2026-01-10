@@ -1115,4 +1115,19 @@ class SMTP
     {
         return $this->last_smtp_transaction_id;
     }
+
+    /**
+     * Enable or disable SMTPUTF8 support.
+     * This method is a placeholder for compatibility - actual UTF8 handling
+     * is done in the PHPMailer class.
+     *
+     * @param bool $enable Whether to enable SMTPUTF8
+     *
+     * @return void
+     */
+    public function setSMTPUTF8($enable = false)
+    {
+        // This is a compatibility method
+        // SMTPUTF8 support is handled by the PHPMailer class
+    }
 }

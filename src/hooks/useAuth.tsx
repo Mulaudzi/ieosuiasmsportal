@@ -192,7 +192,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         return { success: true };
       }
-      return { success: false, error: response.message || "Login failed" };
+      // Handle specific error messages from the API
+      const errorMessage = response.message || response.error || "Login failed";
+      return { success: false, error: errorMessage };
     } catch (error) {
       console.error("Login error:", error);
       return { success: false, error: "Network error. Please try again." };
