@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://sms.ieosuia.com/api';
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 interface GoogleAuthState {
   isAvailable: boolean;
@@ -34,10 +33,26 @@ export function useGoogleAuth() {
     const checkStatus = async () => {
       try {
         const response = await fetch(`${API_URL}/auth/google/status`);
+        
+        if (!response.ok) {
+          console.error('Google OAuth status check failed:', response.status);
+          setState(prev => ({
+            ...prev,
+            isAvailable: false,
+            isLoading: false,
+            isInitialized: true,
+          }));
+          return;
+        }
+        
         const data = await response.json();
+        
+        // Handle both response formats
+        const available = data.data?.available ?? data.available ?? false;
+        
         setState(prev => ({
           ...prev,
-          isAvailable: data.data?.available ?? false,
+          isAvailable: available,
           isLoading: false,
           isInitialized: true,
         }));
@@ -55,43 +70,38 @@ export function useGoogleAuth() {
     checkStatus();
   }, []);
 
-  // Initialize Google Identity Services
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID || !state.isAvailable) return;
-
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    document.head.appendChild(script);
-
-    return () => {
-      document.head.removeChild(script);
-    };
-  }, [state.isAvailable]);
-
   // Sign in with Google popup/redirect
   const signInWithGoogle = useCallback(async (): Promise<GoogleAuthResult> => {
     if (!state.isAvailable) {
-      return { success: false, error: 'Google OAuth is not available' };
+      return { success: false, error: 'Google sign-in is not configured' };
     }
 
     try {
-      // Get the auth URL from backend
       const urlResponse = await fetch(`${API_URL}/auth/google/url`);
+      
+      if (!urlResponse.ok) {
+        const errorData = await urlResponse.json().catch(() => ({}));
+        return { success: false, error: errorData.message || 'Failed to get Google auth URL' };
+      }
+      
       const urlData = await urlResponse.json();
 
-      if (!urlData.success || !urlData.data?.auth_url) {
+      // Handle both response formats
+      const authUrl = urlData.data?.auth_url ?? urlData.auth_url;
+      const oauthState = urlData.data?.state ?? urlData.state;
+
+      if (!authUrl) {
         return { success: false, error: 'Failed to get Google auth URL' };
       }
 
       // Store state for CSRF verification
-      sessionStorage.setItem('google_oauth_state', urlData.data.state);
+      if (oauthState) {
+        sessionStorage.setItem('google_oauth_state', oauthState);
+      }
 
       // Redirect to Google OAuth
-      window.location.href = urlData.data.auth_url;
+      window.location.href = authUrl;
 
-      // This won't be reached due to redirect
       return { success: true };
     } catch (error) {
       console.error('Google sign-in error:', error);
@@ -99,13 +109,13 @@ export function useGoogleAuth() {
     }
   }, [state.isAvailable]);
 
-  // Handle the OAuth callback (call this from callback page)
-  const handleCallback = useCallback(async (code: string, state?: string): Promise<GoogleAuthResult> => {
+  // Handle the OAuth callback
+  const handleCallback = useCallback(async (code: string, oauthState?: string): Promise<GoogleAuthResult> => {
     try {
       // Verify state if provided
       const storedState = sessionStorage.getItem('google_oauth_state');
-      if (state && storedState && state !== storedState) {
-        return { success: false, error: 'Invalid OAuth state' };
+      if (oauthState && storedState && oauthState !== storedState) {
+        return { success: false, error: 'Invalid OAuth state - possible CSRF attack' };
       }
       sessionStorage.removeItem('google_oauth_state');
 
@@ -117,12 +127,21 @@ export function useGoogleAuth() {
 
       const data = await response.json();
 
-      if (data.success && data.data?.token) {
+      if (!response.ok) {
+        return { success: false, error: data.message || 'Google sign-in failed' };
+      }
+
+      // Handle both response formats
+      const token = data.data?.token ?? data.token;
+      const user = data.data?.user ?? data.user;
+      const isNewUser = data.data?.is_new_user ?? data.is_new_user ?? false;
+
+      if (token && user) {
         return {
           success: true,
-          user: data.data.user,
-          token: data.data.token,
-          isNewUser: data.data.is_new_user,
+          user,
+          token,
+          isNewUser,
         };
       }
 
@@ -133,7 +152,7 @@ export function useGoogleAuth() {
     }
   }, []);
 
-  // Sign in with Google credential (for One-Tap or ID token from GSI)
+  // Sign in with Google credential (for One-Tap)
   const signInWithCredential = useCallback(async (credential: string): Promise<GoogleAuthResult> => {
     try {
       const response = await fetch(`${API_URL}/auth/google/credential`, {
@@ -144,12 +163,20 @@ export function useGoogleAuth() {
 
       const data = await response.json();
 
-      if (data.success && data.data?.token) {
+      if (!response.ok) {
+        return { success: false, error: data.message || 'Google sign-in failed' };
+      }
+
+      const token = data.data?.token ?? data.token;
+      const user = data.data?.user ?? data.user;
+      const isNewUser = data.data?.is_new_user ?? data.is_new_user ?? false;
+
+      if (token && user) {
         return {
           success: true,
-          user: data.data.user,
-          token: data.data.token,
-          isNewUser: data.data.is_new_user,
+          user,
+          token,
+          isNewUser,
         };
       }
 

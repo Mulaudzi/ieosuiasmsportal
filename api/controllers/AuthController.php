@@ -1,13 +1,14 @@
 <?php
 /**
  * Authentication Controller
+ * Handles user registration, login, password reset, and email verification
  */
 
 class AuthController {
-    public function __construct() {
-        // EmailService now uses static methods
-    }
     
+    /**
+     * Register a new user
+     */
     public function register(): void {
         $data = Request::validate([
             'name' => 'required|min:2|max:100',
@@ -17,23 +18,24 @@ class AuthController {
             'recaptcha_token' => 'max:2048',
         ]);
         
-        // Verify reCAPTCHA
-        $recaptchaToken = $data['recaptcha_token'] ?? '';
-        RecaptchaValidator::verifyOrFail($recaptchaToken, 'register');
+        // Verify reCAPTCHA (soft fail if not configured)
+        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'register');
         
         // Rate limit registration by IP
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         RateLimiter::checkOrFail("register:{$ip}", 5, 60);
         
-        // Validate email through security pipeline (disposable, role-based, MX check)
+        // Validate email (disposable, role-based, MX check)
         $emailValidation = EmailValidator::validate($data['email']);
         if (!$emailValidation['valid']) {
             Response::error($emailValidation['error'], 400);
+            return;
         }
         
         // Generate verification token
         $verificationToken = bin2hex(random_bytes(32));
         
+        // Create user
         $userId = table('users')->insert([
             'name' => $data['name'],
             'email' => $data['email'],
@@ -56,7 +58,7 @@ class AuthController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        // Send verification email (wrapped in try/catch to not fail registration)
+        // Send verification email (don't fail registration if email fails)
         $emailSent = false;
         try {
             $result = EmailService::sendVerificationEmail(
@@ -69,6 +71,7 @@ class AuthController {
             error_log('Failed to send verification email: ' . $e->getMessage());
         }
         
+        // Generate token and return
         $user = table('users')->where('id', $userId)->first();
         $token = Auth::generateToken($user);
         
@@ -76,12 +79,13 @@ class AuthController {
             'user' => Auth::formatUserForFrontend($user),
             'token' => $token,
             'email_sent' => $emailSent,
-            'message' => $emailSent 
-                ? 'Account created successfully. Please check your email to verify your account.'
-                : 'Account created successfully. Verification email could not be sent, please request a new one from your dashboard.',
+            'message' => 'Account created successfully. Please check your email to verify your account.',
         ]);
     }
     
+    /**
+     * Login user
+     */
     public function login(): void {
         $data = Request::validate([
             'email' => 'required|email',
@@ -89,28 +93,27 @@ class AuthController {
             'recaptcha_token' => 'max:2048',
         ]);
         
-        // Verify reCAPTCHA
-        $recaptchaToken = $data['recaptcha_token'] ?? '';
-        RecaptchaValidator::verifyOrFail($recaptchaToken, 'login');
+        // Verify reCAPTCHA (soft fail if not configured)
+        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'login');
         
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         
-        // Rate limit login attempts by IP (20 attempts per 15 minutes)
+        // Rate limit login attempts
         RateLimiter::checkOrFail("login_ip:{$ip}", 20, 15);
-        
-        // Rate limit login attempts by email (5 attempts per 15 minutes)
         RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
         
-        // First check if user exists
+        // Find user
         $user = table('users')->where('email', $data['email'])->first();
         
         if (!$user) {
-            Response::error('No account found with this email address', 401);
+            Response::error('No account found with this email address', 404);
+            return;
         }
         
         // Verify password
         if (!password_verify($data['password'], $user['password'])) {
-            Response::error('Invalid credentials', 401);
+            Response::error('Invalid password', 401);
+            return;
         }
         
         // Generate token
@@ -127,11 +130,16 @@ class AuthController {
         ]);
     }
     
+    /**
+     * Logout user
+     */
     public function logout(): void {
-        // With JWT, we just tell the client to discard the token
         Response::success(['message' => 'Logged out successfully']);
     }
     
+    /**
+     * Get current user
+     */
     public function user(): void {
         $user = Auth::user();
         $wallet = table('wallets')->where('user_id', $user['id'])->first();
@@ -146,6 +154,9 @@ class AuthController {
         ]);
     }
     
+    /**
+     * Update user profile
+     */
     public function updateUser(): void {
         $user = Auth::user();
         
@@ -161,14 +172,17 @@ class AuthController {
         if (!empty($data['password'])) {
             if (empty($data['current_password'])) {
                 Response::error('Current password is required', 400);
+                return;
             }
             
             if (!password_verify($data['current_password'], $user['password'])) {
                 Response::error('Current password is incorrect', 400);
+                return;
             }
             
             if ($data['password'] !== ($data['password_confirmation'] ?? '')) {
                 Response::error('Passwords do not match', 400);
+                return;
             }
             
             table('users')->where('id', $user['id'])->update([
@@ -191,7 +205,6 @@ class AuthController {
             table('users')->where('id', $user['id'])->update($updateData);
         }
         
-        // Fetch updated user
         $updatedUser = table('users')->where('id', $user['id'])->first();
         
         Response::success([
@@ -200,68 +213,64 @@ class AuthController {
         ]);
     }
     
+    /**
+     * Upload avatar
+     */
     public function uploadAvatar(): void {
         $user = Auth::user();
         
-        // Check if base64 image data is provided
         $input = Request::all();
         
         if (isset($input['avatar']) && strpos($input['avatar'], 'data:image') === 0) {
             // Handle base64 image
-            $imageData = $input['avatar'];
-            
-            // Extract base64 data
-            if (preg_match('/^data:image\/(\w+);base64,/', $imageData, $matches)) {
+            if (preg_match('/^data:image\/(\w+);base64,/', $input['avatar'], $matches)) {
                 $extension = $matches[1];
-                $imageData = substr($imageData, strpos($imageData, ',') + 1);
+                $imageData = substr($input['avatar'], strpos($input['avatar'], ',') + 1);
                 $imageData = base64_decode($imageData);
                 
                 if ($imageData === false) {
                     Response::error('Invalid image data', 400);
+                    return;
                 }
                 
-                // Validate extension
                 $allowedExtensions = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
                 if (!in_array(strtolower($extension), $allowedExtensions)) {
-                    Response::error('Invalid image type. Allowed: JPG, PNG, GIF, WebP', 400);
+                    Response::error('Invalid image type', 400);
+                    return;
                 }
                 
-                // Validate size (max 2MB)
                 if (strlen($imageData) > 2 * 1024 * 1024) {
-                    Response::error('Image too large. Maximum size: 2MB', 400);
+                    Response::error('Image too large (max 2MB)', 400);
+                    return;
                 }
                 
-                // Create uploads directory
                 $uploadsDir = __DIR__ . '/../uploads/avatars';
                 if (!is_dir($uploadsDir)) {
                     mkdir($uploadsDir, 0755, true);
                 }
                 
-                // Delete old avatar if exists
+                // Delete old avatar
                 if (!empty($user['avatar_url'])) {
-                    $oldFilename = basename($user['avatar_url']);
-                    $oldPath = $uploadsDir . '/' . $oldFilename;
+                    $oldPath = $uploadsDir . '/' . basename($user['avatar_url']);
                     if (file_exists($oldPath)) {
                         unlink($oldPath);
                     }
                 }
                 
-                // Generate unique filename
                 $filename = $user['id'] . '_' . time() . '.' . $extension;
                 $filepath = $uploadsDir . '/' . $filename;
                 
                 if (!file_put_contents($filepath, $imageData)) {
                     Response::error('Failed to save image', 500);
+                    return;
                 }
                 
-                // Update user
                 $avatarUrl = env('APP_URL') . '/uploads/avatars/' . $filename;
                 table('users')->where('id', $user['id'])->update([
                     'avatar_url' => $avatarUrl,
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]);
                 
-                // Fetch updated user
                 $updatedUser = table('users')->where('id', $user['id'])->first();
                 
                 Response::success([
@@ -278,51 +287,48 @@ class AuthController {
         
         if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
             Response::error('No file uploaded', 400);
+            return;
         }
         
-        // Validate file type
         $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         if (!in_array($file['type'], $allowedTypes)) {
-            Response::error('Invalid file type. Allowed: JPG, PNG, GIF, WebP', 400);
+            Response::error('Invalid file type', 400);
+            return;
         }
         
-        // Validate file size (max 2MB)
         if ($file['size'] > 2 * 1024 * 1024) {
-            Response::error('File too large. Maximum size: 2MB', 400);
+            Response::error('File too large (max 2MB)', 400);
+            return;
         }
         
-        // Create uploads directory
         $uploadsDir = __DIR__ . '/../uploads/avatars';
         if (!is_dir($uploadsDir)) {
             mkdir($uploadsDir, 0755, true);
         }
         
-        // Delete old avatar if exists
+        // Delete old avatar
         if (!empty($user['avatar_url'])) {
-            $oldFilename = basename($user['avatar_url']);
-            $oldPath = $uploadsDir . '/' . $oldFilename;
+            $oldPath = $uploadsDir . '/' . basename($user['avatar_url']);
             if (file_exists($oldPath)) {
                 unlink($oldPath);
             }
         }
         
-        // Generate unique filename
         $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
         $filename = $user['id'] . '_' . time() . '.' . $extension;
         $filepath = $uploadsDir . '/' . $filename;
         
         if (!move_uploaded_file($file['tmp_name'], $filepath)) {
             Response::error('Failed to save file', 500);
+            return;
         }
         
-        // Update user
         $avatarUrl = env('APP_URL') . '/uploads/avatars/' . $filename;
         table('users')->where('id', $user['id'])->update([
             'avatar_url' => $avatarUrl,
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        // Fetch updated user
         $updatedUser = table('users')->where('id', $user['id'])->first();
         
         Response::success([
@@ -341,24 +347,23 @@ class AuthController {
         
         Response::success([
             'token' => $token,
-            'expires_in' => 24 * 60 * 60, // 24 hours in seconds
+            'expires_in' => 24 * 60 * 60,
         ]);
     }
     
+    /**
+     * Forgot password - send reset code
+     */
     public function forgotPassword(): void {
         $data = Request::validate([
             'email' => 'required|email',
             'recaptcha_token' => 'max:2048',
         ]);
         
-        // Verify reCAPTCHA
-        $recaptchaToken = $data['recaptcha_token'] ?? '';
-        RecaptchaValidator::verifyOrFail($recaptchaToken, 'forgot_password');
+        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'forgot_password');
         
-        // Rate limit: 3 attempts per email per 15 minutes
         RateLimiter::checkOrFail("forgot_password:{$data['email']}", 3, 15);
         
-        // Rate limit: 10 attempts per IP per hour
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         RateLimiter::checkOrFail("forgot_password_ip:{$ip}", 10, 60);
         
@@ -374,17 +379,19 @@ class AuthController {
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
             
-            // Send password reset email
-            EmailService::sendPasswordResetEmail(
-                $user['email'],
-                $user['name'],
-                $otp
-            );
+            try {
+                EmailService::sendPasswordResetEmail($user['email'], $user['name'], $otp);
+            } catch (\Exception $e) {
+                error_log('Failed to send password reset email: ' . $e->getMessage());
+            }
         }
         
         Response::success(['message' => 'If the email exists, a reset code has been sent']);
     }
     
+    /**
+     * Reset password with OTP
+     */
     public function resetPassword(): void {
         $data = Request::validate([
             'email' => 'required|email',
@@ -393,11 +400,8 @@ class AuthController {
             'recaptcha_token' => 'max:2048',
         ]);
         
-        // Verify reCAPTCHA
-        $recaptchaToken = $data['recaptcha_token'] ?? '';
-        RecaptchaValidator::verifyOrFail($recaptchaToken, 'reset_password');
+        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'reset_password');
         
-        // Rate limit: 5 attempts per email per 15 minutes
         RateLimiter::checkOrFail("reset_password:{$data['email']}", 5, 15);
         
         $user = table('users')
@@ -407,10 +411,12 @@ class AuthController {
         
         if (!$user) {
             Response::error('Invalid reset code', 400);
+            return;
         }
         
         if (strtotime($user['otp_expires_at']) < time()) {
             Response::error('Reset code has expired', 400);
+            return;
         }
         
         table('users')->where('id', $user['id'])->update([
@@ -420,23 +426,24 @@ class AuthController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        // Clear rate limits on successful reset
         RateLimiter::clear("reset_password:{$data['email']}");
         RateLimiter::clear("forgot_password:{$data['email']}");
         
         Response::success(['message' => 'Password reset successfully']);
     }
     
+    /**
+     * Verify email
+     */
     public function verifyEmail(): void {
-        // Check both JSON body AND query parameters for token
         $data = Request::all();
         $token = $data['token'] ?? $_GET['token'] ?? null;
         
         if (!$token) {
             Response::error('Verification token is required', 400);
+            return;
         }
         
-        // Rate limit verification attempts by IP
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         RateLimiter::checkOrFail("verify_email:{$ip}", 10, 15);
         
@@ -446,6 +453,7 @@ class AuthController {
         
         if (!$user) {
             Response::error('Invalid verification token', 400);
+            return;
         }
         
         if ($user['email_verified_at']) {
@@ -453,13 +461,15 @@ class AuthController {
                 'message' => 'Email already verified',
                 'status' => 'already-verified'
             ]);
+            return;
         }
         
-        // Check if token is expired (24 hours)
+        // Check if token expired (24 hours)
         if (isset($user['email_verification_sent_at'])) {
             $sentAt = strtotime($user['email_verification_sent_at']);
             if (time() - $sentAt > 86400) {
-                Response::error('Verification token has expired. Please request a new one.', 400);
+                Response::error('Verification token has expired', 400);
+                return;
             }
         }
         
@@ -469,8 +479,12 @@ class AuthController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        // Send welcome email after successful verification
-        EmailService::sendWelcomeEmail($user['email'], $user['name']);
+        // Send welcome email
+        try {
+            EmailService::sendWelcomeEmail($user['email'], $user['name']);
+        } catch (\Exception $e) {
+            error_log('Failed to send welcome email: ' . $e->getMessage());
+        }
         
         Response::success([
             'message' => 'Email verified successfully',
@@ -478,32 +492,49 @@ class AuthController {
         ]);
     }
     
+    /**
+     * Resend verification email
+     */
     public function resendVerification(): void {
         $user = Auth::user();
         
-        // Rate limit: 3 resends per 15 minutes
-        RateLimiter::checkOrFail("resend_verification:{$user['id']}", 3, 15);
-        
-        if ($user['email_verified_at']) {
-            Response::error('Email already verified', 400);
+        if (!empty($user['email_verified_at'])) {
+            Response::success([
+                'message' => 'Email is already verified',
+                'already_verified' => true
+            ]);
+            return;
         }
         
-        $token = bin2hex(random_bytes(32));
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        RateLimiter::checkOrFail("resend_verification:{$user['id']}", 3, 15);
+        RateLimiter::checkOrFail("resend_verification_ip:{$ip}", 10, 60);
+        
+        // Generate new token
+        $verificationToken = bin2hex(random_bytes(32));
         
         table('users')->where('id', $user['id'])->update([
-            'email_verification_token' => $token,
+            'email_verification_token' => $verificationToken,
             'email_verification_sent_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        // Send verification email
-        $this->emailService->sendVerificationEmail(
-            $user['email'],
-            $user['name'],
-            $token
-        );
+        $emailSent = false;
+        try {
+            $result = EmailService::sendVerificationEmail(
+                $user['email'],
+                $user['name'],
+                $verificationToken
+            );
+            $emailSent = $result['success'] ?? false;
+        } catch (\Exception $e) {
+            error_log('Failed to resend verification email: ' . $e->getMessage());
+        }
         
-        Response::success(['message' => 'Verification email sent']);
+        if ($emailSent) {
+            Response::success(['message' => 'Verification email sent']);
+        } else {
+            Response::error('Failed to send verification email', 500);
+        }
     }
-    
 }
