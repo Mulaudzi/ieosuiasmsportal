@@ -117,7 +117,7 @@ export default function Landing() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <Zap className="h-6 w-6 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">IEOSUIA SMS</span>
+            <span className="text-xl font-bold text-foreground">IEOSUIA SMS PORTAL</span>
           </div>
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
@@ -165,7 +165,7 @@ export default function Landing() {
             </Link>
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
-            No credit card required • 30 free SMS per month
+            No credit card required • 5 free SMS credits
           </p>
         </div>
       </section>
@@ -369,7 +369,7 @@ export default function Landing() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                   <Zap className="h-5 w-5 text-primary-foreground" />
                 </div>
-                <span className="text-lg font-bold text-sidebar-primary-foreground">IEOSUIA SMS</span>
+                <span className="text-lg font-bold text-sidebar-primary-foreground">IEOSUIA SMS PORTAL</span>
               </div>
               <p className="text-sm text-sidebar-muted">
                 Professional bulk SMS and email messaging platform for businesses.
@@ -388,7 +388,7 @@ export default function Landing() {
               <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Support</h4>
               <ul className="space-y-2 text-sm text-sidebar-muted">
                 <li><a href="#contact" className="hover:text-sidebar-primary-foreground">Contact Us</a></li>
-                <li><a href="#" className="hover:text-sidebar-primary-foreground">Help Center</a></li>
+                <li><Link to="/support" className="hover:text-sidebar-primary-foreground">Help Center</Link></li>
                 <li><a href="#" className="hover:text-sidebar-primary-foreground">API Documentation</a></li>
                 <li><a href="#" className="hover:text-sidebar-primary-foreground">Status</a></li>
               </ul>
@@ -396,14 +396,15 @@ export default function Landing() {
             <div>
               <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Legal</h4>
               <ul className="space-y-2 text-sm text-sidebar-muted">
-                <li><a href="#" className="hover:text-sidebar-primary-foreground">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-sidebar-primary-foreground">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-sidebar-primary-foreground">POPIA Compliance</a></li>
+                <li><Link to="/privacy-policy" className="hover:text-sidebar-primary-foreground">Privacy Policy</Link></li>
+                <li><Link to="/terms-of-service" className="hover:text-sidebar-primary-foreground">Terms of Service</Link></li>
+                <li><Link to="/popia-compliance" className="hover:text-sidebar-primary-foreground">POPIA Compliance</Link></li>
+                <li><Link to="/cookie-policy" className="hover:text-sidebar-primary-foreground">Cookie Policy</Link></li>
               </ul>
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-sidebar-border text-center text-sm text-sidebar-muted">
-            © 2026 IEOSUIA SMS. All rights reserved.
+            © {new Date().getFullYear()} IEOSUIA SMS PORTAL. All rights reserved.
           </div>
         </div>
       </footer>

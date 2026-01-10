@@ -7,10 +7,10 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
-// Include PHPMailer if using Composer autoload
-if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
-    require_once __DIR__ . '/../vendor/autoload.php';
-}
+// Include PHPMailer from lib folder
+require_once __DIR__ . '/../lib/PHPMailer/Exception.php';
+require_once __DIR__ . '/../lib/PHPMailer/PHPMailer.php';
+require_once __DIR__ . '/../lib/PHPMailer/SMTP.php';
 
 class EmailService {
     private ?PHPMailer $mailer = null;
@@ -68,7 +68,7 @@ class EmailService {
     public function sendVerificationEmail(string $to, string $name, string $token): array {
         $verifyUrl = $this->appUrl . '/verify-email?token=' . urlencode($token);
         
-        $subject = 'Verify Your Email Address - IEOSUIA SMS';
+        $subject = 'Verify Your Email Address - IEOSUIA SMS PORTAL';
         $body = $this->renderTemplate('verification', [
             'name' => $name,
             'verifyUrl' => $verifyUrl,
@@ -82,7 +82,7 @@ class EmailService {
      * Send password reset OTP
      */
     public function sendPasswordResetEmail(string $to, string $name, string $otp): array {
-        $subject = 'Password Reset Code - IEOSUIA SMS';
+        $subject = 'Password Reset Code - IEOSUIA SMS PORTAL';
         $body = $this->renderTemplate('password-reset', [
             'name' => $name,
             'otp' => $otp,
@@ -97,7 +97,7 @@ class EmailService {
      * Send welcome email after registration
      */
     public function sendWelcomeEmail(string $to, string $name): array {
-        $subject = 'Welcome to IEOSUIA SMS!';
+        $subject = 'Welcome to IEOSUIA SMS PORTAL!';
         $body = $this->renderTemplate('welcome', [
             'name' => $name,
             'appName' => $this->fromName,
