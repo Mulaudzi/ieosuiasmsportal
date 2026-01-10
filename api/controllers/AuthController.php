@@ -436,7 +436,7 @@ class AuthController {
      * Verify email
      */
     public function verifyEmail(): void {
-        $data = Request::all();
+        $data = Request::input();
         $token = $data['token'] ?? $_GET['token'] ?? null;
         
         if (!$token) {
