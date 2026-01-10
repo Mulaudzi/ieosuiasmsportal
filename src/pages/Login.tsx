@@ -173,23 +173,6 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Test Credentials */}
-          <div className="mt-8 rounded-lg border border-border bg-muted/50 p-4">
-            <p className="text-sm font-medium text-foreground mb-2">Test Credentials</p>
-            <div className="space-y-1 text-sm text-muted-foreground">
-              <p><span className="font-medium">Email:</span> test@example.com</p>
-              <p><span className="font-medium">Password:</span> password123</p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3 w-full"
-              type="button"
-              onClick={() => setFormData({ email: "test@example.com", password: "password123" })}
-            >
-              Fill Test Credentials
-            </Button>
-          </div>
 
           <p className="mt-8 text-center text-sm text-muted-foreground">
             <Link to="/landing" className="text-primary hover:underline">← Back to home</Link>
