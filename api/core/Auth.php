@@ -78,7 +78,7 @@ class Auth {
     }
     
     /**
-     * Format user data for frontend (snake_case to camelCase, proper booleans)
+     * Format user data for frontend (keep snake_case, add computed fields)
      */
     public static function formatUserForFrontend(?array $user): ?array {
         if ($user === null) return null;
@@ -88,11 +88,11 @@ class Auth {
             'name' => $user['name'],
             'email' => $user['email'],
             'phone' => $user['phone'] ?? null,
-            'avatarUrl' => $user['avatar_url'] ?? null,
-            'accountType' => $user['account_type'] ?? 'standard',
-            'emailVerified' => !empty($user['email_verified_at']),
-            'emailVerifiedAt' => $user['email_verified_at'] ?? null,
-            'createdAt' => $user['created_at'] ?? null,
+            'avatar_url' => $user['avatar_url'] ?? null,
+            'account_type' => $user['account_type'] ?? 'standard',
+            'email_verified' => !empty($user['email_verified_at']),
+            'email_verified_at' => $user['email_verified_at'] ?? null,
+            'created_at' => $user['created_at'] ?? null,
         ];
     }
 }

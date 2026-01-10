@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
 interface User {
@@ -6,11 +6,11 @@ interface User {
   name?: string;
   email: string;
   phone?: string;
-  avatarUrl?: string;
-  accountType?: string;
-  emailVerified?: boolean;
-  emailVerifiedAt?: string | null;
-  createdAt?: string;
+  avatar_url?: string;
+  account_type?: string;
+  email_verified?: boolean;
+  email_verified_at?: string | null;
+  created_at?: string;
 }
 
 interface AuthContextType {
@@ -33,29 +33,122 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
+const TOKEN_ISSUED_KEY = "auth_token_issued";
 const API_URL = import.meta.env.VITE_API_URL || "https://sms.ieosuia.com/api";
+
+// Token expires in 24 hours, refresh when less than 2 hours remaining
+const TOKEN_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const TOKEN_REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Calculate when to refresh the token
+  const scheduleTokenRefresh = (tokenIssuedAt: number) => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+
+    const now = Date.now();
+    const expiresAt = tokenIssuedAt + TOKEN_LIFETIME_MS;
+    const refreshAt = expiresAt - TOKEN_REFRESH_THRESHOLD_MS;
+    const timeUntilRefresh = refreshAt - now;
+
+    if (timeUntilRefresh <= 0) {
+      // Token needs immediate refresh
+      refreshToken();
+    } else {
+      // Schedule refresh
+      refreshTimeoutRef.current = setTimeout(() => {
+        refreshToken();
+      }, timeUntilRefresh);
+    }
+  };
+
+  const refreshToken = async () => {
+    const currentToken = localStorage.getItem(TOKEN_KEY);
+    if (!currentToken) return;
+
+    try {
+      const response = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data?.token) {
+          const newToken = data.data.token;
+          const issuedAt = Date.now();
+          
+          setToken(newToken);
+          localStorage.setItem(TOKEN_KEY, newToken);
+          localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
+          
+          // Schedule next refresh
+          scheduleTokenRefresh(issuedAt);
+        }
+      } else if (response.status === 401) {
+        // Token is invalid, logout
+        handleLogout();
+      }
+    } catch (error) {
+      console.error("Token refresh error:", error);
+    }
+  };
+
+  const handleLogout = () => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(TOKEN_ISSUED_KEY);
+  };
 
   // Initialize auth state from localStorage
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
+    const storedIssuedAt = localStorage.getItem(TOKEN_ISSUED_KEY);
     
     if (storedToken && storedUser) {
       setToken(storedToken);
       setUser(JSON.parse(storedUser));
+      
+      // Check if token is still valid and schedule refresh
+      const issuedAt = storedIssuedAt ? parseInt(storedIssuedAt, 10) : Date.now();
+      const expiresAt = issuedAt + TOKEN_LIFETIME_MS;
+      
+      if (Date.now() < expiresAt) {
+        scheduleTokenRefresh(issuedAt);
+      } else {
+        // Token expired, clear auth state
+        handleLogout();
+      }
     }
     setIsLoading(false);
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
   }, []);
 
   const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+    const currentToken = token || localStorage.getItem(TOKEN_KEY);
     const headers: HeadersInit = {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
       ...options.headers,
     };
 
@@ -80,16 +173,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email,
           name: response.data.user?.name,
           phone: response.data.user?.phone,
-          avatarUrl: response.data.user?.avatarUrl,
-          accountType: response.data.user?.accountType,
-          emailVerified: response.data.user?.emailVerified,
-          emailVerifiedAt: response.data.user?.emailVerifiedAt,
-          createdAt: response.data.user?.createdAt,
+          avatar_url: response.data.user?.avatar_url,
+          account_type: response.data.user?.account_type,
+          email_verified: response.data.user?.email_verified,
+          email_verified_at: response.data.user?.email_verified_at,
+          created_at: response.data.user?.created_at,
         };
+        const issuedAt = Date.now();
+        
         setToken(response.data.token);
         setUser(userData);
         localStorage.setItem(TOKEN_KEY, response.data.token);
         localStorage.setItem(USER_KEY, JSON.stringify(userData));
+        localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
+        
+        // Schedule token refresh
+        scheduleTokenRefresh(issuedAt);
+        
         return { success: true };
       }
       return { success: false, error: response.message || "Login failed" };
@@ -116,12 +216,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: response.data.user?.id || "user",
           name: data.name,
           email: data.email,
-          emailVerified: false,
+          email_verified: false,
         };
+        const issuedAt = Date.now();
+        
         setToken(response.data.token);
         setUser(userData);
         localStorage.setItem(TOKEN_KEY, response.data.token);
         localStorage.setItem(USER_KEY, JSON.stringify(userData));
+        localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
+        
+        // Schedule token refresh
+        scheduleTokenRefresh(issuedAt);
+        
         return { success: true };
       }
       return { success: false, error: response.message || "Registration failed" };
@@ -141,7 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.success) {
         // Update user state to reflect verified email
         if (user) {
-          const updatedUser = { ...user, emailVerified: true };
+          const updatedUser = { ...user, email_verified: true };
           setUser(updatedUser);
           localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
         }
@@ -210,10 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
-      setToken(null);
-      setUser(null);
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
+      handleLogout();
     }
   };
 
@@ -240,7 +344,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const isEmailVerified = !!(user?.emailVerified || user?.emailVerifiedAt);
+  const isEmailVerified = !!(user?.email_verified || user?.email_verified_at);
 
   return (
     <AuthContext.Provider
