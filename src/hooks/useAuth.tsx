@@ -24,9 +24,10 @@ interface AuthContextType {
   logout: () => Promise<void>;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
   resendVerification: () => Promise<{ success: boolean; error?: string }>;
-  forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
-  resetPassword: (email: string, otp: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  forgotPassword: (email: string, recaptchaToken?: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string, otp: string, password: string, recaptchaToken?: string) => Promise<{ success: boolean; error?: string }>;
   updateUser: (data: Partial<User> & { password?: string; current_password?: string; password_confirmation?: string }) => Promise<{ success: boolean; error?: string }>;
+  setAuthFromGoogle: (user: User, token: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,7 +37,6 @@ const USER_KEY = "auth_user";
 const TOKEN_ISSUED_KEY = "auth_token_issued";
 const API_URL = import.meta.env.VITE_API_URL || "https://sms.ieosuia.com/api";
 
-// Token expires in 24 hours, refresh when less than 2 hours remaining
 const TOKEN_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const TOKEN_REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 
@@ -46,7 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Calculate when to refresh the token
   const scheduleTokenRefresh = (tokenIssuedAt: number) => {
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
@@ -58,10 +57,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const timeUntilRefresh = refreshAt - now;
 
     if (timeUntilRefresh <= 0) {
-      // Token needs immediate refresh
       refreshToken();
     } else {
-      // Schedule refresh
       refreshTimeoutRef.current = setTimeout(() => {
         refreshToken();
       }, timeUntilRefresh);
@@ -90,12 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setToken(newToken);
           localStorage.setItem(TOKEN_KEY, newToken);
           localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
-          
-          // Schedule next refresh
           scheduleTokenRefresh(issuedAt);
         }
       } else if (response.status === 401) {
-        // Token is invalid, logout
         handleLogout();
       }
     } catch (error) {
@@ -114,7 +108,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_ISSUED_KEY);
   };
 
-  // Initialize auth state from localStorage
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
@@ -122,16 +115,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (storedToken && storedUser) {
       setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        handleLogout();
+      }
       
-      // Check if token is still valid and schedule refresh
       const issuedAt = storedIssuedAt ? parseInt(storedIssuedAt, 10) : Date.now();
       const expiresAt = issuedAt + TOKEN_LIFETIME_MS;
       
       if (Date.now() < expiresAt) {
         scheduleTokenRefresh(issuedAt);
       } else {
-        // Token expired, clear auth state
         handleLogout();
       }
     }
@@ -144,85 +139,74 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
-    const currentToken = token || localStorage.getItem(TOKEN_KEY);
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-      ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
-      ...options.headers,
-    };
-
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
-
-    return response.json();
-  };
-
   const login = async (email: string, password: string, recaptchaToken?: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const currentToken = token || localStorage.getItem(TOKEN_KEY);
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
-      };
-
       const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
       });
 
       const data = await response.json();
 
-      // Check HTTP status first - 401 means authentication failed
-      if (!response.ok) {
-        const errorMessage = data.message || data.error || 
-          (response.status === 401 ? "Invalid email or password" : "Login failed");
-        return { success: false, error: errorMessage };
+      // Handle different HTTP status codes with specific messages
+      if (response.status === 404) {
+        return { success: false, error: data.message || "No account found with this email" };
+      }
+      
+      if (response.status === 401) {
+        return { success: false, error: data.message || "Invalid password" };
+      }
+      
+      if (response.status === 400) {
+        return { success: false, error: data.message || "Invalid request" };
+      }
+      
+      if (response.status === 429) {
+        return { success: false, error: "Too many login attempts. Please try again later." };
       }
 
-      // Only proceed if we have success response with data
-      if (data.success && data.data) {
+      if (!response.ok) {
+        return { success: false, error: data.message || "Login failed" };
+      }
+
+      // Successful response
+      if (data.success && data.data?.token && data.data?.user) {
         const userData: User = {
-          id: data.data.user?.id || "user",
-          email,
-          name: data.data.user?.name,
-          phone: data.data.user?.phone,
-          avatar_url: data.data.user?.avatar_url,
-          account_type: data.data.user?.account_type,
-          email_verified: data.data.user?.email_verified,
-          email_verified_at: data.data.user?.email_verified_at,
-          created_at: data.data.user?.created_at,
+          id: data.data.user.id,
+          email: data.data.user.email,
+          name: data.data.user.name,
+          phone: data.data.user.phone,
+          avatar_url: data.data.user.avatar_url,
+          account_type: data.data.user.account_type,
+          email_verified: data.data.user.email_verified,
+          email_verified_at: data.data.user.email_verified_at,
+          created_at: data.data.user.created_at,
         };
-        const issuedAt = Date.now();
         
+        const issuedAt = Date.now();
         setToken(data.data.token);
         setUser(userData);
         localStorage.setItem(TOKEN_KEY, data.data.token);
         localStorage.setItem(USER_KEY, JSON.stringify(userData));
         localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
-        
-        // Schedule token refresh
         scheduleTokenRefresh(issuedAt);
         
         return { success: true };
       }
       
-      // Handle case where response.ok but data.success is false
-      const errorMessage = data.message || data.error || "Login failed";
-      return { success: false, error: errorMessage };
+      return { success: false, error: data.message || "Login failed" };
     } catch (error) {
       console.error("Login error:", error);
-      return { success: false, error: "Network error. Please try again." };
+      return { success: false, error: "Network error. Please check your connection." };
     }
   };
 
   const register = async (data: { name: string; email: string; password: string; accountType: string; recaptchaToken?: string }): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiRequest("/auth/register", {
+      const response = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: data.name,
           email: data.email,
@@ -233,49 +217,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       });
 
-      if (response.success && response.data) {
+      const responseData = await response.json();
+
+      if (response.status === 422 && responseData.errors) {
+        const errorMessages = Object.values(responseData.errors).flat().join('. ');
+        return { success: false, error: errorMessages };
+      }
+
+      if (!response.ok) {
+        return { success: false, error: responseData.message || "Registration failed" };
+      }
+
+      if (responseData.success && responseData.data?.token) {
         const userData: User = {
-          id: response.data.user?.id || "user",
+          id: responseData.data.user?.id || "user",
           name: data.name,
           email: data.email,
           email_verified: false,
         };
-        const issuedAt = Date.now();
         
-        setToken(response.data.token);
+        const issuedAt = Date.now();
+        setToken(responseData.data.token);
         setUser(userData);
-        localStorage.setItem(TOKEN_KEY, response.data.token);
+        localStorage.setItem(TOKEN_KEY, responseData.data.token);
         localStorage.setItem(USER_KEY, JSON.stringify(userData));
         localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
-        
-        // Schedule token refresh
         scheduleTokenRefresh(issuedAt);
         
         return { success: true };
       }
       
-      // Handle validation errors (422)
-      if (response.errors) {
-        const errorMessages = Object.values(response.errors).flat().join('. ');
-        return { success: false, error: errorMessages || response.message || "Registration failed" };
-      }
-      
-      return { success: false, error: response.message || "Registration failed" };
+      return { success: false, error: responseData.message || "Registration failed" };
     } catch (error) {
       console.error("Register error:", error);
-      return { success: false, error: "Network error. Please try again." };
+      return { success: false, error: "Network error. Please check your connection." };
     }
+  };
+
+  const setAuthFromGoogle = (userData: User, authToken: string) => {
+    const issuedAt = Date.now();
+    setToken(authToken);
+    setUser(userData);
+    localStorage.setItem(TOKEN_KEY, authToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
+    scheduleTokenRefresh(issuedAt);
   };
 
   const verifyEmail = async (verificationToken: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiRequest("/auth/verify-email", {
+      const response = await fetch(`${API_URL}/auth/verify-email`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: verificationToken }),
       });
 
-      if (response.success) {
-        // Update user state to reflect verified email
+      const data = await response.json();
+
+      if (data.success) {
         if (user) {
           const updatedUser = { ...user, email_verified: true };
           setUser(updatedUser);
@@ -283,7 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return { success: true };
       }
-      return { success: false, error: response.message || "Verification failed" };
+      return { success: false, error: data.message || "Verification failed" };
     } catch (error) {
       console.error("Verify email error:", error);
       return { success: false, error: "Network error. Please try again." };
@@ -292,48 +291,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resendVerification = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiRequest("/auth/resend-verification", {
+      const currentToken = token || localStorage.getItem(TOKEN_KEY);
+      const response = await fetch(`${API_URL}/auth/resend-verification`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+        },
       });
 
-      if (response.success) {
+      const data = await response.json();
+
+      if (data.success) {
         return { success: true };
       }
-      return { success: false, error: response.message || "Failed to resend verification email" };
+      return { success: false, error: data.message || "Failed to resend verification email" };
     } catch (error) {
       console.error("Resend verification error:", error);
       return { success: false, error: "Network error. Please try again." };
     }
   };
 
-  const forgotPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
+  const forgotPassword = async (email: string, recaptchaToken?: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiRequest("/auth/forgot-password", {
+      const response = await fetch(`${API_URL}/auth/forgot-password`, {
         method: "POST",
-        body: JSON.stringify({ email }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, recaptcha_token: recaptchaToken }),
       });
 
-      if (response.success) {
+      const data = await response.json();
+
+      if (data.success) {
         return { success: true };
       }
-      return { success: false, error: response.message || "Failed to send reset code" };
+      return { success: false, error: data.message || "Failed to send reset code" };
     } catch (error) {
       console.error("Forgot password error:", error);
       return { success: false, error: "Network error. Please try again." };
     }
   };
 
-  const resetPassword = async (email: string, otp: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const resetPassword = async (email: string, otp: string, password: string, recaptchaToken?: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiRequest("/auth/reset-password", {
+      const response = await fetch(`${API_URL}/auth/reset-password`, {
         method: "POST",
-        body: JSON.stringify({ email, otp, password, password_confirmation: password }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          email, 
+          otp, 
+          password, 
+          password_confirmation: password,
+          recaptcha_token: recaptchaToken 
+        }),
       });
 
-      if (response.success) {
+      const data = await response.json();
+
+      if (data.success) {
         return { success: true };
       }
-      return { success: false, error: response.message || "Failed to reset password" };
+      return { success: false, error: data.message || "Failed to reset password" };
     } catch (error) {
       console.error("Reset password error:", error);
       return { success: false, error: "Network error. Please try again." };
@@ -342,7 +360,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async (): Promise<void> => {
     try {
-      await apiRequest("/auth/logout", { method: "POST" });
+      const currentToken = token || localStorage.getItem(TOKEN_KEY);
+      if (currentToken) {
+        await fetch(`${API_URL}/auth/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentToken}`,
+          },
+        });
+      }
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
@@ -352,21 +379,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateUser = async (data: Partial<User> & { password?: string; current_password?: string; password_confirmation?: string }): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiRequest("/auth/user", {
+      const currentToken = token || localStorage.getItem(TOKEN_KEY);
+      const response = await fetch(`${API_URL}/auth/user`, {
         method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+        },
         body: JSON.stringify(data),
       });
 
-      if (response.success && response.data?.user) {
+      const responseData = await response.json();
+
+      if (responseData.success && responseData.data?.user) {
         const updatedUser: User = {
           ...user!,
-          ...response.data.user,
+          ...responseData.data.user,
         };
         setUser(updatedUser);
         localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
         return { success: true };
       }
-      return { success: false, error: response.message || "Update failed" };
+      return { success: false, error: responseData.message || "Update failed" };
     } catch (error) {
       console.error("Update user error:", error);
       return { success: false, error: "Network error. Please try again." };
@@ -391,6 +425,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         forgotPassword,
         resetPassword,
         updateUser,
+        setAuthFromGoogle,
       }}
     >
       {children}
@@ -406,7 +441,6 @@ export function useAuth() {
   return context;
 }
 
-// Protected Route wrapper component
 export function ProtectedRoute({ children, requireVerified = false }: { children: ReactNode; requireVerified?: boolean }) {
   const { isAuthenticated, isEmailVerified, isLoading } = useAuth();
   const navigate = useNavigate();

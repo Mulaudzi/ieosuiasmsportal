@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-// Your reCAPTCHA v3 site key (public - safe to include in code)
+// reCAPTCHA v3 site key (public - safe to include in code)
 const RECAPTCHA_SITE_KEY = '6LcG2EUsAAAAAPzqfSAdyHvZL3mhP2av8Xj5VEL0';
 
 declare global {
@@ -15,23 +15,21 @@ declare global {
 export function useRecaptcha() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isConfigured, setIsConfigured] = useState(false);
+  const [isConfigured] = useState(!!RECAPTCHA_SITE_KEY);
 
   useEffect(() => {
-    // If no site key configured, skip loading
+    // If no site key, skip loading
     if (!RECAPTCHA_SITE_KEY) {
-      console.warn('VITE_RECAPTCHA_SITE_KEY not configured - reCAPTCHA disabled');
       setIsLoading(false);
-      setIsConfigured(false);
       return;
     }
 
-    setIsConfigured(true);
-
-    // Check if script is already loaded
+    // Check if already loaded
     if (window.grecaptcha) {
-      setIsLoaded(true);
-      setIsLoading(false);
+      window.grecaptcha.ready(() => {
+        setIsLoaded(true);
+        setIsLoading(false);
+      });
       return;
     }
 
@@ -54,31 +52,21 @@ export function useRecaptcha() {
     };
 
     document.head.appendChild(script);
-
-    return () => {
-      // Cleanup is optional - reCAPTCHA usually stays loaded
-    };
   }, []);
 
   const executeRecaptcha = useCallback(async (action: string): Promise<string | null> => {
-    // If not configured, return null (backend will handle accordingly)
-    if (!isConfigured || !RECAPTCHA_SITE_KEY) {
-      return null;
-    }
-
-    if (!isLoaded || !window.grecaptcha) {
-      console.warn('reCAPTCHA not loaded');
+    // Return null if not configured (backend will handle gracefully)
+    if (!RECAPTCHA_SITE_KEY || !isLoaded || !window.grecaptcha) {
       return null;
     }
 
     try {
-      const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action });
-      return token;
+      return await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action });
     } catch (error) {
       console.error('reCAPTCHA execution failed:', error);
       return null;
     }
-  }, [isLoaded, isConfigured]);
+  }, [isLoaded]);
 
   return {
     isLoaded,
