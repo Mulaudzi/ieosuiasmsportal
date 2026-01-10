@@ -16,7 +16,12 @@ class AuthController {
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:8|confirmed',
             'phone' => 'max:20',
+            'recaptcha_token' => 'max:2048',
         ]);
+        
+        // Verify reCAPTCHA
+        $recaptchaToken = $data['recaptcha_token'] ?? '';
+        RecaptchaValidator::verifyOrFail($recaptchaToken, 'register');
         
         // Rate limit registration by IP
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
@@ -73,7 +78,12 @@ class AuthController {
         $data = Request::validate([
             'email' => 'required|email',
             'password' => 'required',
+            'recaptcha_token' => 'max:2048',
         ]);
+        
+        // Verify reCAPTCHA
+        $recaptchaToken = $data['recaptcha_token'] ?? '';
+        RecaptchaValidator::verifyOrFail($recaptchaToken, 'login');
         
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         
