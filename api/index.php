@@ -53,6 +53,12 @@ $router->post('/auth/forgot-password', 'AuthController@forgotPassword');
 $router->post('/auth/reset-password', 'AuthController@resetPassword');
 $router->post('/auth/verify-email', 'AuthController@verifyEmail');
 
+// Google OAuth routes (public)
+$router->get('/auth/google/status', 'GoogleAuthController@status');
+$router->get('/auth/google/url', 'GoogleAuthController@getAuthUrl');
+$router->post('/auth/google/callback', 'GoogleAuthController@callback');
+$router->post('/auth/google/credential', 'GoogleAuthController@signInWithCredential');
+
 // Protected routes
 $router->group(['middleware' => 'auth'], function($router) {
     // Auth
