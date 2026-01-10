@@ -133,13 +133,13 @@ export default function Register() {
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
               <Zap className="h-7 w-7 text-primary-foreground" />
             </div>
-            <span className="text-2xl font-bold text-sidebar-primary-foreground">IEOSUIA SMS</span>
+            <span className="text-2xl font-bold text-sidebar-primary-foreground">IEOSUIA SMS PORTAL</span>
           </div>
           <h1 className="text-4xl font-bold text-sidebar-primary-foreground mb-4">
             Start Messaging Today
           </h1>
           <p className="text-lg text-sidebar-muted">
-            Create your account and get 30 free SMS credits to start reaching your customers instantly.
+            Create your account and get 5 free SMS credits to start reaching your customers instantly.
           </p>
           
           <div className="mt-12 space-y-6">
@@ -148,7 +148,7 @@ export default function Register() {
               <ul className="space-y-3">
                 <li className="flex items-center gap-3 text-sidebar-muted">
                   <Check className="h-5 w-5 text-success" />
-                  30 free SMS credits
+                  5 free SMS credits
                 </li>
                 <li className="flex items-center gap-3 text-sidebar-muted">
                   <Check className="h-5 w-5 text-success" />
@@ -179,7 +179,7 @@ export default function Register() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <Zap className="h-6 w-6 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">IEOSUIA SMS</span>
+            <span className="text-xl font-bold text-foreground">IEOSUIA SMS PORTAL</span>
           </div>
 
           <div className="text-center mb-8">
@@ -310,9 +310,9 @@ export default function Register() {
               />
               <label htmlFor="terms" className="text-sm text-muted-foreground leading-tight">
                 I agree to the{" "}
-                <a href="#" className="text-primary hover:underline">Terms of Service</a>
+                <Link to="/terms-of-service" className="text-primary hover:underline">Terms of Service</Link>
                 {" "}and{" "}
-                <a href="#" className="text-primary hover:underline">Privacy Policy</a>
+                <Link to="/privacy-policy" className="text-primary hover:underline">Privacy Policy</Link>
               </label>
             </div>
 
