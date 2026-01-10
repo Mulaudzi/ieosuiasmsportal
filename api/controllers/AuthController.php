@@ -22,6 +22,12 @@ class AuthController {
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         RateLimiter::checkOrFail("register:{$ip}", 5, 60);
         
+        // Validate email through security pipeline (disposable, role-based, MX check)
+        $emailValidation = EmailValidator::validate($data['email']);
+        if (!$emailValidation['valid']) {
+            Response::error($emailValidation['error'], 400);
+        }
+        
         // Generate verification token
         $verificationToken = bin2hex(random_bytes(32));
         
