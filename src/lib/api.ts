@@ -32,10 +32,30 @@ class ApiClient {
 
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
     let data;
+    const contentType = response.headers.get('content-type');
+    
     try {
-      data = await response.json();
-    } catch {
-      throw new Error('Invalid response from server');
+      // Only try to parse JSON if the response has content and is JSON
+      if (contentType && contentType.includes('application/json')) {
+        const text = await response.text();
+        if (text && text.trim()) {
+          data = JSON.parse(text);
+        } else {
+          data = {};
+        }
+      } else {
+        // For non-JSON responses, try to get the text for error messages
+        const text = await response.text();
+        if (!response.ok) {
+          throw new Error(text || `Server error (${response.status})`);
+        }
+        data = {};
+      }
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        throw new Error(`Server error (${response.status}): Invalid response format`);
+      }
+      throw e;
     }
     
     if (!response.ok) {
