@@ -6,11 +6,11 @@ interface User {
   name?: string;
   email: string;
   phone?: string;
-  avatar_url?: string;
-  account_type?: string;
-  email_verified?: boolean;
-  email_verified_at?: string | null;
-  created_at?: string;
+  avatarUrl?: string;
+  accountType?: string;
+  emailVerified?: boolean;
+  emailVerifiedAt?: string | null;
+  createdAt?: string;
 }
 
 interface AuthContextType {
@@ -79,7 +79,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: response.data.user?.id || "user",
           email,
           name: response.data.user?.name,
-          email_verified: response.data.user?.email_verified,
+          phone: response.data.user?.phone,
+          avatarUrl: response.data.user?.avatarUrl,
+          accountType: response.data.user?.accountType,
+          emailVerified: response.data.user?.emailVerified,
+          emailVerifiedAt: response.data.user?.emailVerifiedAt,
+          createdAt: response.data.user?.createdAt,
         };
         setToken(response.data.token);
         setUser(userData);
@@ -111,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: response.data.user?.id || "user",
           name: data.name,
           email: data.email,
-          email_verified: false,
+          emailVerified: false,
         };
         setToken(response.data.token);
         setUser(userData);
@@ -136,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.success) {
         // Update user state to reflect verified email
         if (user) {
-          const updatedUser = { ...user, email_verified: true };
+          const updatedUser = { ...user, emailVerified: true };
           setUser(updatedUser);
           localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
         }
@@ -235,7 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const isEmailVerified = !!(user?.email_verified || user?.email_verified_at);
+  const isEmailVerified = !!(user?.emailVerified || user?.emailVerifiedAt);
 
   return (
     <AuthContext.Provider

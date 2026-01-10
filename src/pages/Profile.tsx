@@ -53,7 +53,7 @@ export default function Profile() {
       if (data.success && data.data?.user) {
         // Update local user state
         await updateUser({
-          avatar_url: data.data.avatar_url,
+          avatarUrl: data.data.avatarUrl,
         });
         toast({
           title: "Avatar updated",
@@ -210,8 +210,8 @@ export default function Profile() {
             <CardHeader className="text-center">
               <div className="relative mx-auto mb-4">
                 <Avatar className="h-24 w-24">
-                  {user.avatar_url && (
-                    <AvatarImage src={user.avatar_url} alt={user.name} />
+                  {user.avatarUrl && (
+                    <AvatarImage src={user.avatarUrl} alt={user.name} />
                   )}
                   <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
                     {getInitials(user.name || 'U')}
@@ -281,11 +281,11 @@ export default function Profile() {
                 )}
                 <div className="flex items-center gap-3 text-muted-foreground">
                   <Shield className="h-4 w-4" />
-                  <span className="capitalize">{user.account_type || 'Standard'} Account</span>
+                  <span className="capitalize">{user.accountType || 'Standard'} Account</span>
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground">
                   <Calendar className="h-4 w-4" />
-                  <span>Joined {user.created_at ? format(new Date(user.created_at), 'MMM d, yyyy') : 'Recently'}</span>
+                  <span>Joined {user.createdAt ? format(new Date(user.createdAt), 'MMM d, yyyy') : 'Recently'}</span>
                 </div>
               </div>
             </CardContent>

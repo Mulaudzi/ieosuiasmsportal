@@ -58,7 +58,7 @@ class AuthController {
         $token = Auth::generateToken($user);
         
         Response::created([
-            'user' => self::formatUser($user),
+            'user' => Auth::formatUserForFrontend($user),
             'token' => $token,
         ]);
     }
@@ -84,7 +84,7 @@ class AuthController {
         $user = table('users')->where('email', $data['email'])->first();
         
         Response::success([
-            'user' => self::formatUser($user),
+            'user' => Auth::formatUserForFrontend($user),
             'token' => $token,
         ]);
     }
@@ -99,7 +99,7 @@ class AuthController {
         $wallet = table('wallets')->where('user_id', $user['id'])->first();
         
         Response::success([
-            'user' => self::formatUser($user),
+            'user' => Auth::formatUserForFrontend($user),
             'wallet' => $wallet ? [
                 'balance' => (float) $wallet['balance'],
                 'reserved' => (float) $wallet['reserved'],
@@ -157,7 +157,7 @@ class AuthController {
         $updatedUser = table('users')->where('id', $user['id'])->first();
         
         Response::success([
-            'user' => self::formatUser($updatedUser),
+            'user' => Auth::formatUserForFrontend($updatedUser),
             'message' => 'Profile updated successfully',
         ]);
     }
@@ -227,8 +227,8 @@ class AuthController {
                 $updatedUser = table('users')->where('id', $user['id'])->first();
                 
                 Response::success([
-                    'user' => self::formatUser($updatedUser),
-                    'avatar_url' => $avatarUrl,
+                    'user' => Auth::formatUserForFrontend($updatedUser),
+                    'avatarUrl' => $avatarUrl,
                     'message' => 'Avatar uploaded successfully',
                 ]);
                 return;
@@ -288,8 +288,8 @@ class AuthController {
         $updatedUser = table('users')->where('id', $user['id'])->first();
         
         Response::success([
-            'user' => self::formatUser($updatedUser),
-            'avatar_url' => $avatarUrl,
+            'user' => Auth::formatUserForFrontend($updatedUser),
+            'avatarUrl' => $avatarUrl,
             'message' => 'Avatar uploaded successfully',
         ]);
     }
@@ -367,16 +367,20 @@ class AuthController {
     }
     
     public function verifyEmail(): void {
-        $data = Request::validate([
-            'token' => 'required',
-        ]);
+        // Check both JSON body AND query parameters for token
+        $data = Request::all();
+        $token = $data['token'] ?? $_GET['token'] ?? null;
+        
+        if (!$token) {
+            Response::error('Verification token is required', 400);
+        }
         
         // Rate limit verification attempts by IP
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         RateLimiter::checkOrFail("verify_email:{$ip}", 10, 15);
         
         $user = table('users')
-            ->where('email_verification_token', $data['token'])
+            ->where('email_verification_token', $token)
             ->first();
         
         if (!$user) {
@@ -384,14 +388,17 @@ class AuthController {
         }
         
         if ($user['email_verified_at']) {
-            Response::success(['message' => 'Email already verified']);
+            Response::success([
+                'message' => 'Email already verified',
+                'status' => 'already-verified'
+            ]);
         }
         
         // Check if token is expired (24 hours)
         if (isset($user['email_verification_sent_at'])) {
             $sentAt = strtotime($user['email_verification_sent_at']);
             if (time() - $sentAt > 86400) {
-                Response::error('Verification token has expired', 400);
+                Response::error('Verification token has expired. Please request a new one.', 400);
             }
         }
         
@@ -404,7 +411,10 @@ class AuthController {
         // Send welcome email after successful verification
         $this->emailService->sendWelcomeEmail($user['email'], $user['name']);
         
-        Response::success(['message' => 'Email verified successfully']);
+        Response::success([
+            'message' => 'Email verified successfully',
+            'status' => 'success'
+        ]);
     }
     
     public function resendVerification(): void {
@@ -435,16 +445,4 @@ class AuthController {
         Response::success(['message' => 'Verification email sent']);
     }
     
-    private static function formatUser(array $user): array {
-        return [
-            'id' => $user['id'],
-            'name' => $user['name'],
-            'email' => $user['email'],
-            'phone' => $user['phone'] ?? null,
-            'avatar_url' => $user['avatar_url'] ?? null,
-            'account_type' => $user['account_type'],
-            'email_verified_at' => $user['email_verified_at'] ?? null,
-            'created_at' => $user['created_at'],
-        ];
-    }
 }
