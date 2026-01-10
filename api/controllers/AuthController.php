@@ -69,7 +69,12 @@ class AuthController {
             'password' => 'required',
         ]);
         
-        // Rate limit login attempts by email
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        
+        // Rate limit login attempts by IP (20 attempts per 15 minutes)
+        RateLimiter::checkOrFail("login_ip:{$ip}", 20, 15);
+        
+        // Rate limit login attempts by email (5 attempts per 15 minutes)
         RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
         
         $token = Auth::attempt($data['email'], $data['password']);
@@ -78,8 +83,9 @@ class AuthController {
             Response::error('Invalid credentials', 401);
         }
         
-        // Clear rate limit on successful login
+        // Clear rate limits on successful login
         RateLimiter::clear("login:{$data['email']}");
+        RateLimiter::clear("login_ip:{$ip}");
         
         $user = table('users')->where('email', $data['email'])->first();
         
