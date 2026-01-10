@@ -233,6 +233,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         return { success: true };
       }
+      
+      // Handle validation errors (422)
+      if (response.errors) {
+        const errorMessages = Object.values(response.errors).flat().join('. ');
+        return { success: false, error: errorMessages || response.message || "Registration failed" };
+      }
+      
       return { success: false, error: response.message || "Registration failed" };
     } catch (error) {
       console.error("Register error:", error);
