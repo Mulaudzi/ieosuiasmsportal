@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Zap, Loader2, ArrowLeft, Mail, CheckCircle, KeyRound } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 type Step = "email" | "code" | "reset" | "success";
 
@@ -16,6 +17,7 @@ export default function ForgotPassword() {
   const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const { executeRecaptcha } = useRecaptcha();
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +28,13 @@ export default function ForgotPassword() {
 
     setIsLoading(true);
     try {
-      const response = await api.post("/auth/forgot-password", { email });
+      // Execute reCAPTCHA
+      const recaptchaToken = await executeRecaptcha('forgot_password');
+      
+      const response = await api.post("/auth/forgot-password", { 
+        email,
+        recaptcha_token: recaptchaToken 
+      });
       if (response.success) {
         toast({ title: "Code sent", description: "Check your email for the reset code." });
         setStep("code");
@@ -60,11 +68,15 @@ export default function ForgotPassword() {
 
     setIsLoading(true);
     try {
+      // Execute reCAPTCHA
+      const recaptchaToken = await executeRecaptcha('reset_password');
+      
       const response = await api.post("/auth/reset-password", {
         email,
         otp,
         password,
         password_confirmation: confirmPassword,
+        recaptcha_token: recaptchaToken,
       });
       if (response.success) {
         setStep("success");
