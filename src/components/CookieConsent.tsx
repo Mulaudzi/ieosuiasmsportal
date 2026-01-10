@@ -60,7 +60,7 @@ export function CookieConsent() {
                   <p className="text-sm text-muted-foreground mb-4">
                     We use cookies to enhance your browsing experience, analyze site traffic, and personalize content. 
                     By clicking "Accept All", you consent to our use of cookies. Read our{" "}
-                    <Link to="/privacy-policy" className="text-primary hover:underline">Privacy Policy</Link>
+                    <Link to="/cookie-policy" className="text-primary hover:underline">Privacy Policy</Link>
                     {" "}to learn more.
                   </p>
                 </div>
@@ -79,7 +79,7 @@ export function CookieConsent() {
                 <Button variant="outline" onClick={handleAcceptNecessary}>
                   Necessary Only
                 </Button>
-                <Link to="/privacy-policy">
+                <Link to="/cookie-policy">
                   <Button variant="ghost" className="text-muted-foreground">
                     Manage Preferences
                   </Button>
