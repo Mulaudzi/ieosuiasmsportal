@@ -5,7 +5,7 @@
 
 class JWT {
     private static function getSecret(): string {
-        return env('JWT_SECRET', env('APP_KEY', 'default-secret-change-this'));
+        return env('JWT_SECRET', env('APP_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3NjgwMTE4Mzh9.k_Q1cCZEleniwUFFB2hk6AOrjIi0g-pqHWQS8CWENws'));
     }
     
     public static function encode(array $payload): string {
