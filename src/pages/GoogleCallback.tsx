@@ -45,7 +45,7 @@ export default function GoogleCallback() {
       const result = await handleCallback(code, state || undefined);
 
       if (result.success && result.token && result.user) {
-        // Store auth data
+        // Store auth data directly in localStorage
         localStorage.setItem(TOKEN_KEY, result.token);
         localStorage.setItem(USER_KEY, JSON.stringify(result.user));
         localStorage.setItem(TOKEN_ISSUED_KEY, Date.now().toString());
@@ -57,8 +57,8 @@ export default function GoogleCallback() {
             : 'You have been signed in successfully.',
         });
 
-        // Redirect to dashboard
-        navigate('/', { replace: true });
+        // Use window.location for full page refresh to ensure auth state is properly picked up
+        window.location.href = '/';
       } else {
         setError(result.error || 'Failed to sign in with Google');
         toast({
