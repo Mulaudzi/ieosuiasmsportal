@@ -47,16 +47,18 @@ export default function Login() {
         });
         navigate("/");
       } else {
+        // Only show error toast when login fails
         toast({
-          title: "Login failed",
-          description: result.error || "Invalid credentials.",
+          title: "Login Failed",
+          description: result.error || "Please check your credentials and try again.",
           variant: "destructive",
         });
       }
     } catch (error) {
+      console.error("Login error:", error);
       toast({
-        title: "Error",
-        description: "Something went wrong. Please try again.",
+        title: "Connection Error",
+        description: "Unable to connect to the server. Please try again.",
         variant: "destructive",
       });
     } finally {
