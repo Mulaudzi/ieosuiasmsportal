@@ -38,8 +38,7 @@ class GoogleAuthController {
             Response::error('Google OAuth is not configured', 503);
         }
         
-        $data = Request::all();
-        $code = $data['code'] ?? null;
+        $code = Request::input('code');
         
         if (!$code) {
             Response::error('Authorization code is required', 400);
@@ -134,8 +133,7 @@ class GoogleAuthController {
             Response::error('Google OAuth is not configured', 503);
         }
         
-        $data = Request::all();
-        $credential = $data['credential'] ?? null;
+        $credential = Request::input('credential');
         
         if (!$credential) {
             Response::error('Google credential is required', 400);
