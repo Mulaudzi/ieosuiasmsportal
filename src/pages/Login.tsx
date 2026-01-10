@@ -8,11 +8,13 @@ import { Zap, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
+import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const { executeRecaptcha, isLoaded: recaptchaLoaded } = useRecaptcha();
+  const { executeRecaptcha } = useRecaptcha();
+  const { isAvailable: googleAvailable, isLoading: googleLoading, signInWithGoogle } = useGoogleAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -35,7 +37,6 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      // Execute reCAPTCHA
       const recaptchaToken = await executeRecaptcha('login');
       
       const result = await login(formData.email, formData.password, recaptchaToken || undefined);
@@ -64,17 +65,30 @@ export default function Login() {
   };
 
   const handleGoogleLogin = async () => {
+    if (!googleAvailable) {
+      toast({
+        title: "Not Available",
+        description: "Google sign-in is not configured yet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGoogleLoading(true);
     try {
-      // TODO: Implement Google OAuth - requires backend setup
-      toast({
-        title: "Coming Soon",
-        description: "Google sign-in will be available soon. Please use email/password for now.",
-      });
+      const result = await signInWithGoogle();
+      if (!result.success && result.error) {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+      // If successful, user will be redirected to Google
     } catch (error) {
       toast({
         title: "Error",
-        description: "Google sign-in is not available yet.",
+        description: "Failed to initiate Google sign-in.",
         variant: "destructive",
       });
     } finally {
@@ -148,7 +162,7 @@ export default function Login() {
             variant="outline"
             className="w-full mb-6 h-12"
             onClick={handleGoogleLogin}
-            disabled={isGoogleLoading || isLoading}
+            disabled={isGoogleLoading || isLoading || googleLoading}
           >
             {isGoogleLoading ? (
               <Loader2 className="h-5 w-5 animate-spin mr-3" />

@@ -16,11 +16,13 @@ import { Zap, Loader2, Eye, EyeOff, Check, X, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
+import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 
 export default function Register() {
   const navigate = useNavigate();
   const { register } = useAuth();
-  const { executeRecaptcha, isLoaded: recaptchaLoaded } = useRecaptcha();
+  const { executeRecaptcha } = useRecaptcha();
+  const { isAvailable: googleAvailable, isLoading: googleLoading, signInWithGoogle } = useGoogleAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -68,13 +70,11 @@ export default function Register() {
     if (reqs.hasNumber) score++;
     if (reqs.hasSpecial) score++;
     
-    // Deduct if common password
     if (!reqs.notCommon) score = Math.min(score, 1);
     
     const labels = ["", "Weak", "Fair", "Good", "Strong"];
     const colors = ["", "bg-destructive", "bg-warning", "bg-info", "bg-success"];
     
-    // Password is valid if score >= 3 (Good or Strong) and not common
     const isValid = score >= 3 && reqs.notCommon && reqs.minLength;
     
     return { score, label: labels[score], color: colors[score], isValid };
@@ -132,7 +132,6 @@ export default function Register() {
 
     setIsLoading(true);
     try {
-      // Execute reCAPTCHA
       const recaptchaToken = await executeRecaptcha('register');
       
       const result = await register({
@@ -168,17 +167,29 @@ export default function Register() {
   };
 
   const handleGoogleSignup = async () => {
+    if (!googleAvailable) {
+      toast({
+        title: "Not Available",
+        description: "Google sign-up is not configured yet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGoogleLoading(true);
     try {
-      // TODO: Implement Google OAuth - requires backend setup
-      toast({
-        title: "Coming Soon",
-        description: "Google sign-up will be available soon. Please use email/password for now.",
-      });
+      const result = await signInWithGoogle();
+      if (!result.success && result.error) {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       toast({
         title: "Error",
-        description: "Google sign-up is not available yet.",
+        description: "Failed to initiate Google sign-up.",
         variant: "destructive",
       });
     } finally {
@@ -260,7 +271,7 @@ export default function Register() {
             variant="outline"
             className="w-full mb-6 h-12"
             onClick={handleGoogleSignup}
-            disabled={isGoogleLoading || isLoading}
+            disabled={isGoogleLoading || isLoading || googleLoading}
           >
             {isGoogleLoading ? (
               <Loader2 className="h-5 w-5 animate-spin mr-3" />
@@ -377,7 +388,6 @@ export default function Register() {
               </div>
               {formData.password && (
                 <div className="mt-3 space-y-3">
-                  {/* Strength bar */}
                   <div>
                     <div className="flex gap-1">
                       {[1, 2, 3, 4].map((i) => (
@@ -403,7 +413,6 @@ export default function Register() {
                     </div>
                   </div>
                   
-                  {/* Requirements checklist */}
                   <div className="rounded-lg border border-border bg-muted/30 p-3">
                     <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
                       <AlertCircle className="h-3.5 w-3.5" />
