@@ -332,7 +332,12 @@ class AuthController {
     public function forgotPassword(): void {
         $data = Request::validate([
             'email' => 'required|email',
+            'recaptcha_token' => 'max:2048',
         ]);
+        
+        // Verify reCAPTCHA
+        $recaptchaToken = $data['recaptcha_token'] ?? '';
+        RecaptchaValidator::verifyOrFail($recaptchaToken, 'forgot_password');
         
         // Rate limit: 3 attempts per email per 15 minutes
         RateLimiter::checkOrFail("forgot_password:{$data['email']}", 3, 15);
@@ -369,7 +374,12 @@ class AuthController {
             'email' => 'required|email',
             'otp' => 'required|min:6|max:6',
             'password' => 'required|min:8|confirmed',
+            'recaptcha_token' => 'max:2048',
         ]);
+        
+        // Verify reCAPTCHA
+        $recaptchaToken = $data['recaptcha_token'] ?? '';
+        RecaptchaValidator::verifyOrFail($recaptchaToken, 'reset_password');
         
         // Rate limit: 5 attempts per email per 15 minutes
         RateLimiter::checkOrFail("reset_password:{$data['email']}", 5, 15);
