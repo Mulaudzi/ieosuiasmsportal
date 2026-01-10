@@ -76,4 +76,23 @@ class Auth {
     public static function isAdmin(): bool {
         return self::hasRole('admin');
     }
+    
+    /**
+     * Format user data for frontend (snake_case to camelCase, proper booleans)
+     */
+    public static function formatUserForFrontend(?array $user): ?array {
+        if ($user === null) return null;
+        
+        return [
+            'id' => (string)$user['id'],
+            'name' => $user['name'],
+            'email' => $user['email'],
+            'phone' => $user['phone'] ?? null,
+            'avatarUrl' => $user['avatar_url'] ?? null,
+            'accountType' => $user['account_type'] ?? 'standard',
+            'emailVerified' => !empty($user['email_verified_at']),
+            'emailVerifiedAt' => $user['email_verified_at'] ?? null,
+            'createdAt' => $user['created_at'] ?? null,
+        ];
+    }
 }
