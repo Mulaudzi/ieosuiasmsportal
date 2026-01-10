@@ -54,9 +54,9 @@ export function Sidebar() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-sidebar-primary-foreground">
-              IEOSUIA
+              IEOSUIA SMS
             </h1>
-            <p className="text-xs text-sidebar-muted">SMS Portal</p>
+            <p className="text-xs text-sidebar-muted">Portal</p>
           </div>
         </div>
 

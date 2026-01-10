@@ -70,7 +70,7 @@ export default function Login() {
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
               <Zap className="h-7 w-7 text-primary-foreground" />
             </div>
-            <span className="text-2xl font-bold text-sidebar-primary-foreground">IEOSUIA SMS</span>
+            <span className="text-2xl font-bold text-sidebar-primary-foreground">IEOSUIA SMS PORTAL</span>
           </div>
           <h1 className="text-4xl font-bold text-sidebar-primary-foreground mb-4">
             Welcome back!
@@ -108,7 +108,7 @@ export default function Login() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <Zap className="h-6 w-6 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">IEOSUIA SMS</span>
+            <span className="text-xl font-bold text-foreground">IEOSUIA SMS PORTAL</span>
           </div>
 
           <div className="text-center mb-8">
