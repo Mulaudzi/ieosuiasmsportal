@@ -81,9 +81,4 @@ CREATE TABLE IF NOT EXISTS `inbound_messages` (
     INDEX `idx_external_id` (`external_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert default sender IDs for existing admin
-INSERT IGNORE INTO `sender_ids` (`user_id`, `type`, `sender_id`, `sender_name`, `status`, `is_default`, `verified_at`)
-SELECT id, 'sms', 'IEOSUIA', 'IEOSUIA Portal', 'approved', 1, NOW() FROM users WHERE role = 'admin' LIMIT 1;
-
-INSERT IGNORE INTO `sender_ids` (`user_id`, `type`, `sender_email`, `sender_name`, `status`, `is_default`, `verified_at`)
-SELECT id, 'email', 'noreply@sms.ieosuia.com', 'IEOSUIA Portal', 'approved', 1, NOW() FROM users WHERE role = 'admin' LIMIT 1;
+-- Note: Default sender IDs are inserted via migration 018 after ensuring all columns exist
