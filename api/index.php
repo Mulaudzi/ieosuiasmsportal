@@ -111,10 +111,28 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/email/campaigns', 'CampaignController@emailStore');
     $router->get('/email/campaigns/{id}', 'CampaignController@emailShow');
     $router->post('/email/campaigns/{id}/send', 'CampaignController@emailSend');
+    $router->post('/email/campaigns/{id}/duplicate', 'CampaignController@duplicate');
+    $router->get('/email/campaigns/{id}/export', 'CampaignController@exportMessages');
     $router->delete('/email/campaigns/{id}', 'CampaignController@destroy');
     
     // Campaign utilities
     $router->post('/campaigns/check-credits', 'CampaignController@checkCredits');
+    $router->post('/campaigns/{id}/retry', 'CampaignController@retryFailed');
+    
+    // Attachments
+    $router->post('/attachments/upload', 'CampaignController@uploadAttachment');
+    $router->delete('/attachments/{id}', 'CampaignController@deleteAttachment');
+    
+    // Sender IDs
+    $router->get('/sender-ids', 'SenderIdController@index');
+    $router->post('/sender-ids', 'SenderIdController@store');
+    $router->put('/sender-ids/{id}', 'SenderIdController@update');
+    $router->delete('/sender-ids/{id}', 'SenderIdController@destroy');
+    $router->post('/sender-ids/{id}/default', 'SenderIdController@setDefault');
+    
+    // Admin: Sender ID approval
+    $router->post('/admin/sender-ids/{id}/approve', 'SenderIdController@approve');
+    $router->post('/admin/sender-ids/{id}/reject', 'SenderIdController@reject');
     
     // Wallet
     $router->get('/wallet', 'WalletController@index');
@@ -136,6 +154,9 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/opt-outs', 'OptOutController@index');
     $router->post('/opt-outs', 'OptOutController@store');
     $router->delete('/opt-outs/{id}', 'OptOutController@destroy');
+    
+    // Email limits check
+    $router->get('/email/limits', 'CampaignController@emailLimits');
 });
 
 // DLR Webhook (public with secret validation) - Legacy

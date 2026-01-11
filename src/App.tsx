@@ -29,7 +29,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import CookiePolicy from "./pages/CookiePolicy";
 import PopiaCompliance from "./pages/PopiaCompliance";
 import Support from "./pages/Support";
-
+import SenderIds from "./pages/SenderIds";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -67,6 +67,7 @@ const App = () => (
             <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute requireVerified><Reports /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/sender-ids" element={<ProtectedRoute><SenderIds /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
