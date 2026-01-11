@@ -30,6 +30,8 @@ import CookiePolicy from "./pages/CookiePolicy";
 import PopiaCompliance from "./pages/PopiaCompliance";
 import Support from "./pages/Support";
 import SenderIds from "./pages/SenderIds";
+import CreateEmailCampaign from "./pages/CreateEmailCampaign";
+import AdminDashboard from "./pages/AdminDashboard";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -59,9 +61,10 @@ const App = () => (
             <Route path="/sms-campaigns/new" element={<ProtectedRoute requireVerified><CreateSmsCampaign /></ProtectedRoute>} />
             <Route path="/sms-campaigns/:id" element={<ProtectedRoute requireVerified><CampaignDetails /></ProtectedRoute>} />
             <Route path="/email-campaigns" element={<ProtectedRoute requireVerified><EmailCampaigns /></ProtectedRoute>} />
-            <Route path="/email-campaigns/new" element={<ProtectedRoute requireVerified><CreateSmsCampaign /></ProtectedRoute>} />
+            <Route path="/email-campaigns/new" element={<ProtectedRoute requireVerified><CreateEmailCampaign /></ProtectedRoute>} />
             <Route path="/email-campaigns/:id" element={<ProtectedRoute requireVerified><CampaignDetails /></ProtectedRoute>} />
             <Route path="/contacts" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
             <Route path="/contacts/import" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute requireVerified><Templates /></ProtectedRoute>} />
             <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />

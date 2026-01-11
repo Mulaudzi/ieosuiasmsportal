@@ -69,6 +69,21 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/auth/resend-verification', 'AuthController@resendVerification');
     $router->post('/auth/refresh', 'AuthController@refreshToken');
     
+    // Notifications
+    $router->get('/notifications', 'NotificationController@index');
+    $router->post('/notifications/{id}/read', 'NotificationController@markAsRead');
+    $router->post('/notifications/read-all', 'NotificationController@markAllAsRead');
+    $router->delete('/notifications/{id}', 'NotificationController@destroy');
+    
+    // Admin routes
+    $router->get('/admin/stats', 'AdminController@stats');
+    $router->get('/admin/users', 'AdminController@users');
+    $router->get('/admin/users/{id}', 'AdminController@showUser');
+    $router->post('/admin/users/{id}/activate', 'AdminController@activateUser');
+    $router->post('/admin/users/{id}/deactivate', 'AdminController@deactivateUser');
+    $router->put('/admin/users/{id}/role', 'AdminController@changeRole');
+    $router->get('/admin/sender-ids', 'AdminController@senderIds');
+    
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
     $router->get('/dashboard/chart', 'DashboardController@chart');
