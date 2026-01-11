@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +39,9 @@ import {
   MessageSquare,
   Wallet,
   BarChart3,
+  ShieldAlert,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -90,6 +93,8 @@ const statusConfig = {
 };
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const { user, isLoading: authLoading } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [senderIds, setSenderIds] = useState<SenderId[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -98,10 +103,57 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: string; id: string; data?: any } | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
 
+  // Admin access verification
   useEffect(() => {
+    if (authLoading) return;
+
+    // Check for admin session token
+    const adminSession = sessionStorage.getItem("admin_session");
+    const isAdminUser = user?.email === "admin@ieosuia.com";
+
+    if (!adminSession || !isAdminUser) {
+      setAccessDenied(true);
+      return;
+    }
+
+    // Verify session token format (basic validation)
+    try {
+      const decoded = atob(adminSession);
+      if (!decoded.includes("-admin")) {
+        setAccessDenied(true);
+        return;
+      }
+    } catch {
+      setAccessDenied(true);
+      return;
+    }
+
+    setAccessDenied(false);
     loadData();
-  }, []);
+  }, [authLoading, user]);
+
+  // Show access denied screen
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10 mx-auto mb-6">
+            <ShieldAlert className="h-10 w-10 text-destructive" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Access Denied</h1>
+          <p className="text-muted-foreground mb-6">
+            You don't have permission to access the admin dashboard. Please login with admin credentials.
+          </p>
+          <Button onClick={() => navigate("/login")} className="gap-2">
+            <Shield className="h-4 w-4" />
+            Go to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const loadData = async () => {
     setLoading(true);
