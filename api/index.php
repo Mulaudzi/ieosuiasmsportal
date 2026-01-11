@@ -86,6 +86,12 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/audit-logs', 'AdminController@auditLogs');
     $router->get('/admin/audit-logs/export', 'AdminController@exportAuditLogs');
     
+    // SMTP Settings management (admin only)
+    $router->get('/admin/smtp-settings', 'SmtpSettingsController@index');
+    $router->get('/admin/smtp-settings/{type}', 'SmtpSettingsController@show');
+    $router->put('/admin/smtp-settings/{type}', 'SmtpSettingsController@update');
+    $router->post('/admin/smtp-settings/{type}/test', 'SmtpSettingsController@test');
+    
     // Cron management (admin only)
     $router->get('/admin/cron/status', 'CronController@status');
     $router->post('/admin/cron/run-scheduled', 'CronController@runScheduledCampaigns');
