@@ -35,12 +35,28 @@ INSERT IGNORE INTO `cron_jobs` (`job_name`, `status`) VALUES
 -- Add index for faster scheduled campaign queries
 CREATE INDEX IF NOT EXISTS `idx_scheduled_status` ON `campaigns` (`status`, `scheduled_at`);
 
--- Fix sender_ids table - add sender_name column if not exists
--- This fixes the migration error for 015_add_email_features.sql
-ALTER TABLE `sender_ids`
-ADD COLUMN IF NOT EXISTS `sender_name` VARCHAR(100) NULL COMMENT 'Display name' AFTER `sender_email`;
+-- Ensure sender_ids table has all required columns (fixes partial migrations)
+-- Add sender_email if missing
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sender_ids' AND COLUMN_NAME = 'sender_email');
+SET @sql = IF(@col_exists = 0, 
+    'ALTER TABLE `sender_ids` ADD COLUMN `sender_email` VARCHAR(255) NULL COMMENT ''For Email: reply-to email'' AFTER `sender_id`', 
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
--- Now insert default sender IDs (will work after sender_name column exists)
+-- Add sender_name if missing
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sender_ids' AND COLUMN_NAME = 'sender_name');
+SET @sql = IF(@col_exists = 0, 
+    'ALTER TABLE `sender_ids` ADD COLUMN `sender_name` VARCHAR(100) NULL COMMENT ''Display name'' AFTER `sender_email`', 
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Now insert default sender IDs (will work after all columns exist)
 INSERT IGNORE INTO `sender_ids` (`user_id`, `type`, `sender_id`, `sender_name`, `status`, `is_default`, `verified_at`)
 SELECT id, 'sms', 'IEOSUIA', 'IEOSUIA Portal', 'approved', 1, NOW() FROM users WHERE role = 'admin' LIMIT 1;
 
