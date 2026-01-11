@@ -468,6 +468,147 @@ class CampaignController {
         Response::success(['message' => 'Campaign cancelled']);
     }
     
+    /**
+     * Duplicate a campaign
+     */
+    public function duplicate(array $params): void {
+        $original = table('campaigns')
+            ->where('id', $params['id'])
+            ->where('user_id', Auth::id())
+            ->first();
+        
+        if (!$original) {
+            Response::error('Campaign not found', 404);
+        }
+        
+        // Create copy
+        $newCampaignId = table('campaigns')->insert([
+            'user_id' => Auth::id(),
+            'type' => $original['type'],
+            'name' => $original['name'] . ' (Copy)',
+            'message' => $original['message'],
+            'subject' => $original['subject'],
+            'sender_id' => $original['sender_id'],
+            'template_id' => $original['template_id'],
+            'status' => 'Draft',
+            'total_recipients' => 0,
+            'estimated_cost' => 0,
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        $campaign = table('campaigns')->where('id', $newCampaignId)->first();
+        $this->addMessageCounts($campaign);
+        
+        Response::created(['campaign' => $campaign, 'message' => 'Campaign duplicated']);
+    }
+    
+    /**
+     * Delete a campaign
+     */
+    public function destroy(array $params): void {
+        $campaign = table('campaigns')
+            ->where('id', $params['id'])
+            ->where('user_id', Auth::id())
+            ->first();
+        
+        if (!$campaign) {
+            Response::error('Campaign not found', 404);
+        }
+        
+        if (!in_array($campaign['status'], ['Draft', 'Cancelled'])) {
+            Response::error('Only draft or cancelled campaigns can be deleted', 400);
+        }
+        
+        // Release reserved funds
+        $wallet = table('wallets')->where('user_id', Auth::id())->first();
+        if ($wallet && (float) $campaign['estimated_cost'] > 0) {
+            $newReserved = max(0, (float) $wallet['reserved'] - (float) $campaign['estimated_cost']);
+            table('wallets')->where('id', $wallet['id'])->update([
+                'reserved' => $newReserved,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+        }
+        
+        // Delete messages first
+        table('messages')->where('campaign_id', $campaign['id'])->delete();
+        
+        // Delete campaign
+        table('campaigns')->where('id', $campaign['id'])->delete();
+        
+        Response::noContent();
+    }
+    
+    /**
+     * Export campaign messages as CSV
+     */
+    public function exportMessages(array $params): void {
+        $campaign = table('campaigns')
+            ->where('id', $params['id'])
+            ->where('user_id', Auth::id())
+            ->first();
+        
+        if (!$campaign) {
+            Response::error('Campaign not found', 404);
+        }
+        
+        $messages = table('messages')
+            ->where('campaign_id', $campaign['id'])
+            ->orderBy('id', 'ASC')
+            ->get();
+        
+        // Generate CSV
+        $output = fopen('php://temp', 'r+');
+        fputcsv($output, ['Recipient', 'Status', 'Sent At', 'Delivered At', 'Failed At', 'Error', 'Cost', 'Parts']);
+        
+        foreach ($messages as $msg) {
+            fputcsv($output, [
+                $msg['recipient'],
+                $msg['status'],
+                $msg['sent_at'] ?? '',
+                $msg['delivered_at'] ?? '',
+                $msg['failed_at'] ?? '',
+                $msg['error_message'] ?? '',
+                $msg['cost'],
+                $msg['parts'],
+            ]);
+        }
+        
+        rewind($output);
+        $csv = stream_get_contents($output);
+        fclose($output);
+        
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="campaign_' . $campaign['id'] . '_messages.csv"');
+        echo $csv;
+        exit;
+    }
+    
+    /**
+     * Check credits before campaign creation
+     */
+    public function checkCredits(): void {
+        $data = Request::input();
+        $recipientCount = (int) ($data['recipient_count'] ?? 0);
+        $type = $data['type'] ?? 'sms';
+        
+        $pricePerUnit = $type === 'sms' 
+            ? (float) env('SMS_PRICE_PER_CREDIT', 0.38)
+            : (float) env('EMAIL_PRICE_PER_CREDIT', 0.05);
+        
+        $estimatedCost = $recipientCount * $pricePerUnit;
+        
+        $wallet = table('wallets')->where('user_id', Auth::id())->first();
+        $availableBalance = $wallet ? (float) $wallet['balance'] - (float) $wallet['reserved'] : 0;
+        
+        Response::success([
+            'estimated_cost' => $estimatedCost,
+            'available_balance' => $availableBalance,
+            'sufficient_credits' => $availableBalance >= $estimatedCost,
+            'price_per_unit' => $pricePerUnit,
+        ]);
+    }
+    
     private function addMessageCounts(array &$campaign): void {
         $campaign['sent_count'] = table('messages')
             ->where('campaign_id', $campaign['id'])
@@ -487,6 +628,11 @@ class CampaignController {
         $campaign['pending_count'] = table('messages')
             ->where('campaign_id', $campaign['id'])
             ->where('status', 'Pending')
+            ->count();
+        
+        $campaign['opted_out_count'] = table('messages')
+            ->where('campaign_id', $campaign['id'])
+            ->where('status', 'Opted-Out')
             ->count();
     }
 }
