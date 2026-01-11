@@ -11,7 +11,7 @@ import {
   LogOut,
   ChevronRight,
   Zap,
-  User,
+  Key,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,6 +22,7 @@ const navigation = [
   { name: "Email Campaigns", href: "/email-campaigns", icon: Mail },
   { name: "Contacts", href: "/contacts", icon: Users },
   { name: "Templates", href: "/templates", icon: FileText },
+  { name: "Sender IDs", href: "/sender-ids", icon: Key },
   { name: "Wallet", href: "/wallet", icon: Wallet },
   { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },
