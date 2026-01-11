@@ -47,6 +47,9 @@ import {
   Download,
   FileText,
   FileSpreadsheet,
+  Calendar,
+  Play,
+  Timer,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -107,6 +110,29 @@ interface AuditLog {
   created_at: string;
 }
 
+interface ScheduledCampaign {
+  id: string;
+  name: string;
+  type: "sms" | "email";
+  status: string;
+  scheduled_at: string;
+  total_recipients: number;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+interface CronJob {
+  id: string;
+  job_name: string;
+  last_run_at: string | null;
+  status: string;
+  run_count: number;
+  error_count: number;
+}
+
 const statusConfig = {
   pending: { label: "Pending", class: "status-pending", icon: Clock },
   approved: { label: "Approved", class: "status-delivered", icon: CheckCircle },
@@ -118,10 +144,13 @@ const actionConfig: Record<string, { label: string; icon: React.ElementType; col
   deactivate_user: { label: "Deactivated User", icon: UserX, color: "text-destructive" },
   change_role: { label: "Changed Role", icon: Shield, color: "text-primary" },
   approve_sender_id: { label: "Approved Sender ID", icon: CheckCircle, color: "text-success" },
+  reject_sender_id: { label: "Rejected Sender ID", icon: XCircle, color: "text-destructive" },
   campaign_created: { label: "Campaign Created", icon: MessageSquare, color: "text-primary" },
   campaign_sent: { label: "Campaign Sent", icon: CheckCircle, color: "text-success" },
+  campaign_scheduled_sent: { label: "Scheduled Campaign Sent", icon: Timer, color: "text-success" },
   campaign_deleted: { label: "Campaign Deleted", icon: XCircle, color: "text-destructive" },
   user_registered: { label: "User Registered", icon: UserCheck, color: "text-primary" },
+  cron_executed: { label: "Cron Executed", icon: Timer, color: "text-muted-foreground" },
 };
 
 export default function AdminDashboard() {
@@ -131,8 +160,11 @@ export default function AdminDashboard() {
   const [senderIds, setSenderIds] = useState<SenderId[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [scheduledCampaigns, setScheduledCampaigns] = useState<ScheduledCampaign[]>([]);
+  const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [runningCron, setRunningCron] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState("all");
@@ -193,21 +225,43 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes, logsRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
         api.get<{ logs: AuditLog[] }>("/admin/audit-logs?per_page=100"),
+        api.get<{ jobs: CronJob[] }>("/admin/cron/status"),
+        api.get<{ campaigns: ScheduledCampaign[] }>("/admin/cron/pending-campaigns"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
       if (senderIdsRes.success) setSenderIds(senderIdsRes.data?.sender_ids || []);
       if (statsRes.success) setStats(statsRes.data || null);
       if (logsRes.success) setAuditLogs(logsRes.data?.logs || []);
+      if (cronRes.success) setCronJobs(cronRes.data?.jobs || []);
+      if (scheduledRes.success) setScheduledCampaigns(scheduledRes.data?.campaigns || []);
     } catch (error) {
       handleApiError(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunScheduledCampaigns = async () => {
+    setRunningCron(true);
+    try {
+      const res = await api.post<{ message: string; results: any }>("/admin/cron/run-scheduled");
+      if (res.success) {
+        toast({
+          title: "Scheduled Campaigns Processed",
+          description: res.data?.message || "Campaigns have been processed",
+        });
+        loadData();
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setRunningCron(false);
     }
   };
 
@@ -373,6 +427,15 @@ export default function AdminDashboard() {
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" />
             Users
+          </TabsTrigger>
+          <TabsTrigger value="scheduled" className="gap-2">
+            <Calendar className="h-4 w-4" />
+            Scheduled
+            {scheduledCampaigns.length > 0 && (
+              <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                {scheduledCampaigns.length}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="activity" className="gap-2">
             <Activity className="h-4 w-4" />
@@ -629,6 +692,116 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
 
+        <TabsContent value="scheduled" className="mt-6">
+          {/* Cron Job Status */}
+          <div className="mb-6 rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Timer className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-foreground">Scheduled Campaign Processor</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {cronJobs.find(j => j.job_name === 'process_scheduled_campaigns')?.last_run_at
+                      ? `Last run: ${new Date(cronJobs.find(j => j.job_name === 'process_scheduled_campaigns')!.last_run_at!).toLocaleString()}`
+                      : 'Never run'}
+                    {cronJobs.find(j => j.job_name === 'process_scheduled_campaigns')?.run_count 
+                      ? ` · ${cronJobs.find(j => j.job_name === 'process_scheduled_campaigns')!.run_count} total runs`
+                      : ''}
+                  </p>
+                </div>
+              </div>
+              <Button 
+                onClick={handleRunScheduledCampaigns} 
+                disabled={runningCron}
+                className="gap-2"
+              >
+                {runningCron ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                Run Now
+              </Button>
+            </div>
+          </div>
+
+          {/* Scheduled Campaigns Table */}
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Campaign</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">User</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Type</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Recipients</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Scheduled For</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {scheduledCampaigns.map((campaign) => {
+                    const scheduledDate = new Date(campaign.scheduled_at);
+                    const isPast = scheduledDate <= new Date();
+                    return (
+                      <tr key={campaign.id} className="transition-colors hover:bg-muted/30">
+                        <td className="px-6 py-4">
+                          <p className="font-medium text-foreground">{campaign.name}</p>
+                          <p className="text-sm text-muted-foreground">ID: {campaign.id}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-medium text-foreground">{campaign.user?.name || "Unknown"}</p>
+                          <p className="text-sm text-muted-foreground">{campaign.user?.email}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium",
+                            campaign.type === "sms" ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
+                          )}>
+                            {campaign.type === "sms" ? <MessageSquare className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
+                            {campaign.type.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-foreground">{campaign.total_recipients}</td>
+                        <td className="px-6 py-4">
+                          <p className={cn(
+                            "font-medium",
+                            isPast ? "text-warning" : "text-foreground"
+                          )}>
+                            {scheduledDate.toLocaleDateString()}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {scheduledDate.toLocaleTimeString()}
+                            {isPast && " (overdue)"}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={cn(
+                            "status-badge inline-flex items-center gap-1",
+                            isPast ? "status-pending" : "status-pending"
+                          )}>
+                            <Clock className="h-3 w-3" />
+                            {isPast ? "Ready to Send" : "Scheduled"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {scheduledCampaigns.length === 0 && (
+              <div className="py-12 text-center">
+                <Calendar className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                <p className="mt-4 text-lg font-medium text-foreground">No scheduled campaigns</p>
+                <p className="text-sm text-muted-foreground">Campaigns scheduled for future sending will appear here</p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
         <TabsContent value="activity" className="mt-6">
           {/* Filters and Export */}
           <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -645,8 +818,10 @@ export default function AdminDashboard() {
                 <SelectItem value="reject_sender_id">Reject Sender ID</SelectItem>
                 <SelectItem value="campaign_created">Campaign Created</SelectItem>
                 <SelectItem value="campaign_sent">Campaign Sent</SelectItem>
+                <SelectItem value="campaign_scheduled_sent">Scheduled Campaign Sent</SelectItem>
                 <SelectItem value="campaign_deleted">Campaign Deleted</SelectItem>
                 <SelectItem value="user_registered">User Registered</SelectItem>
+                <SelectItem value="cron_executed">Cron Executed</SelectItem>
               </SelectContent>
             </Select>
             
