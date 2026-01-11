@@ -3,6 +3,8 @@
  * Admin Controller - User management, stats, etc.
  */
 
+require_once __DIR__ . '/../services/AuditLogService.php';
+
 class AdminController
 {
     /**
@@ -132,10 +134,21 @@ class AdminController
             Response::error('User not found', 404);
         }
         
+        $oldValues = ['is_active' => $user['is_active']];
+        
         table('users')->where('id', $params['id'])->update([
             'is_active' => 1,
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
+        
+        // Log the action
+        AuditLogService::log(
+            'activate_user',
+            'user',
+            (int) $params['id'],
+            $oldValues,
+            ['is_active' => 1]
+        );
         
         Response::success(['message' => 'User activated']);
     }
@@ -157,10 +170,21 @@ class AdminController
             Response::error('Cannot deactivate your own account', 400);
         }
         
+        $oldValues = ['is_active' => $user['is_active']];
+        
         table('users')->where('id', $params['id'])->update([
             'is_active' => 0,
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
+        
+        // Log the action
+        AuditLogService::log(
+            'deactivate_user',
+            'user',
+            (int) $params['id'],
+            $oldValues,
+            ['is_active' => 0]
+        );
         
         Response::success(['message' => 'User deactivated']);
     }
@@ -186,10 +210,21 @@ class AdminController
             Response::error('Cannot change your own role', 400);
         }
         
+        $oldValues = ['role' => $user['role']];
+        
         table('users')->where('id', $params['id'])->update([
             'role' => $data['role'],
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
+        
+        // Log the action
+        AuditLogService::log(
+            'change_role',
+            'user',
+            (int) $params['id'],
+            $oldValues,
+            ['role' => $data['role']]
+        );
         
         Response::success(['message' => 'User role updated']);
     }
@@ -230,5 +265,40 @@ class AdminController
         $user['message_count'] = $stmt->fetch()['count'] ?? 0;
         
         Response::success(['user' => $user]);
+    }
+    
+    /**
+     * Get audit logs
+     */
+    public function auditLogs(): void
+    {
+        $this->requireAdmin();
+        
+        $page = (int) Request::query('page', 1);
+        $perPage = (int) Request::query('per_page', 50);
+        
+        $filters = [
+            'action' => Request::query('action'),
+            'entity_type' => Request::query('entity_type'),
+            'user_id' => Request::query('user_id'),
+            'from_date' => Request::query('from_date'),
+            'to_date' => Request::query('to_date'),
+        ];
+        
+        // Remove empty filters
+        $filters = array_filter($filters);
+        
+        $logs = AuditLogService::getLogs($filters, $page, $perPage);
+        $total = AuditLogService::getLogsCount($filters);
+        
+        Response::success([
+            'logs' => $logs,
+            'pagination' => [
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => ceil($total / $perPage),
+            ],
+        ]);
     }
 }

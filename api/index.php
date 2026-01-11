@@ -83,6 +83,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/admin/users/{id}/deactivate', 'AdminController@deactivateUser');
     $router->put('/admin/users/{id}/role', 'AdminController@changeRole');
     $router->get('/admin/sender-ids', 'AdminController@senderIds');
+    $router->get('/admin/audit-logs', 'AdminController@auditLogs');
     
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');

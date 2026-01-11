@@ -40,6 +40,10 @@ import {
   Wallet,
   BarChart3,
   ShieldAlert,
+  Activity,
+  UserCheck,
+  UserX,
+  KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -86,10 +90,32 @@ interface Stats {
   total_revenue: number;
 }
 
+interface AuditLog {
+  id: string;
+  user_id: string;
+  user_name: string | null;
+  user_email: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  old_values: string | null;
+  new_values: string | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
 const statusConfig = {
   pending: { label: "Pending", class: "status-pending", icon: Clock },
   approved: { label: "Approved", class: "status-delivered", icon: CheckCircle },
   rejected: { label: "Rejected", class: "status-failed", icon: XCircle },
+};
+
+const actionConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  activate_user: { label: "Activated User", icon: UserCheck, color: "text-success" },
+  deactivate_user: { label: "Deactivated User", icon: UserX, color: "text-destructive" },
+  change_role: { label: "Changed Role", icon: Shield, color: "text-primary" },
+  approve_sender_id: { label: "Approved Sender ID", icon: CheckCircle, color: "text-success" },
+  reject_sender_id: { label: "Rejected Sender ID", icon: XCircle, color: "text-destructive" },
 };
 
 export default function AdminDashboard() {
@@ -98,9 +124,12 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<User[]>([]);
   const [senderIds, setSenderIds] = useState<SenderId[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [actionFilter, setActionFilter] = useState("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: string; id: string; data?: any } | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -158,19 +187,36 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
+        api.get<{ logs: AuditLog[] }>("/admin/audit-logs?per_page=100"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
       if (senderIdsRes.success) setSenderIds(senderIdsRes.data?.sender_ids || []);
       if (statsRes.success) setStats(statsRes.data || null);
+      if (logsRes.success) setAuditLogs(logsRes.data?.logs || []);
     } catch (error) {
       handleApiError(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreLogs = async () => {
+    setLogsLoading(true);
+    try {
+      const page = Math.floor(auditLogs.length / 100) + 1;
+      const res = await api.get<{ logs: AuditLog[] }>(`/admin/audit-logs?page=${page}&per_page=100`);
+      if (res.success && res.data?.logs) {
+        setAuditLogs(prev => [...prev, ...res.data!.logs]);
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setLogsLoading(false);
     }
   };
 
@@ -240,6 +286,11 @@ export default function AdminDashboard() {
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredLogs = auditLogs.filter(log => {
+    const matchesAction = actionFilter === "all" || log.action === actionFilter;
+    return matchesAction;
+  });
 
   const pendingCount = senderIds.filter(s => s.status === "pending").length;
 
@@ -316,6 +367,10 @@ export default function AdminDashboard() {
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" />
             Users
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="gap-2">
+            <Activity className="h-4 w-4" />
+            Activity Log
           </TabsTrigger>
         </TabsList>
 
@@ -563,6 +618,130 @@ export default function AdminDashboard() {
               <div className="flex flex-col items-center justify-center py-12">
                 <Users className="h-12 w-12 text-muted-foreground/50" />
                 <p className="mt-4 text-lg font-medium text-foreground">No users found</p>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="activity" className="mt-6">
+          {/* Filters */}
+          <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <Select value={actionFilter} onValueChange={setActionFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter by action" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Actions</SelectItem>
+                <SelectItem value="activate_user">Activate User</SelectItem>
+                <SelectItem value="deactivate_user">Deactivate User</SelectItem>
+                <SelectItem value="change_role">Change Role</SelectItem>
+                <SelectItem value="approve_sender_id">Approve Sender ID</SelectItem>
+                <SelectItem value="reject_sender_id">Reject Sender ID</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Activity Log */}
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Action</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Admin</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Details</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">IP Address</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredLogs.map((log) => {
+                    const config = actionConfig[log.action] || { 
+                      label: log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), 
+                      icon: Activity, 
+                      color: "text-muted-foreground" 
+                    };
+                    const ActionIcon = config.icon;
+                    
+                    let oldVals: Record<string, any> | null = null;
+                    let newVals: Record<string, any> | null = null;
+                    try {
+                      if (log.old_values) oldVals = JSON.parse(log.old_values);
+                      if (log.new_values) newVals = JSON.parse(log.new_values);
+                    } catch {}
+                    
+                    return (
+                      <tr key={log.id} className="transition-colors hover:bg-muted/30">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <ActionIcon className={cn("h-4 w-4", config.color)} />
+                            <span className="font-medium text-foreground">{config.label}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-foreground">{log.user_name || "System"}</p>
+                          <p className="text-sm text-muted-foreground">{log.user_email}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm">
+                            <span className="text-muted-foreground capitalize">{log.entity_type}</span>
+                            {log.entity_id && (
+                              <span className="text-muted-foreground"> #{log.entity_id}</span>
+                            )}
+                            {oldVals && newVals && (
+                              <div className="mt-1 text-xs">
+                                {Object.keys(newVals).map(key => (
+                                  <span key={key} className="inline-flex items-center gap-1">
+                                    <span className="text-destructive line-through">{String(oldVals?.[key])}</span>
+                                    <span className="text-muted-foreground">→</span>
+                                    <span className="text-success">{String(newVals?.[key])}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground font-mono text-sm">
+                          {log.ip_address || "—"}
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          <div className="text-sm">
+                            {new Date(log.created_at).toLocaleDateString()}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(log.created_at).toLocaleTimeString()}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredLogs.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Activity className="h-12 w-12 text-muted-foreground/50" />
+                <p className="mt-4 text-lg font-medium text-foreground">No activity logs found</p>
+                <p className="text-sm text-muted-foreground">Admin actions will appear here</p>
+              </div>
+            )}
+
+            {filteredLogs.length > 0 && filteredLogs.length % 100 === 0 && (
+              <div className="p-4 border-t border-border">
+                <Button 
+                  variant="outline" 
+                  onClick={loadMoreLogs} 
+                  disabled={logsLoading}
+                  className="w-full gap-2"
+                >
+                  {logsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Load More
+                </Button>
               </div>
             )}
           </div>
