@@ -3,6 +3,8 @@
  * Sender ID Controller - Manage SMS and Email sender identities
  */
 
+require_once __DIR__ . '/../services/AuditLogService.php';
+
 class SenderIdController
 {
     /**
@@ -234,11 +236,22 @@ class SenderIdController
             Response::error('Sender ID not found', 404);
         }
         
+        $oldValues = ['status' => $senderId['status']];
+        
         table('sender_ids')->where('id', $params['id'])->update([
             'status' => 'approved',
             'verified_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
+        
+        // Log the action
+        AuditLogService::log(
+            'approve_sender_id',
+            'sender_id',
+            (int) $params['id'],
+            $oldValues,
+            ['status' => 'approved']
+        );
         
         Response::success(['message' => 'Sender ID approved']);
     }
@@ -259,10 +272,21 @@ class SenderIdController
             Response::error('Sender ID not found', 404);
         }
         
+        $oldValues = ['status' => $senderId['status']];
+        
         table('sender_ids')->where('id', $params['id'])->update([
             'status' => 'rejected',
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
+        
+        // Log the action
+        AuditLogService::log(
+            'reject_sender_id',
+            'sender_id',
+            (int) $params['id'],
+            $oldValues,
+            ['status' => 'rejected']
+        );
         
         Response::success(['message' => 'Sender ID rejected']);
     }
