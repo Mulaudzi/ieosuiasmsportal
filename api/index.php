@@ -86,6 +86,11 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/audit-logs', 'AdminController@auditLogs');
     $router->get('/admin/audit-logs/export', 'AdminController@exportAuditLogs');
     
+    // Cron management (admin only)
+    $router->get('/admin/cron/status', 'CronController@status');
+    $router->post('/admin/cron/run-scheduled', 'CronController@runScheduledCampaigns');
+    $router->get('/admin/cron/pending-campaigns', 'CronController@pendingCampaigns');
+    
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
     $router->get('/dashboard/chart', 'DashboardController@chart');
