@@ -81,10 +81,12 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->put('/contacts/{id}', 'ContactController@update');
     $router->delete('/contacts/{id}', 'ContactController@destroy');
     $router->post('/contacts/import', 'ContactController@import');
+    $router->get('/contacts/export', 'ContactController@export');
     
     // Contact Groups
     $router->get('/contact-groups', 'ContactController@groups');
     $router->post('/contact-groups', 'ContactController@createGroup');
+    $router->put('/contact-groups/{id}', 'ContactController@updateGroup');
     $router->delete('/contact-groups/{id}', 'ContactController@deleteGroup');
     
     // Templates
@@ -100,12 +102,19 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/sms/campaigns/{id}', 'CampaignController@smsShow');
     $router->post('/sms/campaigns/{id}/send', 'CampaignController@smsSend');
     $router->post('/sms/campaigns/{id}/cancel', 'CampaignController@cancel');
+    $router->post('/sms/campaigns/{id}/duplicate', 'CampaignController@duplicate');
+    $router->get('/sms/campaigns/{id}/export', 'CampaignController@exportMessages');
+    $router->delete('/sms/campaigns/{id}', 'CampaignController@destroy');
     
     // Email Campaigns
     $router->get('/email/campaigns', 'CampaignController@emailIndex');
     $router->post('/email/campaigns', 'CampaignController@emailStore');
     $router->get('/email/campaigns/{id}', 'CampaignController@emailShow');
     $router->post('/email/campaigns/{id}/send', 'CampaignController@emailSend');
+    $router->delete('/email/campaigns/{id}', 'CampaignController@destroy');
+    
+    // Campaign utilities
+    $router->post('/campaigns/check-credits', 'CampaignController@checkCredits');
     
     // Wallet
     $router->get('/wallet', 'WalletController@index');
@@ -129,9 +138,14 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->delete('/opt-outs/{id}', 'OptOutController@destroy');
 });
 
-// DLR Webhook (public with secret validation)
+// DLR Webhook (public with secret validation) - Legacy
 $router->post('/dlr/webhook', 'DlrController@webhook');
 $router->get('/dlr/status/{messageId}', 'DlrController@status');
+
+// Telnyx Webhooks (public with signature validation)
+$router->post('/webhooks/telnyx/dlr', 'TelnyxWebhookController@dlr');
+$router->post('/webhooks/telnyx/dlr-failover', 'TelnyxWebhookController@dlrFailover');
+$router->post('/webhooks/telnyx/inbound', 'TelnyxWebhookController@inbound');
 
 // Run router
 $router->dispatch();
