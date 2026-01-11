@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/../services/SmsService.php';
 require_once __DIR__ . '/../services/EmailService.php';
+require_once __DIR__ . '/../services/BatchEmailService.php';
 
 class CampaignController {
     // SMS Campaigns
@@ -362,58 +363,52 @@ class CampaignController {
             Response::error('Campaign cannot be sent', 400);
         }
         
-        table('campaigns')->where('id', $campaign['id'])->update([
-            'status' => 'Sending',
-            'started_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ]);
+        // Use BatchEmailService for production sending with retries
+        $batchService = new BatchEmailService(Auth::id());
         
-        $emailService = new EmailService();
-        $messages = table('messages')
+        // Check sending limits
+        $messageCount = table('messages')
             ->where('campaign_id', $campaign['id'])
-            ->where('status', 'Pending')
-            ->get();
+            ->whereIn('status', ['Pending', 'queued'])
+            ->count();
         
+        $limitCheck = $batchService->checkSendingLimits($messageCount);
+        if (!$limitCheck['can_send']) {
+            Response::error('Sending limit exceeded. Hourly remaining: ' . $limitCheck['hourly_remaining'] . ', Daily remaining: ' . $limitCheck['daily_remaining'], 429);
+        }
+        
+        // Debit wallet before sending
         $userId = Auth::id();
         $wallet = table('wallets')->where('user_id', $userId)->first();
-        $totalCost = 0;
+        $estimatedCost = (float) $campaign['estimated_cost'];
         
-        foreach ($messages as $message) {
-            $result = $emailService->send(
-                $message['recipient'],
-                $message['subject'],
-                $message['content']
-            );
-            
-            if ($result['success']) {
-                table('messages')->where('id', $message['id'])->update([
-                    'status' => 'Delivered',
-                    'external_id' => $result['message_id'] ?? null,
-                    'sent_at' => date('Y-m-d H:i:s'),
-                    'delivered_at' => date('Y-m-d H:i:s'),
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ]);
-                $totalCost += (float) $message['cost'];
-            } else {
-                table('messages')->where('id', $message['id'])->update([
-                    'status' => 'Failed',
-                    'error_message' => $result['error'],
-                    'failed_at' => date('Y-m-d H:i:s'),
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ]);
+        if ($wallet && $estimatedCost > 0) {
+            if ((float) $wallet['balance'] < $estimatedCost) {
+                Response::error('Insufficient balance', 400);
             }
         }
         
-        if ($totalCost > 0) {
+        // Send campaign
+        $result = $batchService->sendCampaign($campaign['id']);
+        
+        if (!$result['success']) {
+            Response::error($result['error'], 500);
+        }
+        
+        // Calculate actual cost based on sent messages
+        $actualCost = $result['sent'] * (float) env('EMAIL_PRICE_PER_CREDIT', 0.05);
+        
+        // Debit wallet
+        if ($wallet && $actualCost > 0) {
             table('wallets')->where('id', $wallet['id'])->update([
-                'balance' => (float) $wallet['balance'] - $totalCost,
-                'reserved' => max(0, (float) $wallet['reserved'] - (float) $campaign['estimated_cost']),
+                'balance' => (float) $wallet['balance'] - $actualCost,
+                'reserved' => max(0, (float) $wallet['reserved'] - $estimatedCost),
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
             
             table('wallet_transactions')->insert([
                 'wallet_id' => $wallet['id'],
-                'amount' => -$totalCost,
+                'amount' => -$actualCost,
                 'type' => 'debit',
                 'description' => "Email Campaign: {$campaign['name']}",
                 'reference' => "CAMP-{$campaign['id']}",
@@ -423,17 +418,143 @@ class CampaignController {
             ]);
         }
         
+        // Update campaign with actual cost
         table('campaigns')->where('id', $campaign['id'])->update([
-            'status' => 'Sent',
-            'completed_at' => date('Y-m-d H:i:s'),
-            'actual_cost' => $totalCost,
+            'actual_cost' => $actualCost,
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
         $campaign = table('campaigns')->where('id', $campaign['id'])->first();
         $this->addMessageCounts($campaign);
         
-        Response::success(['campaign' => $campaign, 'message' => 'Campaign sent successfully']);
+        Response::success([
+            'campaign' => $campaign,
+            'message' => 'Campaign sent successfully',
+            'sent' => $result['sent'],
+            'failed' => $result['failed'],
+        ]);
+    }
+    
+    /**
+     * Retry failed messages in a campaign
+     */
+    public function retryFailed(array $params): void {
+        $campaign = table('campaigns')
+            ->where('id', $params['id'])
+            ->where('user_id', Auth::id())
+            ->first();
+        
+        if (!$campaign) {
+            Response::error('Campaign not found', 404);
+        }
+        
+        if ($campaign['type'] === 'email') {
+            $batchService = new BatchEmailService(Auth::id());
+            $result = $batchService->retryFailedMessages($campaign['id']);
+            
+            Response::success($result);
+        } else {
+            // SMS retry logic
+            $messages = table('messages')
+                ->where('campaign_id', $campaign['id'])
+                ->where('status', 'Failed')
+                ->where('retry_count', '<', 3)
+                ->get();
+            
+            if (empty($messages)) {
+                Response::success(['message' => 'No messages to retry', 'retried' => 0]);
+            }
+            
+            $smsService = new SmsService();
+            $retried = 0;
+            $succeeded = 0;
+            
+            foreach ($messages as $message) {
+                $result = $smsService->send(
+                    $message['recipient'],
+                    $message['content'],
+                    $campaign['sender_id']
+                );
+                
+                $retried++;
+                
+                if ($result['success']) {
+                    table('messages')->where('id', $message['id'])->update([
+                        'status' => 'Awaiting DLR',
+                        'external_id' => $result['message_id'],
+                        'retry_count' => (int) $message['retry_count'] + 1,
+                        'sent_at' => date('Y-m-d H:i:s'),
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    $succeeded++;
+                } else {
+                    table('messages')->where('id', $message['id'])->update([
+                        'retry_count' => (int) $message['retry_count'] + 1,
+                        'error_message' => $result['error'],
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                }
+            }
+            
+            Response::success([
+                'retried' => $retried,
+                'succeeded' => $succeeded,
+                'still_failed' => $retried - $succeeded,
+            ]);
+        }
+    }
+    
+    /**
+     * Upload attachment for email campaign
+     */
+    public function uploadAttachment(): void {
+        $file = Request::file('file');
+        $campaignId = Request::query('campaign_id');
+        
+        if (!$file) {
+            Response::error('No file uploaded', 400);
+        }
+        
+        $result = BatchEmailService::uploadAttachment($file, Auth::id(), $campaignId ? (int) $campaignId : null);
+        
+        if (!$result['success']) {
+            Response::error($result['error'], 400);
+        }
+        
+        Response::created($result);
+    }
+    
+    /**
+     * Delete an attachment
+     */
+    public function deleteAttachment(array $params): void {
+        $attachment = table('email_attachments')
+            ->where('id', $params['id'])
+            ->where('user_id', Auth::id())
+            ->first();
+        
+        if (!$attachment) {
+            Response::error('Attachment not found', 404);
+        }
+        
+        // Delete file
+        if (file_exists($attachment['file_path'])) {
+            unlink($attachment['file_path']);
+        }
+        
+        table('email_attachments')->where('id', $params['id'])->delete();
+        
+        Response::noContent();
+    }
+    
+    /**
+     * Check email sending limits
+     */
+    public function emailLimits(): void {
+        $batchService = new BatchEmailService(Auth::id());
+        $limits = $batchService->checkSendingLimits(0);
+        
+        Response::success(['limits' => $limits]);
     }
     
     public function cancel(array $params): void {

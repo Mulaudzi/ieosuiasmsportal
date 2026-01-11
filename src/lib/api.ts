@@ -127,18 +127,53 @@ export const register = (data: { name: string; email: string; password: string; 
 export const logout = () => api.post('/auth/logout');
 export const getDashboardStats = () => api.get<any>('/dashboard/stats');
 export const getCampaign = (id: string) => api.get<any>(`/campaigns/${id}`);
+export const getSmsCampaign = (id: string) => api.get<any>(`/sms/campaigns/${id}`);
+export const getEmailCampaign = (id: string) => api.get<any>(`/email/campaigns/${id}`);
 export const createSmsCampaign = (data: any) => api.post<any>('/sms/campaigns', data);
-export const deleteCampaign = (id: string) => api.delete(`/campaigns/${id}`);
-export const duplicateCampaign = (id: string) => api.post<any>(`/campaigns/${id}/duplicate`);
+export const createEmailCampaign = (data: any) => api.post<any>('/email/campaigns', data);
+export const deleteCampaign = (id: string, type: 'sms' | 'email' = 'sms') => api.delete(`/${type}/campaigns/${id}`);
+export const duplicateCampaign = (id: string, type: 'sms' | 'email' = 'sms') => api.post<any>(`/${type}/campaigns/${id}/duplicate`);
+export const retryCampaign = (id: string) => api.post<any>(`/campaigns/${id}/retry`);
+export const exportCampaignMessages = (id: string, type: 'sms' | 'email' = 'sms') => {
+  // For CSV downloads, we need to redirect
+  const token = localStorage.getItem('auth_token');
+  const url = `${API_BASE_URL}/${type}/campaigns/${id}/export`;
+  window.open(`${url}?token=${token}`, '_blank');
+};
+export const checkCampaignCredits = (recipientCount: number, type: 'sms' | 'email') => 
+  api.post<any>('/campaigns/check-credits', { recipient_count: recipientCount, type });
 export const importContacts = (formData: FormData) => api.upload<any>('/contacts/import', formData);
-export const getContactGroups = () => api.get<any[]>('/contacts/groups');
-export const createContactGroup = (name: string) => api.post<any>('/contacts/groups', { name });
+export const getContactGroups = () => api.get<any[]>('/contact-groups');
+export const createContactGroup = (name: string) => api.post<any>('/contact-groups', { name });
 export const deleteContacts = (ids: string[]) => api.post<any>('/contacts/bulk-delete', { ids });
+export const exportContacts = (groupId?: string) => {
+  const token = localStorage.getItem('auth_token');
+  const url = groupId 
+    ? `${API_BASE_URL}/contacts/export?group_id=${groupId}&token=${token}`
+    : `${API_BASE_URL}/contacts/export?token=${token}`;
+  window.open(url, '_blank');
+};
 export const buyCredits = (data: { amount: number; payment_method: string }) => api.post<any>('/wallet/buy', data);
 export const getWalletHistory = () => api.get<any[]>('/wallet/history');
 export const saveSettings = (section: string, data: any) => api.put<any>(`/settings/${section}`, data);
 export const exportReport = (type: string) => api.get<any>(`/reports/export/${type}`);
 
+// Sender IDs
+export const getSenderIds = (type?: 'sms' | 'email') => api.get<any>('/sender-ids', type ? { type } : undefined);
+export const createSenderId = (data: { type: string; sender_id?: string; sender_email?: string; sender_name?: string }) => 
+  api.post<any>('/sender-ids', data);
+export const deleteSenderId = (id: string) => api.delete(`/sender-ids/${id}`);
+export const setDefaultSenderId = (id: string) => api.post<any>(`/sender-ids/${id}/default`);
+
+// Email limits
+export const getEmailLimits = () => api.get<any>('/email/limits');
+
+// Attachments
+export const uploadAttachment = (formData: FormData, campaignId?: string) => {
+  const url = campaignId ? `/attachments/upload?campaign_id=${campaignId}` : '/attachments/upload';
+  return api.upload<any>(url, formData);
+};
+export const deleteAttachment = (id: string) => api.delete(`/attachments/${id}`);
 // Templates
 export const getTemplates = (type?: string) => api.get<any[]>('/templates', type ? { type } : undefined);
 export const getTemplate = (id: string) => api.get<any>(`/templates/${id}`);
