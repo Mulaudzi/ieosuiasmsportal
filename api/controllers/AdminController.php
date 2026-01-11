@@ -301,4 +301,135 @@ class AdminController
             ],
         ]);
     }
+    
+    /**
+     * Export audit logs as CSV
+     */
+    public function exportAuditLogs(): void
+    {
+        $this->requireAdmin();
+        
+        $format = Request::query('format', 'csv');
+        
+        $filters = [
+            'action' => Request::query('action'),
+            'entity_type' => Request::query('entity_type'),
+            'user_id' => Request::query('user_id'),
+            'from_date' => Request::query('from_date'),
+            'to_date' => Request::query('to_date'),
+        ];
+        
+        $filters = array_filter($filters);
+        
+        // Get all logs (up to 10000 for export)
+        $logs = AuditLogService::getLogs($filters, 1, 10000);
+        
+        if ($format === 'csv') {
+            $this->exportAuditLogsCSV($logs);
+        } else {
+            $this->exportAuditLogsPDF($logs);
+        }
+    }
+    
+    private function exportAuditLogsCSV(array $logs): void
+    {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="audit_logs_' . date('Y-m-d_H-i-s') . '.csv"');
+        
+        $output = fopen('php://output', 'w');
+        
+        // UTF-8 BOM for Excel
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        
+        // Header row
+        fputcsv($output, [
+            'ID',
+            'Date/Time',
+            'Admin Name',
+            'Admin Email',
+            'Action',
+            'Entity Type',
+            'Entity ID',
+            'Old Values',
+            'New Values',
+            'IP Address',
+        ]);
+        
+        foreach ($logs as $log) {
+            fputcsv($output, [
+                $log['id'],
+                $log['created_at'],
+                $log['user_name'] ?? 'System',
+                $log['user_email'] ?? '',
+                ucwords(str_replace('_', ' ', $log['action'])),
+                ucfirst($log['entity_type']),
+                $log['entity_id'] ?? '',
+                $log['old_values'] ?? '',
+                $log['new_values'] ?? '',
+                $log['ip_address'] ?? '',
+            ]);
+        }
+        
+        fclose($output);
+        exit;
+    }
+    
+    private function exportAuditLogsPDF(array $logs): void
+    {
+        // Simple HTML-based PDF (using browser print)
+        header('Content-Type: text/html; charset=utf-8');
+        
+        $html = '<!DOCTYPE html><html><head><meta charset="utf-8">';
+        $html .= '<title>Audit Logs Export - ' . date('Y-m-d') . '</title>';
+        $html .= '<style>
+            body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; }
+            h1 { font-size: 18px; margin-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            tr:nth-child(even) { background-color: #fafafa; }
+            .header { margin-bottom: 20px; }
+            .meta { color: #666; font-size: 11px; }
+            @media print { body { margin: 0; } }
+        </style></head><body>';
+        
+        $html .= '<div class="header">';
+        $html .= '<h1>IEOSUIA SMS Portal - Audit Logs Report</h1>';
+        $html .= '<p class="meta">Generated: ' . date('Y-m-d H:i:s') . ' | Total Records: ' . count($logs) . '</p>';
+        $html .= '</div>';
+        
+        $html .= '<table><thead><tr>';
+        $html .= '<th>Date/Time</th><th>Admin</th><th>Action</th><th>Entity</th><th>Details</th><th>IP Address</th>';
+        $html .= '</tr></thead><tbody>';
+        
+        foreach ($logs as $log) {
+            $details = '';
+            if ($log['old_values'] && $log['new_values']) {
+                $old = json_decode($log['old_values'], true);
+                $new = json_decode($log['new_values'], true);
+                if ($old && $new) {
+                    foreach ($new as $key => $value) {
+                        $oldVal = $old[$key] ?? 'N/A';
+                        $details .= "{$key}: {$oldVal} → {$value}<br>";
+                    }
+                }
+            }
+            
+            $html .= '<tr>';
+            $html .= '<td>' . htmlspecialchars($log['created_at']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($log['user_name'] ?? 'System') . '<br><small>' . htmlspecialchars($log['user_email'] ?? '') . '</small></td>';
+            $html .= '<td>' . htmlspecialchars(ucwords(str_replace('_', ' ', $log['action']))) . '</td>';
+            $html .= '<td>' . htmlspecialchars(ucfirst($log['entity_type'])) . ' #' . htmlspecialchars($log['entity_id'] ?? 'N/A') . '</td>';
+            $html .= '<td>' . $details . '</td>';
+            $html .= '<td>' . htmlspecialchars($log['ip_address'] ?? 'N/A') . '</td>';
+            $html .= '</tr>';
+        }
+        
+        $html .= '</tbody></table>';
+        $html .= '<script>window.onload = function() { window.print(); }</script>';
+        $html .= '</body></html>';
+        
+        echo $html;
+        exit;
+    }
 }

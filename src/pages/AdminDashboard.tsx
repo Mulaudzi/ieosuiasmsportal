@@ -44,6 +44,9 @@ import {
   UserCheck,
   UserX,
   KeyRound,
+  Download,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -115,7 +118,10 @@ const actionConfig: Record<string, { label: string; icon: React.ElementType; col
   deactivate_user: { label: "Deactivated User", icon: UserX, color: "text-destructive" },
   change_role: { label: "Changed Role", icon: Shield, color: "text-primary" },
   approve_sender_id: { label: "Approved Sender ID", icon: CheckCircle, color: "text-success" },
-  reject_sender_id: { label: "Rejected Sender ID", icon: XCircle, color: "text-destructive" },
+  campaign_created: { label: "Campaign Created", icon: MessageSquare, color: "text-primary" },
+  campaign_sent: { label: "Campaign Sent", icon: CheckCircle, color: "text-success" },
+  campaign_deleted: { label: "Campaign Deleted", icon: XCircle, color: "text-destructive" },
+  user_registered: { label: "User Registered", icon: UserCheck, color: "text-primary" },
 };
 
 export default function AdminDashboard() {
@@ -624,7 +630,7 @@ export default function AdminDashboard() {
         </TabsContent>
 
         <TabsContent value="activity" className="mt-6">
-          {/* Filters */}
+          {/* Filters and Export */}
           <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <Select value={actionFilter} onValueChange={setActionFilter}>
               <SelectTrigger className="w-48">
@@ -637,8 +643,47 @@ export default function AdminDashboard() {
                 <SelectItem value="change_role">Change Role</SelectItem>
                 <SelectItem value="approve_sender_id">Approve Sender ID</SelectItem>
                 <SelectItem value="reject_sender_id">Reject Sender ID</SelectItem>
+                <SelectItem value="campaign_created">Campaign Created</SelectItem>
+                <SelectItem value="campaign_sent">Campaign Sent</SelectItem>
+                <SelectItem value="campaign_deleted">Campaign Deleted</SelectItem>
+                <SelectItem value="user_registered">User Registered</SelectItem>
               </SelectContent>
             </Select>
+            
+            <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Download className="h-4 w-4" />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      params.set('format', 'csv');
+                      if (actionFilter !== 'all') params.set('action', actionFilter);
+                      window.open(`${import.meta.env.VITE_API_URL || ''}/api/admin/audit-logs/export?${params.toString()}`, '_blank');
+                    }}
+                  >
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    Export as CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      params.set('format', 'pdf');
+                      if (actionFilter !== 'all') params.set('action', actionFilter);
+                      window.open(`${import.meta.env.VITE_API_URL || ''}/api/admin/audit-logs/export?${params.toString()}`, '_blank');
+                    }}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Export as PDF
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
 
           {/* Activity Log */}

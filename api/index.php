@@ -84,6 +84,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->put('/admin/users/{id}/role', 'AdminController@changeRole');
     $router->get('/admin/sender-ids', 'AdminController@senderIds');
     $router->get('/admin/audit-logs', 'AdminController@auditLogs');
+    $router->get('/admin/audit-logs/export', 'AdminController@exportAuditLogs');
     
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');

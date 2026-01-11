@@ -457,16 +457,22 @@ export function ProtectedRoute({ children, requireVerified = false }: { children
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
+      // Store the intended destination for redirect after login
+      sessionStorage.setItem('redirectAfterLogin', location.pathname);
       navigate("/login", { replace: true });
     } else if (!isLoading && isAuthenticated && requireVerified && !isEmailVerified) {
       navigate("/verify-email-reminder", { replace: true, state: { from: location } });
     }
   }, [isAuthenticated, isEmailVerified, isLoading, navigate, requireVerified, location]);
 
+  // Show a more visible loading state during auth check
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
       </div>
     );
   }

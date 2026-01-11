@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,7 +62,10 @@ export default function Login() {
           title: "Welcome back!",
           description: "You have been logged in successfully.",
         });
-        navigate("/");
+        // Redirect to stored path or dashboard
+        const redirectPath = sessionStorage.getItem('redirectAfterLogin') || '/';
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectPath);
       } else {
         toast({
           title: "Login Failed",
