@@ -1,6 +1,7 @@
 import { Sidebar } from "./Sidebar";
-import { Bell, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { NotificationBell } from "./NotificationBell";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -34,13 +35,7 @@ export function DashboardLayout({
           </div>
 
           <div className="flex items-center gap-3">
-            <button className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-1.5 top-1.5 flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
-              </span>
-            </button>
+            <NotificationBell />
           </div>
         </header>
 
