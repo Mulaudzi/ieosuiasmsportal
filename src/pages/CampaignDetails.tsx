@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Pause,
   Play,
+  RotateCcw,
 } from "lucide-react";
 import {
   AreaChart,
@@ -40,7 +41,7 @@ import {
   Cell,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import { getCampaign } from "@/lib/api";
+import { getSmsCampaign, getEmailCampaign, exportCampaignMessages, retryCampaign } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import { useDlrPolling } from "@/hooks/useDlrPolling";
 
@@ -48,30 +49,11 @@ interface MessageLog {
   id: string;
   recipient: string;
   status: "Delivered" | "Pending" | "Failed" | "Awaiting DLR" | "Opted-Out";
-  sentAt: string;
-  deliveredAt?: string;
+  sent_at: string;
+  delivered_at?: string;
   cost: number;
+  error_message?: string;
 }
-
-const mockMessageLogs: MessageLog[] = [
-  { id: "1", recipient: "+27 82 123 4567", status: "Delivered", sentAt: "2026-01-07 10:30:00", deliveredAt: "2026-01-07 10:30:02", cost: 0.12 },
-  { id: "2", recipient: "+27 83 234 5678", status: "Delivered", sentAt: "2026-01-07 10:30:01", deliveredAt: "2026-01-07 10:30:03", cost: 0.12 },
-  { id: "3", recipient: "+27 84 345 6789", status: "Failed", sentAt: "2026-01-07 10:30:02", cost: 0 },
-  { id: "4", recipient: "+27 85 456 7890", status: "Pending", sentAt: "2026-01-07 10:30:03", cost: 0.12 },
-  { id: "5", recipient: "+27 86 567 8901", status: "Awaiting DLR", sentAt: "2026-01-07 10:30:04", cost: 0.12 },
-  { id: "6", recipient: "+27 87 678 9012", status: "Delivered", sentAt: "2026-01-07 10:30:05", deliveredAt: "2026-01-07 10:30:07", cost: 0.12 },
-  { id: "7", recipient: "+27 88 789 0123", status: "Opted-Out", sentAt: "2026-01-07 10:30:06", cost: 0 },
-  { id: "8", recipient: "+27 89 890 1234", status: "Delivered", sentAt: "2026-01-07 10:30:07", deliveredAt: "2026-01-07 10:30:09", cost: 0.12 },
-];
-
-const deliveryTimeline = [
-  { time: "10:30", delivered: 0, pending: 1250 },
-  { time: "10:31", delivered: 320, pending: 930 },
-  { time: "10:32", delivered: 680, pending: 570 },
-  { time: "10:33", delivered: 950, pending: 300 },
-  { time: "10:34", delivered: 1120, pending: 130 },
-  { time: "10:35", delivered: 1180, pending: 70 },
-];
 
 const statusColors = {
   Delivered: "hsl(142, 76%, 36%)",
@@ -90,32 +72,36 @@ const statusConfig = {
 };
 
 export default function CampaignDetails() {
-  const { id, type } = useParams<{ id: string; type: string }>();
+  const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState<any>(null);
+  const [messages, setMessages] = useState<MessageLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [pollingEnabled, setPollingEnabled] = useState(true);
 
-  const isSms = type === "sms";
+  // Determine type from URL path
+  const isSms = location.pathname.includes("/sms-campaigns");
+  const type = isSms ? "sms" : "email";
 
   // Real-time DLR polling every 10 seconds
   const handlePollingUpdate = useCallback((data: any) => {
-    setCampaign((prev: any) => ({
-      ...prev,
-      ...data,
-      message: prev?.message || "🔥 Flash Sale! Get 50% off all items for the next 24 hours. Shop now at example.com/sale",
-      senderId: prev?.senderId || "IEOSUIA",
-      sentAt: prev?.sentAt || "Jan 7, 2026 10:30 AM",
-    }));
+    if (data?.campaign) {
+      setCampaign((prev: any) => ({ ...prev, ...data.campaign }));
+    }
+    if (data?.messages) {
+      setMessages(data.messages);
+    }
   }, []);
 
   const { stopPolling, startPolling, refetch } = useDlrPolling({
     campaignId: id || "",
     enabled: pollingEnabled && !loading,
-    interval: 10000, // 10 seconds
+    interval: 10000,
     onUpdate: handlePollingUpdate,
     onError: (error) => {
       console.error("Polling error:", error);
@@ -124,18 +110,17 @@ export default function CampaignDetails() {
 
   useEffect(() => {
     loadCampaign();
-  }, [id]);
+  }, [id, type]);
 
   const loadCampaign = async () => {
+    setLoading(true);
     try {
-      const response = await getCampaign(id || "");
+      const fetchFn = isSms ? getSmsCampaign : getEmailCampaign;
+      const response = await fetchFn(id || "");
       if (response.success && response.data) {
-        setCampaign({
-          ...response.data,
-          message: "🔥 Flash Sale! Get 50% off all items for the next 24 hours. Shop now at example.com/sale",
-          senderId: "IEOSUIA",
-          sentAt: "Jan 7, 2026 10:30 AM",
-        });
+        const campaignData = response.data.campaign || response.data;
+        setCampaign(campaignData);
+        setMessages(campaignData.messages || []);
       }
     } catch (error) {
       toast({
@@ -150,12 +135,43 @@ export default function CampaignDetails() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    await loadCampaign();
     await refetch();
     setRefreshing(false);
     toast({
       title: "Campaign refreshed",
       description: "Delivery status updated.",
     });
+  };
+
+  const handleExport = () => {
+    exportCampaignMessages(id || "", type);
+    toast({
+      title: "Export started",
+      description: "Your CSV download will begin shortly.",
+    });
+  };
+
+  const handleRetryFailed = async () => {
+    setRetrying(true);
+    try {
+      const response = await retryCampaign(id || "");
+      if (response.success) {
+        toast({
+          title: "Retry initiated",
+          description: `Retrying ${response.data?.retried || 0} failed messages.`,
+        });
+        await loadCampaign();
+      }
+    } catch (error) {
+      toast({
+        title: "Retry failed",
+        description: "Could not retry failed messages.",
+        variant: "destructive",
+      });
+    } finally {
+      setRetrying(false);
+    }
   };
 
   const togglePolling = () => {
@@ -167,18 +183,33 @@ export default function CampaignDetails() {
     setPollingEnabled(!pollingEnabled);
   };
 
-  const filteredLogs = mockMessageLogs.filter((log) => {
-    const matchesSearch = log.recipient.includes(searchQuery);
+  const filteredLogs = messages.filter((log) => {
+    const matchesSearch = log.recipient.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || log.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const statusBreakdown = [
-    { name: "Delivered", value: campaign?.delivered || 1180, color: statusColors.Delivered },
-    { name: "Pending", value: 45, color: statusColors.Pending },
-    { name: "Failed", value: campaign?.failed || 70, color: statusColors.Failed },
-    { name: "Awaiting DLR", value: 25, color: statusColors["Awaiting DLR"] },
-  ];
+    { name: "Delivered", value: campaign?.delivered_count || 0, color: statusColors.Delivered },
+    { name: "Pending", value: campaign?.pending_count || 0, color: statusColors.Pending },
+    { name: "Failed", value: campaign?.failed_count || 0, color: statusColors.Failed },
+    { name: "Awaiting DLR", value: messages.filter(m => m.status === "Awaiting DLR").length, color: statusColors["Awaiting DLR"] },
+  ].filter(s => s.value > 0);
+
+  // Generate delivery timeline from actual messages
+  const deliveryTimeline = (() => {
+    if (!messages.length) return [];
+    const timeline: Record<string, { time: string; delivered: number; pending: number }> = {};
+    messages.forEach(msg => {
+      const time = msg.sent_at ? new Date(msg.sent_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+      if (!timeline[time]) timeline[time] = { time, delivered: 0, pending: 0 };
+      if (msg.status === 'Delivered') timeline[time].delivered++;
+      else timeline[time].pending++;
+    });
+    return Object.values(timeline).slice(0, 10);
+  })();
+  
+  const failedCount = campaign?.failed_count || messages.filter(m => m.status === "Failed").length;
 
   if (loading) {
     return (
@@ -195,7 +226,19 @@ export default function CampaignDetails() {
       title={campaign?.name || "Campaign Details"}
       subtitle={`Campaign ID: ${id}`}
       actions={
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
+          {failedCount > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="gap-2" 
+              onClick={handleRetryFailed}
+              disabled={retrying}
+            >
+              {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Retry Failed ({failedCount})
+            </Button>
+          )}
           <Button 
             variant="outline" 
             size="sm"
@@ -203,15 +246,15 @@ export default function CampaignDetails() {
             onClick={togglePolling}
           >
             {pollingEnabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            {pollingEnabled ? "Pause Auto-refresh" : "Resume Auto-refresh"}
+            {pollingEnabled ? "Pause" : "Resume"}
           </Button>
-          <Button variant="outline" className="gap-2" onClick={handleRefresh} disabled={refreshing}>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleRefresh} disabled={refreshing}>
             {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Refresh
           </Button>
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExport}>
             <Download className="h-4 w-4" />
-            Export Report
+            Export CSV
           </Button>
         </div>
       }
@@ -246,10 +289,11 @@ export default function CampaignDetails() {
                   </span>
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Sent on {campaign?.sentAt} • Sender ID: {campaign?.senderId}
+                  {campaign?.started_at ? `Sent on ${new Date(campaign.started_at).toLocaleString()}` : `Created ${new Date(campaign?.created_at).toLocaleString()}`}
+                  {campaign?.sender_id && ` • Sender ID: ${campaign.sender_id}`}
                 </p>
                 <div className="mt-4 rounded-lg bg-muted/50 p-4">
-                  <p className="text-sm text-foreground">{campaign?.message}</p>
+                  <p className="text-sm text-foreground">{campaign?.message || "No message content"}</p>
                 </div>
               </div>
             </div>
@@ -263,7 +307,7 @@ export default function CampaignDetails() {
               <Users className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="text-sm text-muted-foreground">Recipients</p>
-                <p className="text-xl font-bold text-foreground">{campaign?.recipients?.toLocaleString()}</p>
+                <p className="text-xl font-bold text-foreground">{(campaign?.total_recipients || messages.length)?.toLocaleString()}</p>
               </div>
             </div>
           </div>
@@ -272,7 +316,7 @@ export default function CampaignDetails() {
               <CheckCircle className="h-5 w-5 text-success" />
               <div>
                 <p className="text-sm text-muted-foreground">Delivered</p>
-                <p className="text-xl font-bold text-success">{campaign?.delivered?.toLocaleString()}</p>
+                <p className="text-xl font-bold text-success">{(campaign?.delivered_count || 0)?.toLocaleString()}</p>
               </div>
             </div>
           </div>
@@ -282,7 +326,7 @@ export default function CampaignDetails() {
               <div>
                 <p className="text-sm text-muted-foreground">Delivery Rate</p>
                 <p className="text-xl font-bold text-foreground">
-                  {((campaign?.delivered / campaign?.recipients) * 100).toFixed(1)}%
+                  {campaign?.total_recipients ? (((campaign?.delivered_count || 0) / campaign.total_recipients) * 100).toFixed(1) : 0}%
                 </p>
               </div>
             </div>
@@ -426,10 +470,10 @@ export default function CampaignDetails() {
                             {log.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-muted-foreground">{log.sentAt}</td>
-                        <td className="px-6 py-4 text-muted-foreground">{log.deliveredAt || "—"}</td>
+                        <td className="px-6 py-4 text-muted-foreground">{log.sent_at || "—"}</td>
+                        <td className="px-6 py-4 text-muted-foreground">{log.delivered_at || "—"}</td>
                         <td className="px-6 py-4 text-right text-foreground">
-                          {log.cost > 0 ? `R${log.cost.toFixed(2)}` : "—"}
+                          {log.cost > 0 ? `R${Number(log.cost).toFixed(2)}` : "—"}
                         </td>
                       </tr>
                     );
@@ -442,7 +486,7 @@ export default function CampaignDetails() {
           {/* Pagination */}
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Showing {filteredLogs.length} of {mockMessageLogs.length} messages
+              Showing {filteredLogs.length} of {messages.length} messages
             </p>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" disabled>
