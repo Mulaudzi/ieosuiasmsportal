@@ -4,6 +4,9 @@
  * Handles user registration, login, password reset, and email verification
  */
 
+require_once __DIR__ . '/../services/AdminNotificationService.php';
+require_once __DIR__ . '/../services/AuditLogService.php';
+
 class AuthController {
     
     /**
@@ -74,6 +77,15 @@ class AuthController {
         // Generate token and return
         $user = table('users')->where('id', $userId)->first();
         $token = Auth::generateToken($user);
+        
+        // Notify admins about new registration
+        AdminNotificationService::notifyNewUser($userId, $data['name'], $data['email']);
+        
+        // Log registration
+        AuditLogService::log('user_registered', 'user', $userId, null, [
+            'name' => $data['name'],
+            'email' => $data['email'],
+        ], $userId);
         
         Response::created([
             'user' => Auth::formatUserForFrontend($user),

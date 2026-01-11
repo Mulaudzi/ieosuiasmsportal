@@ -6,6 +6,8 @@
 require_once __DIR__ . '/../services/SmsService.php';
 require_once __DIR__ . '/../services/EmailService.php';
 require_once __DIR__ . '/../services/BatchEmailService.php';
+require_once __DIR__ . '/../services/AuditLogService.php';
+require_once __DIR__ . '/../services/AdminNotificationService.php';
 
 class CampaignController {
     // SMS Campaigns
@@ -101,6 +103,13 @@ class CampaignController {
         
         $campaign = table('campaigns')->where('id', $campaignId)->first();
         $this->addMessageCounts($campaign);
+        
+        // Log campaign creation
+        AuditLogService::log('campaign_created', 'campaign', $campaignId, null, [
+            'name' => $data['name'],
+            'type' => 'sms',
+            'recipients' => count($recipients),
+        ]);
         
         Response::created(['campaign' => $campaign]);
     }
@@ -234,6 +243,42 @@ class CampaignController {
         $campaign = table('campaigns')->where('id', $campaign['id'])->first();
         $this->addMessageCounts($campaign);
         
+        // Log campaign sending
+        AuditLogService::log('campaign_sent', 'campaign', (int) $campaign['id'], null, [
+            'name' => $campaign['name'],
+            'type' => 'sms',
+            'total_cost' => $totalCost,
+        ]);
+        
+        // Check for high failure rate and notify admins
+        $failedCount = table('messages')
+            ->where('campaign_id', $campaign['id'])
+            ->where('status', 'Failed')
+            ->count();
+        
+        if ($failedCount > 0) {
+            $totalMessages = (int) $campaign['total_recipients'];
+            $failureRate = $totalMessages > 0 ? $failedCount / $totalMessages : 0;
+            
+            if ($failureRate > 0.2) { // More than 20% failure
+                AdminNotificationService::notifyHighFailureRate(
+                    (int) $campaign['id'],
+                    $campaign['name'],
+                    $failureRate,
+                    $userId
+                );
+            }
+            
+            if ($failedCount >= 10) {
+                AdminNotificationService::notifyCampaignFailed(
+                    (int) $campaign['id'],
+                    $campaign['name'],
+                    $failedCount,
+                    $userId
+                );
+            }
+        }
+        
         Response::success(['campaign' => $campaign, 'message' => 'Campaign sent successfully']);
     }
     
@@ -320,6 +365,13 @@ class CampaignController {
         
         $campaign = table('campaigns')->where('id', $campaignId)->first();
         $this->addMessageCounts($campaign);
+        
+        // Log campaign creation
+        AuditLogService::log('campaign_created', 'campaign', $campaignId, null, [
+            'name' => $data['name'],
+            'type' => 'email',
+            'recipients' => count($recipients),
+        ]);
         
         Response::created(['campaign' => $campaign]);
     }
@@ -426,6 +478,39 @@ class CampaignController {
         
         $campaign = table('campaigns')->where('id', $campaign['id'])->first();
         $this->addMessageCounts($campaign);
+        
+        // Log campaign sending
+        AuditLogService::log('campaign_sent', 'campaign', (int) $campaign['id'], null, [
+            'name' => $campaign['name'],
+            'type' => 'email',
+            'sent' => $result['sent'],
+            'failed' => $result['failed'],
+            'actual_cost' => $actualCost,
+        ]);
+        
+        // Check for high failure rate and notify admins
+        if ($result['failed'] > 0) {
+            $totalMessages = $result['sent'] + $result['failed'];
+            $failureRate = $totalMessages > 0 ? $result['failed'] / $totalMessages : 0;
+            
+            if ($failureRate > 0.2) { // More than 20% failure
+                AdminNotificationService::notifyHighFailureRate(
+                    (int) $campaign['id'],
+                    $campaign['name'],
+                    $failureRate,
+                    Auth::id()
+                );
+            }
+            
+            if ($result['failed'] >= 10) {
+                AdminNotificationService::notifyCampaignFailed(
+                    (int) $campaign['id'],
+                    $campaign['name'],
+                    $result['failed'],
+                    Auth::id()
+                );
+            }
+        }
         
         Response::success([
             'campaign' => $campaign,
@@ -650,6 +735,13 @@ class CampaignController {
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
         }
+        
+        // Log before deletion
+        AuditLogService::log('campaign_deleted', 'campaign', (int) $params['id'], [
+            'name' => $campaign['name'],
+            'type' => $campaign['type'],
+            'status' => $campaign['status'],
+        ], null);
         
         // Delete messages first
         table('messages')->where('campaign_id', $campaign['id'])->delete();

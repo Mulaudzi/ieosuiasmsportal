@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/../services/AuditLogService.php';
+require_once __DIR__ . '/../services/AdminNotificationService.php';
 
 class SenderIdController
 {
@@ -90,6 +91,14 @@ class SenderIdController
         ]);
         
         $record = table('sender_ids')->where('id', $senderId)->first();
+        
+        // Notify admins about new sender ID pending approval
+        AdminNotificationService::notifyNewSenderId(
+            $senderId,
+            $type === 'sms' ? $data['sender_id'] : $data['sender_email'],
+            $type,
+            $userId
+        );
         
         Response::created([
             'sender_id' => $record,
