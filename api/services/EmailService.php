@@ -21,21 +21,33 @@ class EmailService
     {
         if (self::$mailer === null) {
             self::$mailer = new PHPMailer(true);
+            
+            // Get system SMTP settings from database (fallback to env)
+            require_once __DIR__ . '/../controllers/SmtpSettingsController.php';
+            $settings = SmtpSettingsController::getSettings('system');
 
             // Server settings
             self::$mailer->isSMTP();
-            self::$mailer->Host = env('SMTP_HOST', env('MAIL_HOST', 'sms.ieosuia.com'));
+            self::$mailer->Host = $settings['host'];
             self::$mailer->SMTPAuth = true;
-            self::$mailer->Username = env('SMTP_USER', env('MAIL_USERNAME', 'noreply@sms.ieosuia.com'));
-            self::$mailer->Password = env('SMTP_PASS', env('MAIL_PASSWORD', ''));
-            self::$mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-            self::$mailer->Port = (int) env('SMTP_PORT', env('MAIL_PORT', 465));
+            self::$mailer->Username = $settings['username'];
+            self::$mailer->Password = $settings['password'];
+            self::$mailer->Port = $settings['port'];
+            
+            switch ($settings['encryption']) {
+                case 'ssl':
+                    self::$mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+                    break;
+                case 'tls':
+                    self::$mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                    break;
+                default:
+                    self::$mailer->SMTPSecure = '';
+                    self::$mailer->SMTPAutoTLS = false;
+            }
 
             // Default sender
-            self::$mailer->setFrom(
-                env('SMTP_FROM_EMAIL', env('MAIL_FROM_ADDRESS', 'noreply@sms.ieosuia.com')),
-                env('SMTP_FROM_NAME', env('MAIL_FROM_NAME', 'IEOSUIA SMS Portal'))
-            );
+            self::$mailer->setFrom($settings['from_email'], $settings['from_name']);
 
             // Encoding
             self::$mailer->CharSet = 'UTF-8';

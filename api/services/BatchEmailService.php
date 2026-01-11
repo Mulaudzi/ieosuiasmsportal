@@ -34,18 +34,30 @@ class BatchEmailService
     {
         $this->mailer = new PHPMailer(true);
         
-        $this->mailer->isSMTP();
-        $this->mailer->Host = env('SMTP_HOST', 'sms.ieosuia.com');
-        $this->mailer->SMTPAuth = true;
-        $this->mailer->Username = env('SMTP_USER', 'email@sms.ieosuia.com');
-        $this->mailer->Password = env('SMTP_PASS', '');
-        $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $this->mailer->Port = (int) env('SMTP_PORT', 465);
+        // Get campaign SMTP settings from database (fallback to env)
+        require_once __DIR__ . '/../controllers/SmtpSettingsController.php';
+        $settings = SmtpSettingsController::getSettings('campaign');
         
-        $this->mailer->setFrom(
-            env('SMTP_FROM_EMAIL', 'noreply@sms.ieosuia.com'),
-            env('SMTP_FROM_NAME', 'IEOSUIA Portal')
-        );
+        $this->mailer->isSMTP();
+        $this->mailer->Host = $settings['host'];
+        $this->mailer->SMTPAuth = true;
+        $this->mailer->Username = $settings['username'];
+        $this->mailer->Password = $settings['password'];
+        $this->mailer->Port = $settings['port'];
+        
+        switch ($settings['encryption']) {
+            case 'ssl':
+                $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+                break;
+            case 'tls':
+                $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                break;
+            default:
+                $this->mailer->SMTPSecure = '';
+                $this->mailer->SMTPAutoTLS = false;
+        }
+        
+        $this->mailer->setFrom($settings['from_email'], $settings['from_name']);
         
         $this->mailer->CharSet = 'UTF-8';
         $this->mailer->Encoding = 'base64';
