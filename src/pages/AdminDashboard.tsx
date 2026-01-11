@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -50,6 +51,12 @@ import {
   Calendar,
   Play,
   Timer,
+  Settings,
+  Send,
+  Server,
+  Eye,
+  EyeOff,
+  AlertCircle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -133,6 +140,23 @@ interface CronJob {
   error_count: number;
 }
 
+interface SmtpSetting {
+  id: string;
+  setting_type: "system" | "campaign";
+  host: string;
+  port: number;
+  encryption: "none" | "ssl" | "tls";
+  username: string;
+  password: string;
+  from_email: string;
+  from_name: string;
+  is_active: boolean;
+  last_tested_at: string | null;
+  last_test_result: "success" | "failed" | null;
+  last_test_error: string | null;
+  has_password?: boolean;
+}
+
 const statusConfig = {
   pending: { label: "Pending", class: "status-pending", icon: Clock },
   approved: { label: "Approved", class: "status-delivered", icon: CheckCircle },
@@ -151,6 +175,7 @@ const actionConfig: Record<string, { label: string; icon: React.ElementType; col
   campaign_deleted: { label: "Campaign Deleted", icon: XCircle, color: "text-destructive" },
   user_registered: { label: "User Registered", icon: UserCheck, color: "text-primary" },
   cron_executed: { label: "Cron Executed", icon: Timer, color: "text-muted-foreground" },
+  smtp_settings_updated: { label: "SMTP Settings Updated", icon: Settings, color: "text-primary" },
 };
 
 export default function AdminDashboard() {
@@ -162,6 +187,7 @@ export default function AdminDashboard() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [scheduledCampaigns, setScheduledCampaigns] = useState<ScheduledCampaign[]>([]);
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
+  const [smtpSettings, setSmtpSettings] = useState<SmtpSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [logsLoading, setLogsLoading] = useState(false);
   const [runningCron, setRunningCron] = useState(false);
@@ -171,6 +197,14 @@ export default function AdminDashboard() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: string; id: string; data?: any } | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
+  
+  // SMTP Settings state
+  const [editingSmtp, setEditingSmtp] = useState<"system" | "campaign" | null>(null);
+  const [smtpForm, setSmtpForm] = useState<Partial<SmtpSetting>>({});
+  const [smtpSaving, setSmtpSaving] = useState(false);
+  const [smtpTesting, setSmtpTesting] = useState<string | null>(null);
+  const [testEmail, setTestEmail] = useState("");
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
 
   // Admin access verification
   useEffect(() => {
@@ -225,13 +259,14 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
         api.get<{ logs: AuditLog[] }>("/admin/audit-logs?per_page=100"),
         api.get<{ jobs: CronJob[] }>("/admin/cron/status"),
         api.get<{ campaigns: ScheduledCampaign[] }>("/admin/cron/pending-campaigns"),
+        api.get<{ settings: SmtpSetting[] }>("/admin/smtp-settings"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
@@ -240,6 +275,7 @@ export default function AdminDashboard() {
       if (logsRes.success) setAuditLogs(logsRes.data?.logs || []);
       if (cronRes.success) setCronJobs(cronRes.data?.jobs || []);
       if (scheduledRes.success) setScheduledCampaigns(scheduledRes.data?.campaigns || []);
+      if (smtpRes.success) setSmtpSettings(smtpRes.data?.settings || []);
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -330,6 +366,71 @@ export default function AdminDashboard() {
       handleApiError(error);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  // SMTP Settings handlers
+  const handleEditSmtp = (type: "system" | "campaign") => {
+    const setting = smtpSettings.find(s => s.setting_type === type);
+    setSmtpForm(setting || {
+      setting_type: type,
+      host: "sms.ieosuia.com",
+      port: 465,
+      encryption: "ssl",
+      username: type === "system" ? "noreply@sms.ieosuia.com" : "email@sms.ieosuia.com",
+      password: "",
+      from_email: type === "system" ? "noreply@sms.ieosuia.com" : "email@sms.ieosuia.com",
+      from_name: "IEOSUIA Portal",
+    });
+    setEditingSmtp(type);
+  };
+
+  const handleSaveSmtp = async () => {
+    if (!editingSmtp || !smtpForm.host || !smtpForm.username || !smtpForm.from_email) {
+      toast({ title: "Please fill in all required fields", variant: "destructive" });
+      return;
+    }
+    
+    setSmtpSaving(true);
+    try {
+      const res = await api.put(`/admin/smtp-settings/${editingSmtp}`, smtpForm);
+      if (res.success) {
+        toast({ title: "SMTP settings saved successfully" });
+        setEditingSmtp(null);
+        loadData();
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setSmtpSaving(false);
+    }
+  };
+
+  const handleTestSmtp = async (type: "system" | "campaign") => {
+    const email = testEmail || user?.email;
+    if (!email) {
+      toast({ title: "Please enter a test email address", variant: "destructive" });
+      return;
+    }
+    
+    setSmtpTesting(type);
+    try {
+      const setting = smtpSettings.find(s => s.setting_type === type);
+      const res = await api.post<{ message: string }>(`/admin/smtp-settings/${type}/test`, {
+        ...setting,
+        test_email: email,
+      });
+      if (res.success) {
+        toast({ 
+          title: "Test email sent!", 
+          description: res.data?.message || `Check ${email} for the test email.` 
+        });
+        loadData();
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setSmtpTesting(null);
     }
   };
 
@@ -440,6 +541,10 @@ export default function AdminDashboard() {
           <TabsTrigger value="activity" className="gap-2">
             <Activity className="h-4 w-4" />
             Activity Log
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2">
+            <Settings className="h-4 w-4" />
+            Settings
           </TabsTrigger>
         </TabsList>
 
@@ -964,6 +1069,405 @@ export default function AdminDashboard() {
                 </Button>
               </div>
             )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="settings" className="mt-6">
+          <div className="space-y-6">
+            {/* SMTP Settings Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Email Configuration</h3>
+                <p className="text-sm text-muted-foreground">
+                  Configure SMTP settings for system emails and campaign emails separately
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="testEmail" className="text-sm text-muted-foreground">Test Email:</Label>
+                <Input
+                  id="testEmail"
+                  type="email"
+                  placeholder={user?.email || "Enter email"}
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  className="w-64"
+                />
+              </div>
+            </div>
+
+            {/* SMTP Settings Cards */}
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* System Email Settings */}
+              {(() => {
+                const systemSetting = smtpSettings.find(s => s.setting_type === "system");
+                return (
+                  <div className="rounded-xl border border-border bg-card p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <Mail className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-foreground">System Emails</h4>
+                          <p className="text-xs text-muted-foreground">Verification, Password Reset</p>
+                        </div>
+                      </div>
+                      {systemSetting?.last_test_result && (
+                        <span className={cn(
+                          "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
+                          systemSetting.last_test_result === "success" 
+                            ? "bg-success/10 text-success" 
+                            : "bg-destructive/10 text-destructive"
+                        )}>
+                          {systemSetting.last_test_result === "success" ? (
+                            <CheckCircle className="h-3 w-3" />
+                          ) : (
+                            <XCircle className="h-3 w-3" />
+                          )}
+                          {systemSetting.last_test_result === "success" ? "Working" : "Failed"}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {editingSmtp === "system" ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <Label htmlFor="system-host">SMTP Host</Label>
+                            <Input
+                              id="system-host"
+                              value={smtpForm.host || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, host: e.target.value})}
+                              placeholder="smtp.example.com"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="system-port">Port</Label>
+                            <Input
+                              id="system-port"
+                              type="number"
+                              value={smtpForm.port || 465}
+                              onChange={(e) => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <Label htmlFor="system-encryption">Encryption</Label>
+                          <Select 
+                            value={smtpForm.encryption || "ssl"} 
+                            onValueChange={(v) => setSmtpForm({...smtpForm, encryption: v as "none" | "ssl" | "tls"})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ssl">SSL/TLS (Port 465)</SelectItem>
+                              <SelectItem value="tls">STARTTLS (Port 587)</SelectItem>
+                              <SelectItem value="none">None</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="system-username">Username</Label>
+                          <Input
+                            id="system-username"
+                            value={smtpForm.username || ""}
+                            onChange={(e) => setSmtpForm({...smtpForm, username: e.target.value})}
+                            placeholder="noreply@sms.ieosuia.com"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="system-password">Password</Label>
+                          <div className="relative">
+                            <Input
+                              id="system-password"
+                              type={showPasswords.system ? "text" : "password"}
+                              value={smtpForm.password || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, password: e.target.value})}
+                              placeholder="Enter password"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
+                              onClick={() => setShowPasswords({...showPasswords, system: !showPasswords.system})}
+                            >
+                              {showPasswords.system ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <Label htmlFor="system-from-email">From Email</Label>
+                            <Input
+                              id="system-from-email"
+                              type="email"
+                              value={smtpForm.from_email || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, from_email: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="system-from-name">From Name</Label>
+                            <Input
+                              id="system-from-name"
+                              value={smtpForm.from_name || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, from_name: e.target.value})}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                          <Button onClick={handleSaveSmtp} disabled={smtpSaving} className="gap-2">
+                            {smtpSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                            Save
+                          </Button>
+                          <Button variant="outline" onClick={() => setEditingSmtp(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="text-muted-foreground">Host:</div>
+                          <div className="font-medium text-foreground">{systemSetting?.host || "Not configured"}</div>
+                          <div className="text-muted-foreground">Port:</div>
+                          <div className="font-medium text-foreground">{systemSetting?.port || 465}</div>
+                          <div className="text-muted-foreground">Username:</div>
+                          <div className="font-medium text-foreground truncate">{systemSetting?.username || "—"}</div>
+                          <div className="text-muted-foreground">From:</div>
+                          <div className="font-medium text-foreground truncate">{systemSetting?.from_email || "—"}</div>
+                        </div>
+                        {systemSetting?.last_tested_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Last tested: {new Date(systemSetting.last_tested_at).toLocaleString()}
+                          </p>
+                        )}
+                        {systemSetting?.last_test_error && (
+                          <div className="flex items-start gap-2 p-2 rounded bg-destructive/10 text-xs text-destructive">
+                            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                            <span className="line-clamp-2">{systemSetting.last_test_error}</span>
+                          </div>
+                        )}
+                        <div className="flex gap-2 pt-2">
+                          <Button variant="outline" size="sm" onClick={() => handleEditSmtp("system")} className="gap-1">
+                            <Settings className="h-3 w-3" />
+                            Configure
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleTestSmtp("system")}
+                            disabled={smtpTesting === "system"}
+                            className="gap-1"
+                          >
+                            {smtpTesting === "system" ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Send className="h-3 w-3" />
+                            )}
+                            Test
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Campaign Email Settings */}
+              {(() => {
+                const campaignSetting = smtpSettings.find(s => s.setting_type === "campaign");
+                return (
+                  <div className="rounded-xl border border-border bg-card p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
+                          <MessageSquare className="h-5 w-5 text-accent" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-foreground">Campaign Emails</h4>
+                          <p className="text-xs text-muted-foreground">Marketing, Newsletters</p>
+                        </div>
+                      </div>
+                      {campaignSetting?.last_test_result && (
+                        <span className={cn(
+                          "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
+                          campaignSetting.last_test_result === "success" 
+                            ? "bg-success/10 text-success" 
+                            : "bg-destructive/10 text-destructive"
+                        )}>
+                          {campaignSetting.last_test_result === "success" ? (
+                            <CheckCircle className="h-3 w-3" />
+                          ) : (
+                            <XCircle className="h-3 w-3" />
+                          )}
+                          {campaignSetting.last_test_result === "success" ? "Working" : "Failed"}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {editingSmtp === "campaign" ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <Label htmlFor="campaign-host">SMTP Host</Label>
+                            <Input
+                              id="campaign-host"
+                              value={smtpForm.host || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, host: e.target.value})}
+                              placeholder="smtp.example.com"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="campaign-port">Port</Label>
+                            <Input
+                              id="campaign-port"
+                              type="number"
+                              value={smtpForm.port || 465}
+                              onChange={(e) => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <Label htmlFor="campaign-encryption">Encryption</Label>
+                          <Select 
+                            value={smtpForm.encryption || "ssl"} 
+                            onValueChange={(v) => setSmtpForm({...smtpForm, encryption: v as "none" | "ssl" | "tls"})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ssl">SSL/TLS (Port 465)</SelectItem>
+                              <SelectItem value="tls">STARTTLS (Port 587)</SelectItem>
+                              <SelectItem value="none">None</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="campaign-username">Username</Label>
+                          <Input
+                            id="campaign-username"
+                            value={smtpForm.username || ""}
+                            onChange={(e) => setSmtpForm({...smtpForm, username: e.target.value})}
+                            placeholder="email@sms.ieosuia.com"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="campaign-password">Password</Label>
+                          <div className="relative">
+                            <Input
+                              id="campaign-password"
+                              type={showPasswords.campaign ? "text" : "password"}
+                              value={smtpForm.password || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, password: e.target.value})}
+                              placeholder="Enter password"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
+                              onClick={() => setShowPasswords({...showPasswords, campaign: !showPasswords.campaign})}
+                            >
+                              {showPasswords.campaign ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <Label htmlFor="campaign-from-email">From Email</Label>
+                            <Input
+                              id="campaign-from-email"
+                              type="email"
+                              value={smtpForm.from_email || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, from_email: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="campaign-from-name">From Name</Label>
+                            <Input
+                              id="campaign-from-name"
+                              value={smtpForm.from_name || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, from_name: e.target.value})}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                          <Button onClick={handleSaveSmtp} disabled={smtpSaving} className="gap-2">
+                            {smtpSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                            Save
+                          </Button>
+                          <Button variant="outline" onClick={() => setEditingSmtp(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="text-muted-foreground">Host:</div>
+                          <div className="font-medium text-foreground">{campaignSetting?.host || "Not configured"}</div>
+                          <div className="text-muted-foreground">Port:</div>
+                          <div className="font-medium text-foreground">{campaignSetting?.port || 465}</div>
+                          <div className="text-muted-foreground">Username:</div>
+                          <div className="font-medium text-foreground truncate">{campaignSetting?.username || "—"}</div>
+                          <div className="text-muted-foreground">From:</div>
+                          <div className="font-medium text-foreground truncate">{campaignSetting?.from_email || "—"}</div>
+                        </div>
+                        {campaignSetting?.last_tested_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Last tested: {new Date(campaignSetting.last_tested_at).toLocaleString()}
+                          </p>
+                        )}
+                        {campaignSetting?.last_test_error && (
+                          <div className="flex items-start gap-2 p-2 rounded bg-destructive/10 text-xs text-destructive">
+                            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                            <span className="line-clamp-2">{campaignSetting.last_test_error}</span>
+                          </div>
+                        )}
+                        <div className="flex gap-2 pt-2">
+                          <Button variant="outline" size="sm" onClick={() => handleEditSmtp("campaign")} className="gap-1">
+                            <Settings className="h-3 w-3" />
+                            Configure
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleTestSmtp("campaign")}
+                            disabled={smtpTesting === "campaign"}
+                            className="gap-1"
+                          >
+                            {smtpTesting === "campaign" ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Send className="h-3 w-3" />
+                            )}
+                            Test
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Info Box */}
+            <div className="rounded-lg bg-muted/50 p-4 border border-border">
+              <div className="flex items-start gap-3">
+                <Server className="h-5 w-5 text-muted-foreground mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-foreground">About Email Configuration</h4>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <strong>System Emails</strong> (noreply@...): Used for email verification, password resets, and account notifications. These are sent from the portal system.
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <strong>Campaign Emails</strong> (email@...): Used for email campaigns and marketing messages. Configure this for bulk email sending.
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Settings are stored securely in the database and override the default .env configuration.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </TabsContent>
       </Tabs>
