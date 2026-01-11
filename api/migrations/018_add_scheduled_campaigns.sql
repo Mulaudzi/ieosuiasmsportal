@@ -66,9 +66,13 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- Now insert default sender IDs (will work after all columns exist)
-INSERT IGNORE INTO `sender_ids` (`user_id`, `type`, `sender_id`, `sender_name`, `status`, `is_default`, `verified_at`)
-SELECT id, 'sms', 'IEOSUIA', 'IEOSUIA Portal', 'approved', 1, NOW() FROM users WHERE role = 'admin' LIMIT 1;
+-- Now insert default sender IDs using prepared statements
+SET @insert_sms = 'INSERT IGNORE INTO `sender_ids` (`user_id`, `type`, `sender_id`, `sender_name`, `status`, `is_default`, `verified_at`) SELECT id, ''sms'', ''IEOSUIA'', ''IEOSUIA Portal'', ''approved'', 1, NOW() FROM users WHERE role = ''admin'' LIMIT 1';
+PREPARE stmt FROM @insert_sms;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-INSERT IGNORE INTO `sender_ids` (`user_id`, `type`, `sender_email`, `sender_name`, `status`, `is_default`, `verified_at`)
-SELECT id, 'email', 'noreply@sms.ieosuia.com', 'IEOSUIA Portal', 'approved', 1, NOW() FROM users WHERE role = 'admin' LIMIT 1;
+SET @insert_email = 'INSERT IGNORE INTO `sender_ids` (`user_id`, `type`, `sender_email`, `sender_name`, `status`, `is_default`, `verified_at`) SELECT id, ''email'', ''noreply@sms.ieosuia.com'', ''IEOSUIA Portal'', ''approved'', 1, NOW() FROM users WHERE role = ''admin'' LIMIT 1';
+PREPARE stmt FROM @insert_email;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
