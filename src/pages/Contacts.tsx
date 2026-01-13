@@ -46,6 +46,7 @@ import { toast } from "@/hooks/use-toast";
 import { getContacts, getContactGroups, deleteContacts, deleteContactGroup, exportContacts, handleApiError } from "@/lib/api";
 import { ContactImportModal } from "@/components/contacts/ContactImportModal";
 import { AddContactModal } from "@/components/contacts/AddContactModal";
+import { EditContactModal } from "@/components/contacts/EditContactModal";
 import { CreateGroupModal } from "@/components/contacts/CreateGroupModal";
 import { EditGroupModal } from "@/components/contacts/EditGroupModal";
 import { format } from "date-fns";
@@ -79,6 +80,8 @@ export default function Contacts() {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(location.pathname === "/contacts/import");
   const [addContactModalOpen, setAddContactModalOpen] = useState(false);
+  const [editContactModalOpen, setEditContactModalOpen] = useState(false);
+  const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
   const [createGroupModalOpen, setCreateGroupModalOpen] = useState(false);
   const [editGroupModalOpen, setEditGroupModalOpen] = useState(false);
   const [groupToEdit, setGroupToEdit] = useState<Group | null>(null);
@@ -185,11 +188,9 @@ export default function Contacts() {
     }
   };
 
-  const handleEditContact = (id: string) => {
-    toast({
-      title: "Edit Contact",
-      description: `Editing contact ${id}`,
-    });
+  const handleEditContact = (contact: Contact) => {
+    setContactToEdit(contact);
+    setEditContactModalOpen(true);
   };
 
   const handleDeleteContact = async (id: string) => {
@@ -259,6 +260,12 @@ export default function Contacts() {
     <>
       <ContactImportModal open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) loadData(); }} />
       <AddContactModal open={addContactModalOpen} onOpenChange={(open) => { setAddContactModalOpen(open); if (!open) loadData(); }} />
+      <EditContactModal 
+        open={editContactModalOpen} 
+        onOpenChange={(open) => { setEditContactModalOpen(open); if (!open) loadData(); }} 
+        contact={contactToEdit}
+        onSuccess={loadData}
+      />
       <CreateGroupModal open={createGroupModalOpen} onOpenChange={(open) => { setCreateGroupModalOpen(open); if (!open) loadData(); }} />
       <EditGroupModal 
         open={editGroupModalOpen} 
@@ -512,7 +519,7 @@ export default function Contacts() {
                           <td className="px-4 py-4 text-muted-foreground">{formatDate(contact.created_at)}</td>
                           <td className="px-4 py-4">
                             <div className="flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => handleEditContact(contact.id)}>
+                              <Button variant="ghost" size="icon" onClick={() => handleEditContact(contact)}>
                                 <Edit className="h-4 w-4" />
                               </Button>
                               <Button 
