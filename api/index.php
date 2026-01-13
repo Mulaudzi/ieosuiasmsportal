@@ -93,6 +93,13 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/activity-heatmap', 'AdminController@activityHeatmap');
     $router->get('/admin/heatmap/export', 'AdminController@exportHeatmap');
     
+    // Admin user management (authenticated)
+    $router->get('/admin-users', 'AdminUserController@list');
+    $router->put('/admin-users/update', 'AdminUserController@update');
+    $router->post('/admin-users/toggle-status', 'AdminUserController@toggleStatus');
+    $router->post('/admin-users/reset-password', 'AdminUserController@resetPasswordAdmin');
+    $router->delete('/admin-users/delete', 'AdminUserController@delete');
+    
     // Admin notification settings
     $router->get('/admin/notification-settings', 'AdminNotificationSettingsController@index');
     $router->put('/admin/notification-settings/{event_type}', 'AdminNotificationSettingsController@update');

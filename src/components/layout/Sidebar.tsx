@@ -32,6 +32,7 @@ const navigation = [
 
 const adminNavigation = [
   { name: "Admin Dashboard", href: "/admin", icon: Shield },
+  { name: "Admin Users", href: "/admin/users", icon: Users },
   { name: "QA Console", href: "/admin/qa", icon: Bug },
 ];
 
@@ -89,7 +90,7 @@ export function Sidebar() {
           })}
           
           {/* Admin Section - Only show for admin users */}
-          {user?.email === "godtheson@ieosuia.com" && (
+          {user?.account_type === "admin" && (
             <>
               <div className="mt-4 mb-2 px-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">

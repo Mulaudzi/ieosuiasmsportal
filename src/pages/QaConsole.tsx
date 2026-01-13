@@ -153,7 +153,7 @@ export default function QaConsole() {
     if (authLoading) return;
     
     const adminSession = sessionStorage.getItem("admin_session");
-    const isAdminUser = user?.email === "godtheson@ieosuia.com";
+    const isAdminUser = user?.account_type === "admin";
     
     if (!adminSession || !isAdminUser) {
       setAccessDenied(true);

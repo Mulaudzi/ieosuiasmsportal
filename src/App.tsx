@@ -39,6 +39,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import QaConsole from "./pages/QaConsole";
 import Pricing from "./pages/Pricing";
 import AdminSetup from "./pages/AdminSetup";
+import AdminManagement from "./pages/AdminManagement";
 
 const queryClient = new QueryClient();
 
@@ -78,6 +79,7 @@ const App = () => (
             <Route path="/email-campaigns/:id" element={<ProtectedRoute requireVerified><CampaignDetails /></ProtectedRoute>} />
             <Route path="/contacts" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin/users" element={<ProtectedRoute><AdminManagement /></ProtectedRoute>} />
             <Route path="/admin/qa" element={<ProtectedRoute><QaConsole /></ProtectedRoute>} />
             <Route path="/contacts/import" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute requireVerified><Templates /></ProtectedRoute>} />
