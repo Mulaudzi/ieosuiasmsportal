@@ -385,4 +385,100 @@ class ReportController {
             'winner_delivery_rate' => $bestRate,
         ]);
     }
+    
+    /**
+     * Manually select A/B test winner
+     */
+    public function selectAbTestWinner(): void {
+        $userId = Auth::id();
+        $data = Request::validate([
+            'campaign_id' => 'required',
+            'variant_name' => 'required',
+        ]);
+        
+        $campaign = table('campaigns')
+            ->where('id', $data['campaign_id'])
+            ->where('user_id', $userId)
+            ->first();
+        
+        if (!$campaign) {
+            Response::error('Campaign not found', 404);
+        }
+        
+        if (!$campaign['is_ab_test']) {
+            Response::error('Campaign is not an A/B test', 400);
+        }
+        
+        $variant = table('campaign_variants')
+            ->where('campaign_id', $data['campaign_id'])
+            ->where('variant_name', $data['variant_name'])
+            ->first();
+        
+        if (!$variant) {
+            Response::error('Variant not found', 404);
+        }
+        
+        // Update campaign
+        table('campaigns')
+            ->where('id', $data['campaign_id'])
+            ->update([
+                'ab_winner_variant' => $data['variant_name'],
+                'ab_winner_selected_at' => date('Y-m-d H:i:s'),
+                'message' => $variant['message_content'],
+                'subject' => $variant['subject'] ?? $campaign['subject'],
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+        
+        // Reset all variants, then mark winner
+        table('campaign_variants')
+            ->where('campaign_id', $data['campaign_id'])
+            ->update(['is_winner' => 0]);
+            
+        table('campaign_variants')
+            ->where('id', $variant['id'])
+            ->update(['is_winner' => 1]);
+        
+        Response::success([
+            'message' => "Variant {$data['variant_name']} selected as winner",
+            'winner' => $data['variant_name'],
+        ]);
+    }
+    
+    /**
+     * Get best performing template based on A/B test history
+     */
+    public function getBestPerformingVariant(): void {
+        $userId = Auth::id();
+        $type = Request::query('type', 'sms');
+        
+        $pdo = db();
+        
+        // Get winning variants with best delivery rates
+        $stmt = $pdo->prepare("
+            SELECT 
+                cv.message_content,
+                cv.subject,
+                c.type,
+                cv.delivery_rate,
+                c.name as campaign_name,
+                c.created_at
+            FROM campaign_variants cv
+            JOIN campaigns c ON cv.campaign_id = c.id
+            WHERE c.user_id = ?
+            AND c.type = ?
+            AND cv.is_winner = 1
+            AND cv.delivery_rate > 0
+            ORDER BY cv.delivery_rate DESC
+            LIMIT 5
+        ");
+        $stmt->execute([$userId, $type]);
+        $winners = $stmt->fetchAll();
+        
+        Response::success([
+            'best_performing' => $winners,
+            'recommendation' => count($winners) > 0 
+                ? "Based on your A/B tests, messages similar to your top performer achieve {$winners[0]['delivery_rate']}% delivery rate."
+                : 'Run more A/B tests to get personalized recommendations.',
+        ]);
+    }
 }

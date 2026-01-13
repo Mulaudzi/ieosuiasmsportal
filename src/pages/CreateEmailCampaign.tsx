@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { ScheduleRecommendations } from "@/components/campaigns/ScheduleRecommendations";
+import { ABTestSetup } from "@/components/campaigns/ABTesting";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,6 +109,14 @@ export default function CreateEmailCampaign() {
   });
   
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  
+  // A/B Testing state
+  const [abTestEnabled, setAbTestEnabled] = useState(false);
+  const [abMessageA, setAbMessageA] = useState("");
+  const [abMessageB, setAbMessageB] = useState("");
+  const [abSubjectA, setAbSubjectA] = useState("");
+  const [abSubjectB, setAbSubjectB] = useState("");
+  const [abSplitPercent, setAbSplitPercent] = useState(50);
 
   useEffect(() => {
     loadInitialData();
@@ -250,13 +259,19 @@ export default function CreateEmailCampaign() {
 
       const response = await createEmailCampaign({
         name: formData.name,
-        subject: formData.subject,
-        message: formData.message,
+        subject: abTestEnabled ? abSubjectA : formData.subject,
+        message: abTestEnabled ? abMessageA : formData.message,
         recipients,
         attachments: attachments.map(a => ({ id: a.id, stored_name: a.stored_name })),
         scheduled_at: formData.scheduleType === "schedule" 
           ? `${formData.scheduleDate} ${formData.scheduleTime}` 
           : null,
+        is_ab_test: abTestEnabled,
+        ab_test_split_percent: abSplitPercent,
+        ab_variants: abTestEnabled ? [
+          { variant_name: 'A', message_content: abMessageA, subject: abSubjectA },
+          { variant_name: 'B', message_content: abMessageB, subject: abSubjectB },
+        ] : undefined,
       });
 
       if (response.success) {
@@ -526,22 +541,50 @@ export default function CreateEmailCampaign() {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <Label>Message *</Label>
-                <div className="mt-1.5 rounded-lg border border-border">
-                  <ReactQuill
-                    theme="snow"
-                    value={formData.message}
-                    onChange={(content) => setFormData({ ...formData, message: content })}
-                    modules={quillModules}
-                    className="min-h-[300px]"
-                    placeholder="Compose your email..."
-                  />
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Use {"{{name}}"} to personalize with recipient's name
-                </p>
-              </div>
+              {/* A/B Testing Setup */}
+              <ABTestSetup
+                enabled={abTestEnabled}
+                onEnabledChange={(enabled) => {
+                  setAbTestEnabled(enabled);
+                  if (enabled && formData.subject) {
+                    setAbSubjectA(formData.subject);
+                    setAbMessageA(formData.message);
+                  }
+                }}
+                messageA={abMessageA}
+                messageB={abMessageB}
+                subjectA={abSubjectA}
+                subjectB={abSubjectB}
+                splitPercent={abSplitPercent}
+                onMessageAChange={setAbMessageA}
+                onMessageBChange={setAbMessageB}
+                onSubjectAChange={setAbSubjectA}
+                onSubjectBChange={setAbSubjectB}
+                onSplitChange={setAbSplitPercent}
+                campaignType="email"
+                totalRecipients={selectedContacts.length}
+              />
+
+              {!abTestEnabled && (
+                <>
+                  <div>
+                    <Label>Message *</Label>
+                    <div className="mt-1.5 rounded-lg border border-border">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.message}
+                        onChange={(content) => setFormData({ ...formData, message: content })}
+                        modules={quillModules}
+                        className="min-h-[300px]"
+                        placeholder="Compose your email..."
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Use {"{{name}}"} to personalize with recipient's name
+                    </p>
+                  </div>
+                </>
+              )}
 
               {/* Attachments */}
               <div>
