@@ -1,32 +1,29 @@
 import { Link } from "react-router-dom";
-import { Zap, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { Logo } from "@/components/layout/Logo";
+import { Footer } from "@/components/layout/Footer";
 
 export default function TermsOfService() {
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        <div className="flex items-center gap-3 mb-8">
-          <Link to="/landing" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Zap className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold text-foreground">IEOSUIA SMS PORTAL</span>
-          </Link>
+    <div className="min-h-screen bg-background flex flex-col">
+      <div className="flex-1 max-w-4xl mx-auto px-6 py-12">
+        <div className="mb-8">
+          <Logo size="md" linkTo="/landing" />
         </div>
 
-        <Link to="/register" className="inline-flex items-center gap-2 text-primary hover:underline mb-8">
+        <Link to="/landing" className="inline-flex items-center gap-2 text-primary hover:underline mb-8">
           <ArrowLeft className="h-4 w-4" />
-          Back to Register
+          Back to Home
         </Link>
 
         <h1 className="text-3xl font-bold text-foreground mb-6">Terms of Service</h1>
-        <p className="text-muted-foreground mb-8">Last updated: January 10, 2026</p>
+        <p className="text-muted-foreground mb-8">Last updated: January 13, 2026</p>
 
         <div className="prose prose-gray dark:prose-invert max-w-none space-y-6">
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">1. Acceptance of Terms</h2>
             <p className="text-muted-foreground leading-relaxed">
-              By accessing and using IEOSUIA SMS PORTAL ("the Service"), you accept and agree to be bound by 
+              By accessing and using IEOSUIA SMS Portal ("the Service"), you accept and agree to be bound by 
               the terms and provision of this agreement. If you do not agree to abide by the above, 
               please do not use this service.
             </p>
@@ -35,8 +32,8 @@ export default function TermsOfService() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">2. Description of Service</h2>
             <p className="text-muted-foreground leading-relaxed">
-              IEOSUIA SMS PORTAL provides SMS messaging services that allow users to send text messages 
-              to their contacts. The service includes features such as contact management, message templates, 
+              IEOSUIA SMS Portal provides SMS and email messaging services that allow users to send text messages 
+              and emails to their contacts. The service includes features such as contact management, message templates, 
               campaign analytics, and delivery reports.
             </p>
           </section>
@@ -48,7 +45,7 @@ export default function TermsOfService() {
               <li>Provide accurate and complete registration information</li>
               <li>Maintain the security of your account credentials</li>
               <li>Use the service only for lawful purposes</li>
-              <li>Comply with all applicable laws and regulations regarding SMS communications</li>
+              <li>Comply with all applicable laws and regulations regarding SMS and email communications</li>
               <li>Obtain proper consent before sending messages to recipients</li>
               <li>Honor opt-out requests from recipients promptly</li>
             </ul>
@@ -70,7 +67,7 @@ export default function TermsOfService() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">5. Credits and Payment</h2>
             <p className="text-muted-foreground leading-relaxed">
-              The service operates on a credit-based system. Credits are required to send messages 
+              The service operates on a credit-based pay-as-you-go system. Credits are required to send messages 
               and must be purchased in advance. Credits are non-refundable and non-transferable. 
               Unused credits do not expire unless the account is terminated.
             </p>
@@ -88,7 +85,7 @@ export default function TermsOfService() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">7. Limitation of Liability</h2>
             <p className="text-muted-foreground leading-relaxed">
-              IEOSUIA SMS PORTAL shall not be liable for any indirect, incidental, special, consequential, 
+              IEOSUIA SMS Portal shall not be liable for any indirect, incidental, special, consequential, 
               or punitive damages resulting from your use of or inability to use the service. 
               Our total liability shall not exceed the amount paid by you for the service in the 
               preceding twelve months.
@@ -114,14 +111,26 @@ export default function TermsOfService() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-foreground mb-3">10. Contact Information</h2>
+            <h2 className="text-xl font-semibold text-foreground mb-3">10. Governing Law</h2>
             <p className="text-muted-foreground leading-relaxed">
-              If you have any questions about these Terms of Service, please contact us at 
-              support@ieosuia.com.
+              These terms shall be governed by and construed in accordance with the laws of South Africa. 
+              Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the 
+              courts of South Africa.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-foreground mb-3">11. Contact Information</h2>
+            <p className="text-muted-foreground leading-relaxed">
+              If you have any questions about these Terms of Service, please contact us at{" "}
+              <a href="mailto:support@ieosuia.com" className="text-primary hover:underline">support@ieosuia.com</a>{" "}
+              or visit our <Link to="/contact" className="text-primary hover:underline">Contact page</Link>.
             </p>
           </section>
         </div>
       </div>
+
+      <Footer variant="simple" />
     </div>
   );
 }

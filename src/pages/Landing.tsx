@@ -60,86 +60,137 @@ const steps = [
 
 const pricing = [
   {
-    name: "Starter",
-    price: "Free",
-    description: "Perfect for small businesses getting started",
+    name: "Free",
+    price: "R0",
+    description: "Try our Free plan and get started instantly. Perfect for exploring all the SMS Portal features.",
     features: [
-      "Up to 30 SMS/month",
-      "3 Basic templates",
-      "Basic dashboard",
-      "Email support",
+      "27 Free SMS",
+      "IEOSUIA branding included",
+      "Test the platform risk-free",
+      "No credit card required",
     ],
     allFeatures: [
-      "Up to 30 SMS/month",
-      "3 Basic templates",
+      "27 Free SMS",
+      "IEOSUIA branding included",
+      "Test the platform risk-free",
+      "No credit card required",
+      "Basic contact management",
       "Basic dashboard",
       "Email support",
-      "IEOSUIA watermark",
-      "Standard delivery",
-      "Basic contact management",
     ],
-    cta: "Start Free",
+    cta: "Try Now",
     popular: false,
   },
   {
     name: "Pro",
-    price: "R299",
-    period: "/month",
-    description: "For growing businesses with higher volume needs",
+    price: "R0.18",
+    period: "/SMS",
+    description: "Send SMS Pay-as-you-Go, starting from R0.18 per message. No subscriptions, no contracts.",
     features: [
-      "Unlimited SMS",
-      "Full template customization",
-      "Automated reminders",
-      "Advanced reports",
-      "SMS & Email sending",
-      "Priority support",
-    ],
-    allFeatures: [
-      "Unlimited SMS",
-      "Full template customization",
-      "Automated reminders",
-      "Advanced reports",
+      "Pay-as-you-Go pricing",
+      "No subscriptions or contracts",
+      "Volume discounts available",
       "SMS & Email sending",
       "Priority support",
       "No watermark",
+    ],
+    allFeatures: [
+      "Pay-as-you-Go pricing",
+      "No subscriptions or contracts",
+      "Volume discounts available",
+      "SMS & Email sending",
+      "Priority support",
+      "No watermark",
+      "Full template customization",
+      "Advanced reports",
       "A/B Testing",
       "Schedule recommendations",
       "Campaign comparison",
     ],
-    cta: "Start Free Trial",
+    cta: "Sign Up Now",
     popular: true,
   },
   {
-    name: "Business",
-    price: "R799",
-    period: "/month",
-    description: "Enterprise features for large organizations",
+    name: "Enterprise",
+    price: "Custom",
+    description: "For high-volume senders who need full features and VIP support.",
     features: [
-      "Everything in Pro",
+      "Custom pricing",
+      "Priority account management",
+      "Exclusive features",
       "Multi-user access",
       "Multi-business support",
-      "Role-based permissions",
-      "Advanced ledger",
       "Dedicated support",
     ],
     allFeatures: [
-      "Everything in Pro",
+      "Custom pricing",
+      "Priority account management",
+      "Exclusive features",
       "Multi-user access",
       "Multi-business support",
-      "Role-based permissions",
-      "Advanced ledger",
       "Dedicated support",
       "White-labeling",
       "Custom integrations",
       "SLA guarantee",
+      "Role-based permissions",
     ],
     cta: "Contact Sales",
     popular: false,
   },
 ];
 
+const smsPricing = [
+  { volume: "500 – 1,000", price: "R0.27" },
+  { volume: "1,001 – 5,000", price: "R0.25" },
+  { volume: "5,001 – 10,000", price: "R0.23" },
+  { volume: "10,001 – 50,000", price: "R0.20" },
+  { volume: "50,001 – 250,000", price: "R0.19" },
+  { volume: "250,001 – 500,000", price: "R0.18" },
+  { volume: "500,000+", price: "Contact Sales" },
+];
+
+const emailPricing = [
+  { volume: "< 500", price: "R0.28" },
+  { volume: "500 – 1,000", price: "R0.12" },
+  { volume: "1,001 – 5,000", price: "R0.10" },
+  { volume: "5,001 – 10,000", price: "R0.09" },
+  { volume: "10,001 – 50,000", price: "R0.08" },
+  { volume: "50,001 – 250,000", price: "R0.07" },
+  { volume: "250,001 – 500,000", price: "R0.06" },
+  { volume: "500,000+", price: "Contact Sales" },
+];
+
+const pricingFaqs = [
+  {
+    question: "How does the Pay-as-you-Go pricing work?",
+    answer: "You only pay for what you send. Buy credits in advance and use them whenever you need. No monthly subscriptions or contracts required. The more you send, the lower your per-message cost.",
+  },
+  {
+    question: "Are there any hidden fees?",
+    answer: "No hidden fees. The prices shown include carrier costs. VAT/BST/Tax may be added at checkout depending on your location.",
+  },
+  {
+    question: "What's included in the Free plan?",
+    answer: "The Free plan includes 27 SMS credits to test the platform. Free plan messages include IEOSUIA branding. No credit card required to start.",
+  },
+  {
+    question: "How do volume discounts work?",
+    answer: "As your sending volume increases, your per-message cost decreases. For example, SMS costs R0.27 for 500-1,000 messages, but drops to R0.18 for 250,001-500,000 messages.",
+  },
+  {
+    question: "Do credits expire?",
+    answer: "No, your credits never expire as long as your account remains active. Use them whenever you need.",
+  },
+  {
+    question: "Can I upgrade or downgrade my plan?",
+    answer: "With Pay-as-you-Go pricing, there's no plan to upgrade or downgrade. Simply buy more credits as needed. Enterprise customers can contact sales for custom arrangements.",
+  },
+];
+
 export default function Landing() {
   const [showAllFeatures, setShowAllFeatures] = useState(false);
+  const [showDetailedPricing, setShowDetailedPricing] = useState(false);
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -193,7 +244,7 @@ export default function Landing() {
             </Link>
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
-            No credit card required • 5 free SMS credits • POPIA compliant
+            No credit card required • 27 free SMS credits • POPIA compliant
           </p>
         </div>
       </section>
@@ -259,7 +310,7 @@ export default function Landing() {
               Simple, Transparent Pricing
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Choose the plan that fits your needs. No hidden fees.
+              Pay only for what you send. No hidden fees, no surprises.
             </p>
           </div>
           <div className="grid gap-8 md:grid-cols-3">
@@ -274,7 +325,7 @@ export default function Landing() {
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <span className="bg-primary text-primary-foreground text-sm font-medium px-4 py-1 rounded-full">
-                      Most Popular
+                      Recommended
                     </span>
                   </div>
                 )}
@@ -294,14 +345,25 @@ export default function Landing() {
                     </li>
                   ))}
                 </ul>
-                <Link to="/register">
+                <Link to={plan.name === "Enterprise" ? "/contact" : "/register"}>
                   <Button className="w-full" variant={plan.popular ? "default" : "outline"}>
                     {plan.cta}
                   </Button>
                 </Link>
+                {plan.popular && (
+                  <p className="text-xs text-muted-foreground text-center mt-3">
+                    Excl. VAT/BST/Tax (Includes carrier costs)
+                  </p>
+                )}
+                {plan.name === "Enterprise" && (
+                  <p className="text-xs text-muted-foreground text-center mt-3">
+                    T&C's apply
+                  </p>
+                )}
               </div>
             ))}
           </div>
+          
           {/* Show More Features Button */}
           <div className="text-center mt-8">
             <Button
@@ -321,6 +383,119 @@ export default function Landing() {
                 </>
               )}
             </Button>
+          </div>
+
+          {/* Detailed Pricing Tables */}
+          <div className="text-center mt-8">
+            <Button
+              variant="outline"
+              onClick={() => setShowDetailedPricing(!showDetailedPricing)}
+              className="gap-2"
+            >
+              {showDetailedPricing ? (
+                <>
+                  <ChevronUp className="h-4 w-4" />
+                  Hide Detailed Pricing
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-4 w-4" />
+                  View Detailed Pricing Tiers
+                </>
+              )}
+            </Button>
+          </div>
+
+          {showDetailedPricing && (
+            <div className="mt-12 grid gap-8 md:grid-cols-2">
+              {/* SMS Pricing Table */}
+              <div className="bg-card rounded-xl p-6 border border-border">
+                <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  SMS Pricing (Pro Plan)
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-3 text-foreground font-medium">Volume</th>
+                        <th className="text-right py-3 text-foreground font-medium">Price per SMS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-muted-foreground">
+                      {smsPricing.map((tier, index) => (
+                        <tr key={index} className="border-b border-border/50">
+                          <td className="py-3">{tier.volume}</td>
+                          <td className="py-3 text-right font-medium text-foreground">{tier.price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-muted-foreground mt-4">
+                  * Free plan SMS include IEOSUIA branding
+                </p>
+              </div>
+
+              {/* Email Pricing Table */}
+              <div className="bg-card rounded-xl p-6 border border-border">
+                <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <Mail className="h-5 w-5 text-primary" />
+                  Email Pricing (Pro Plan)
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-3 text-foreground font-medium">Volume</th>
+                        <th className="text-right py-3 text-foreground font-medium">Price per Email</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-muted-foreground">
+                      {emailPricing.map((tier, index) => (
+                        <tr key={index} className="border-b border-border/50">
+                          <td className="py-3">{tier.volume}</td>
+                          <td className="py-3 text-right font-medium text-foreground">{tier.price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-muted-foreground mt-4">
+                  * For 500,000+ emails, contact <a href="mailto:sales@ieosuia.com" className="text-primary hover:underline">sales@ieosuia.com</a>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Pricing FAQs */}
+          <div className="mt-16">
+            <h3 className="text-2xl font-bold text-foreground text-center mb-8">Pricing FAQs</h3>
+            <div className="max-w-3xl mx-auto space-y-4">
+              {pricingFaqs.map((faq, index) => (
+                <div
+                  key={index}
+                  className="bg-card rounded-xl border border-border overflow-hidden"
+                >
+                  <button
+                    onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
+                    className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="font-medium text-foreground">{faq.question}</span>
+                    {expandedFaq === index ? (
+                      <ChevronUp className="h-5 w-5 text-muted-foreground shrink-0" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" />
+                    )}
+                  </button>
+                  {expandedFaq === index && (
+                    <div className="px-4 pb-4">
+                      <p className="text-muted-foreground">{faq.answer}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
