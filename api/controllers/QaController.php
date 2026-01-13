@@ -240,9 +240,9 @@ class QaController
             return $stmt->rowCount() > 0;
         }, 'sms', 'database');
         
-        // Check sender_ids table exists
-        $tests[] = self::testResult('Sender IDs table exists', 'smoke', function() use ($pdo) {
-            $stmt = $pdo->query("SHOW TABLES LIKE 'sender_ids'");
+        // Check user_settings table exists (replaces sender_ids)
+        $tests[] = self::testResult('User Settings table exists', 'smoke', function() use ($pdo) {
+            $stmt = $pdo->query("SHOW TABLES LIKE 'user_settings'");
             return $stmt->rowCount() > 0;
         }, 'sms', 'database');
         
@@ -390,9 +390,9 @@ class QaController
             return count(array_intersect($required, $columns)) === count($required);
         }, 'auth', 'database');
         
-        // Check settings table
-        $tests[] = self::testResult('Settings table exists', 'smoke', function() use ($pdo) {
-            $stmt = $pdo->query("SHOW TABLES LIKE 'settings'");
+        // Check user_settings table (renamed from settings)
+        $tests[] = self::testResult('User Settings table exists', 'smoke', function() use ($pdo) {
+            $stmt = $pdo->query("SHOW TABLES LIKE 'user_settings'");
             return $stmt->rowCount() > 0;
         }, 'auth', 'database');
         

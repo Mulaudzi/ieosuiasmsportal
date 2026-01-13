@@ -232,14 +232,30 @@ export default function QaConsole() {
     
     const errors: string[] = [];
     
+    // Header with context
+    errors.push(`=== QA ERROR REPORT ===`);
+    errors.push(`Date: ${new Date().toISOString()}`);
+    errors.push(`System: ${results.meta.system}`);
+    errors.push(`User Mode: ${results.meta.user_mode}`);
+    errors.push(`Test Type: ${results.meta.test_type}`);
+    errors.push(`PHP Version: ${results.meta.php_version}`);
+    errors.push(`Duration: ${results.meta.duration_ms}ms`);
+    errors.push(`\n=== FAILED TESTS ===\n`);
+    
+    let errorCount = 0;
     for (const testType of ["smoke", "functional", "integration"] as const) {
       const tests = results[testType];
       if (tests) {
         for (const [system, systemTests] of Object.entries(tests)) {
           for (const test of systemTests as TestResult[]) {
             if (test.status === "failed") {
+              errorCount++;
               errors.push(
-                `SYSTEM: ${system}\nTYPE: ${testType}\nTEST: ${test.name}\nERROR: ${test.message}\nDETAILS: ${test.details || "N/A"}\n`
+                `[${errorCount}] ${test.name}\n` +
+                `    System: ${system}\n` +
+                `    Type: ${testType}\n` +
+                `    Error: ${test.message}\n` +
+                `    Details: ${test.details || "N/A"}\n`
               );
             }
           }
@@ -247,21 +263,64 @@ export default function QaConsole() {
       }
     }
     
-    for (const missing of results.missing) {
-      if (missing.severity === "error") {
+    // Add missing items with error severity
+    const missingErrors = results.missing.filter(m => m.severity === "error");
+    if (missingErrors.length > 0) {
+      errors.push(`\n=== MISSING COMPONENTS ===\n`);
+      for (const missing of missingErrors) {
+        errorCount++;
         errors.push(
-          `MISSING: ${missing.type}\nNAME: ${missing.name}\nPURPOSE: ${missing.purpose}\nSUGGESTION: ${missing.suggestion}\n`
+          `[${errorCount}] ${missing.name} (${missing.type})\n` +
+          `    Purpose: ${missing.purpose}\n` +
+          `    Fix: ${missing.suggestion}\n`
         );
       }
     }
     
-    if (errors.length === 0) {
-      toast({ title: "No errors to copy" });
+    // Add warnings
+    const warnings: string[] = [];
+    for (const testType of ["smoke", "functional", "integration"] as const) {
+      const tests = results[testType];
+      if (tests) {
+        for (const [system, systemTests] of Object.entries(tests)) {
+          for (const test of systemTests as TestResult[]) {
+            if (test.status === "warning") {
+              warnings.push(
+                `⚠️ ${test.name} (${system}/${testType}): ${test.message}`
+              );
+            }
+          }
+        }
+      }
+    }
+    
+    if (warnings.length > 0) {
+      errors.push(`\n=== WARNINGS ===\n`);
+      errors.push(warnings.join("\n"));
+    }
+    
+    errors.push(`\n=== SUMMARY ===`);
+    errors.push(`Total: ${results.summary.total}`);
+    errors.push(`Passed: ${results.summary.passed}`);
+    errors.push(`Failed: ${results.summary.failed}`);
+    errors.push(`Warnings: ${results.summary.warnings}`);
+    errors.push(`Missing: ${results.summary.missing}`);
+    
+    if (errorCount === 0 && warnings.length === 0) {
+      toast({ title: "No errors or warnings to copy" });
       return;
     }
     
-    navigator.clipboard.writeText(errors.join("\n---\n\n"));
-    toast({ title: "Errors copied to clipboard" });
+    navigator.clipboard.writeText(errors.join("\n"));
+    toast({ title: `Copied ${errorCount} errors and ${warnings.length} warnings` });
+  };
+
+  const copyFullReport = () => {
+    if (!results) return;
+    
+    const report = JSON.stringify(results, null, 2);
+    navigator.clipboard.writeText(report);
+    toast({ title: "Full report copied to clipboard" });
   };
 
   const exportReport = () => {
@@ -318,6 +377,10 @@ export default function QaConsole() {
               <Button variant="ghost" size="sm" onClick={copyErrors} className="gap-1.5 text-xs">
                 <Copy className="h-3.5 w-3.5" />
                 Copy Errors
+              </Button>
+              <Button variant="ghost" size="sm" onClick={copyFullReport} className="gap-1.5 text-xs">
+                <FileText className="h-3.5 w-3.5" />
+                Copy Full
               </Button>
               <Button variant="ghost" size="sm" onClick={exportReport} className="gap-1.5 text-xs">
                 <Download className="h-3.5 w-3.5" />
