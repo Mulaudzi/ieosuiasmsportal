@@ -119,4 +119,93 @@ class DashboardController {
         
         Response::success(['campaigns' => $campaigns]);
     }
+    
+    /**
+     * Get schedule recommendations based on delivery success rates
+     */
+    public function scheduleRecommendations(): void {
+        $userId = Auth::id();
+        $type = Request::query('type', 'sms'); // sms or email
+        
+        $pdo = db();
+        $thirtyDaysAgo = date('Y-m-d', strtotime('-30 days'));
+        
+        // Get delivery stats by hour and day of week for this user's campaigns
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(m.sent_at) as hour,
+                DAYOFWEEK(m.sent_at) as day_of_week,
+                COUNT(*) as total_count,
+                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered_count
+            FROM messages m
+            JOIN campaigns c ON m.campaign_id = c.id
+            WHERE c.user_id = ?
+            AND c.type = ?
+            AND m.sent_at >= ?
+            AND m.sent_at IS NOT NULL
+            GROUP BY HOUR(m.sent_at), DAYOFWEEK(m.sent_at)
+            HAVING total_count >= 5
+        ");
+        $stmt->execute([$userId, $type, $thirtyDaysAgo]);
+        $stats = $stmt->fetchAll();
+        
+        if (empty($stats)) {
+            // Fall back to global stats if user has no data
+            $stmt = $pdo->prepare("
+                SELECT 
+                    HOUR(m.sent_at) as hour,
+                    DAYOFWEEK(m.sent_at) as day_of_week,
+                    COUNT(*) as total_count,
+                    SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered_count
+                FROM messages m
+                JOIN campaigns c ON m.campaign_id = c.id
+                WHERE c.type = ?
+                AND m.sent_at >= ?
+                AND m.sent_at IS NOT NULL
+                GROUP BY HOUR(m.sent_at), DAYOFWEEK(m.sent_at)
+                HAVING total_count >= 10
+            ");
+            $stmt->execute([$type, $thirtyDaysAgo]);
+            $stats = $stmt->fetchAll();
+        }
+        
+        if (empty($stats)) {
+            Response::success([
+                'recommendations' => [],
+                'has_data' => false,
+            ]);
+            return;
+        }
+        
+        // Calculate success rates and find top times
+        $dayNames = ['', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        $recommendations = [];
+        
+        foreach ($stats as $row) {
+            $successRate = $row['total_count'] > 0 
+                ? round(($row['delivered_count'] / $row['total_count']) * 100, 1) 
+                : 0;
+            
+            if ($successRate >= 70) { // Only recommend times with decent success rates
+                $recommendations[] = [
+                    'day' => $dayNames[(int)$row['day_of_week']],
+                    'day_index' => (int)$row['day_of_week'],
+                    'hour' => (int)$row['hour'],
+                    'success_rate' => $successRate,
+                    'message_count' => (int)$row['total_count'],
+                ];
+            }
+        }
+        
+        // Sort by success rate descending
+        usort($recommendations, function($a, $b) {
+            return $b['success_rate'] <=> $a['success_rate'];
+        });
+        
+        // Return top 6 recommendations
+        Response::success([
+            'recommendations' => array_slice($recommendations, 0, 6),
+            'has_data' => true,
+        ]);
+    }
 }

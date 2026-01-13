@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { ScheduleRecommendations } from "@/components/campaigns/ScheduleRecommendations";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -651,26 +652,36 @@ export default function CreateEmailCampaign() {
             </RadioGroup>
 
             {formData.scheduleType === "schedule" && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="date">Date</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={formData.scheduleDate}
-                    onChange={(e) => setFormData({ ...formData, scheduleDate: e.target.value })}
-                    className="mt-1.5"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="time">Time</Label>
-                  <Input
-                    id="time"
-                    type="time"
-                    value={formData.scheduleTime}
-                    onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
-                    className="mt-1.5"
-                  />
+              <div className="space-y-4">
+                {/* Schedule Recommendations */}
+                <ScheduleRecommendations 
+                  campaignType="email"
+                  onSelectTime={(date, time) => 
+                    setFormData({ ...formData, scheduleDate: date, scheduleTime: time })
+                  }
+                />
+                
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="date">Date</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={formData.scheduleDate}
+                      onChange={(e) => setFormData({ ...formData, scheduleDate: e.target.value })}
+                      className="mt-1.5"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="time">Time</Label>
+                    <Input
+                      id="time"
+                      type="time"
+                      value={formData.scheduleTime}
+                      onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
+                      className="mt-1.5"
+                    />
+                  </div>
                 </div>
               </div>
             )}

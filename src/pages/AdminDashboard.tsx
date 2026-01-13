@@ -1179,22 +1179,55 @@ export default function AdminDashboard() {
             <h3 className="font-semibold text-foreground">Message Delivery Success</h3>
             <span className="text-xs text-muted-foreground">(Last 30 days)</span>
           </div>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm bg-muted" />
-              <span>No data</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm bg-destructive/40" />
-              <span>&lt;50%</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm bg-warning/60" />
-              <span>50-80%</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm bg-success" />
-              <span>&gt;90%</span>
+          <div className="flex items-center gap-2">
+            {/* Export buttons */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-popover">
+                <DropdownMenuItem
+                  onClick={() => {
+                    const token = localStorage.getItem('auth_token');
+                    window.open(`${import.meta.env.VITE_API_URL || 'https://sms.ieosuia.com/api'}/admin/heatmap/export?format=csv&token=${token}`, '_blank');
+                  }}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    const token = localStorage.getItem('auth_token');
+                    window.open(`${import.meta.env.VITE_API_URL || 'https://sms.ieosuia.com/api'}/admin/heatmap/export?format=pdf&token=${token}`, '_blank');
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Export as PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            {/* Legend */}
+            <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground ml-4">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm bg-muted" />
+                <span>No data</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm bg-destructive/40" />
+                <span>&lt;50%</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm bg-warning/60" />
+                <span>50-80%</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm bg-success" />
+                <span>&gt;90%</span>
+              </div>
             </div>
           </div>
         </div>

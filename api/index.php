@@ -87,6 +87,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/audit-logs/export', 'AdminController@exportAuditLogs');
     $router->get('/admin/system-health', 'AdminController@systemHealth');
     $router->get('/admin/activity-heatmap', 'AdminController@activityHeatmap');
+    $router->get('/admin/heatmap/export', 'AdminController@exportHeatmap');
     
     // Admin notification settings
     $router->get('/admin/notification-settings', 'AdminNotificationSettingsController@index');
@@ -108,6 +109,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/dashboard/stats', 'DashboardController@stats');
     $router->get('/dashboard/chart', 'DashboardController@chart');
     $router->get('/dashboard/recent-campaigns', 'DashboardController@recentCampaigns');
+    $router->get('/dashboard/schedule-recommendations', 'DashboardController@scheduleRecommendations');
     
     // Contacts
     $router->get('/contacts', 'ContactController@index');
