@@ -168,6 +168,20 @@ class ContactController {
         $skipDuplicates = Request::query('skip_duplicates', 'true') === 'true';
         $groupId = Request::query('group_id');
         
+        // Validate group_id ownership if provided
+        if ($groupId) {
+            if (!is_numeric($groupId)) {
+                Response::error('Invalid group ID', 400);
+            }
+            $group = table('contact_groups')
+                ->where('id', $groupId)
+                ->where('user_id', Auth::id())
+                ->first();
+            if (!$group) {
+                Response::error('Group not found or access denied', 404);
+            }
+        }
+        
         if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
             Response::error('No file uploaded', 400);
         }
@@ -340,27 +354,43 @@ class ContactController {
             'description' => 'max:500',
         ]);
         
-        $insertData = [
-            'user_id' => Auth::id(),
-            'name' => $data['name'],
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ];
-        
-        // Add description if provided
-        if (!empty($data['description'])) {
-            $insertData['description'] = $data['description'];
+        try {
+            $pdo = db();
+            $pdo->beginTransaction();
+            
+            $insertData = [
+                'user_id' => Auth::id(),
+                'name' => $data['name'],
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ];
+            
+            // Add description if provided
+            if (!empty($data['description'])) {
+                $insertData['description'] = $data['description'];
+            }
+            
+            $groupId = table('contact_groups')->insert($insertData);
+            
+            $pdo->commit();
+            
+            $group = table('contact_groups')->where('id', $groupId)->first();
+            $group['contact_count'] = 0;
+            
+            Response::created(['group' => $group]);
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            error_log('createGroup error: ' . $e->getMessage());
+            Response::error('Failed to create group', 500);
         }
-        
-        $groupId = table('contact_groups')->insert($insertData);
-        
-        $group = table('contact_groups')->where('id', $groupId)->first();
-        $group['contact_count'] = 0;
-        
-        Response::created(['group' => $group]);
     }
     
     public function updateGroup(array $params): void {
+        // Validate ID is numeric
+        if (!is_numeric($params['id'])) {
+            Response::error('Invalid group ID', 400);
+        }
+        
         $group = table('contact_groups')
             ->where('id', $params['id'])
             ->where('user_id', Auth::id())
@@ -372,20 +402,38 @@ class ContactController {
         
         $data = Request::validate([
             'name' => 'required|max:100',
+            'description' => 'max:500',
         ]);
         
-        table('contact_groups')->where('id', $params['id'])->update([
-            'name' => $data['name'],
-            'updated_at' => date('Y-m-d H:i:s'),
-        ]);
-        
-        $group = table('contact_groups')->where('id', $params['id'])->first();
-        $group['contact_count'] = table('group_contacts')->where('group_id', $group['id'])->count();
-        
-        Response::success(['group' => $group]);
+        try {
+            $updateData = [
+                'name' => $data['name'],
+                'updated_at' => date('Y-m-d H:i:s'),
+            ];
+            
+            // Update description if provided
+            if (isset($data['description'])) {
+                $updateData['description'] = $data['description'];
+            }
+            
+            table('contact_groups')->where('id', $params['id'])->update($updateData);
+            
+            $group = table('contact_groups')->where('id', $params['id'])->first();
+            $group['contact_count'] = table('group_contacts')->where('group_id', $group['id'])->count();
+            
+            Response::success(['group' => $group]);
+        } catch (Exception $e) {
+            error_log('updateGroup error: ' . $e->getMessage());
+            Response::error('Failed to update group', 500);
+        }
     }
     
     public function deleteGroup(array $params): void {
+        // Validate ID is numeric
+        if (!is_numeric($params['id'])) {
+            Response::error('Invalid group ID', 400);
+        }
+        
         $group = table('contact_groups')
             ->where('id', $params['id'])
             ->where('user_id', Auth::id())
@@ -395,9 +443,70 @@ class ContactController {
             Response::error('Group not found', 404);
         }
         
-        table('group_contacts')->where('group_id', $params['id'])->delete();
-        table('contact_groups')->where('id', $params['id'])->delete();
+        try {
+            $pdo = db();
+            $pdo->beginTransaction();
+            
+            table('group_contacts')->where('group_id', $params['id'])->delete();
+            table('contact_groups')->where('id', $params['id'])->delete();
+            
+            $pdo->commit();
+            Response::noContent();
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            error_log('deleteGroup error: ' . $e->getMessage());
+            Response::error('Failed to delete group', 500);
+        }
+    }
+    
+    /**
+     * Bulk delete contacts
+     */
+    public function bulkDelete(): void {
+        $data = Request::validate([
+            'ids' => 'required',
+        ]);
         
-        Response::noContent();
+        $ids = $data['ids'];
+        if (!is_array($ids) || empty($ids)) {
+            Response::error('Invalid contact IDs', 400);
+        }
+        
+        // Validate all IDs are numeric
+        foreach ($ids as $id) {
+            if (!is_numeric($id)) {
+                Response::error('Invalid contact ID in list', 400);
+            }
+        }
+        
+        $userId = Auth::id();
+        $deleted = 0;
+        
+        try {
+            $pdo = db();
+            $pdo->beginTransaction();
+            
+            foreach ($ids as $id) {
+                $contact = table('contacts')
+                    ->where('id', $id)
+                    ->where('user_id', $userId)
+                    ->first();
+                    
+                if ($contact) {
+                    // Delete group associations
+                    table('group_contacts')->where('contact_id', $id)->delete();
+                    // Delete the contact
+                    table('contacts')->where('id', $id)->delete();
+                    $deleted++;
+                }
+            }
+            
+            $pdo->commit();
+            Response::success(['deleted' => $deleted]);
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            error_log('Contact bulk delete error: ' . $e->getMessage());
+            Response::error('Failed to delete contacts', 500);
+        }
     }
 }

@@ -12,6 +12,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Plus,
   Search,
   Upload,
@@ -23,13 +33,21 @@ import {
   Ban,
   Loader2,
   RefreshCw,
+  MoreVertical,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { getContacts, getContactGroups, deleteContacts, exportContacts, handleApiError } from "@/lib/api";
+import { getContacts, getContactGroups, deleteContacts, deleteContactGroup, exportContacts, handleApiError } from "@/lib/api";
 import { ContactImportModal } from "@/components/contacts/ContactImportModal";
 import { AddContactModal } from "@/components/contacts/AddContactModal";
 import { CreateGroupModal } from "@/components/contacts/CreateGroupModal";
+import { EditGroupModal } from "@/components/contacts/EditGroupModal";
 import { format } from "date-fns";
 
 interface Contact {
@@ -46,6 +64,7 @@ interface Contact {
 interface Group {
   id: string;
   name: string;
+  description?: string;
   contact_count: number;
 }
 
@@ -61,6 +80,11 @@ export default function Contacts() {
   const [importModalOpen, setImportModalOpen] = useState(location.pathname === "/contacts/import");
   const [addContactModalOpen, setAddContactModalOpen] = useState(false);
   const [createGroupModalOpen, setCreateGroupModalOpen] = useState(false);
+  const [editGroupModalOpen, setEditGroupModalOpen] = useState(false);
+  const [groupToEdit, setGroupToEdit] = useState<Group | null>(null);
+  const [deleteGroupDialogOpen, setDeleteGroupDialogOpen] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, limit: 50 });
   const [sortOrder, setSortOrder] = useState("newest");
 
@@ -186,6 +210,40 @@ export default function Contacts() {
     }
   };
 
+  const handleEditGroup = (group: Group) => {
+    setGroupToEdit(group);
+    setEditGroupModalOpen(true);
+  };
+
+  const handleDeleteGroupConfirm = (group: Group) => {
+    setGroupToDelete(group);
+    setDeleteGroupDialogOpen(true);
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!groupToDelete) return;
+    setDeletingGroup(true);
+    try {
+      const response = await deleteContactGroup(groupToDelete.id);
+      if (response.success) {
+        toast({
+          title: "Group deleted",
+          description: `"${groupToDelete.name}" has been removed.`,
+        });
+        if (selectedGroup === groupToDelete.id) {
+          setSelectedGroup("all");
+        }
+        loadData();
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setDeletingGroup(false);
+      setDeleteGroupDialogOpen(false);
+      setGroupToDelete(null);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     try {
       return format(new Date(dateString), "MMM d, yyyy");
@@ -202,6 +260,12 @@ export default function Contacts() {
       <ContactImportModal open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) loadData(); }} />
       <AddContactModal open={addContactModalOpen} onOpenChange={(open) => { setAddContactModalOpen(open); if (!open) loadData(); }} />
       <CreateGroupModal open={createGroupModalOpen} onOpenChange={(open) => { setCreateGroupModalOpen(open); if (!open) loadData(); }} />
+      <EditGroupModal 
+        open={editGroupModalOpen} 
+        onOpenChange={(open) => { setEditGroupModalOpen(open); if (!open) loadData(); }} 
+        group={groupToEdit}
+        onSuccess={loadData}
+      />
       <DashboardLayout
         title="Contacts"
         subtitle="Manage your contact lists and groups"
@@ -254,22 +318,54 @@ export default function Contacts() {
                 </button>
                 
                 {groups.map((group) => (
-                  <button
+                  <div
                     key={group.id}
-                    onClick={() => setSelectedGroup(group.id)}
                     className={cn(
-                      "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
+                      "group/item flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
                       selectedGroup === group.id
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
-                    <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedGroup(group.id)}
+                      className="flex flex-1 items-center gap-2"
+                    >
                       <Users className="h-4 w-4" />
                       <span>{group.name}</span>
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs opacity-80">{(group.contact_count || 0).toLocaleString()}</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "h-6 w-6 opacity-0 group-hover/item:opacity-100",
+                              selectedGroup === group.id ? "hover:bg-primary-foreground/20" : ""
+                            )}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-popover">
+                          <DropdownMenuItem onClick={() => handleEditGroup(group)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteGroupConfirm(group)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                    <span className="text-xs opacity-80">{(group.contact_count || 0).toLocaleString()}</span>
-                  </button>
+                  </div>
                 ))}
 
                 <button
@@ -470,6 +566,29 @@ export default function Contacts() {
           </div>
         </div>
       </DashboardLayout>
+
+      {/* Delete Group Confirmation Dialog */}
+      <AlertDialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Group</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{groupToDelete?.name}"? This will remove the group but not the contacts in it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteGroup} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deletingGroup}
+            >
+              {deletingGroup && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

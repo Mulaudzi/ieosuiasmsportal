@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Mail, Info, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { createTemplate, updateTemplate, handleApiError } from "@/lib/api";
 
 interface Template {
   id?: string;
@@ -96,24 +97,46 @@ export function TemplateModal({ open, onOpenChange, template, onSave }: Template
     }
 
     setSaving(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    const savedTemplate: Template = {
-      id: template?.id || `template-${Date.now()}`,
-      name,
-      type,
-      content,
-      subject: type === "email" ? subject : undefined,
-    };
-
-    onSave?.(savedTemplate);
-    toast({
-      title: isEditing ? "Template updated" : "Template created",
-      description: `"${name}" has been saved.`,
-    });
-    setSaving(false);
-    onOpenChange(false);
+    
+    try {
+      if (isEditing && template?.id) {
+        // Update existing template
+        const response = await updateTemplate(template.id, {
+          name,
+          content,
+          subject: type === "email" ? subject : undefined,
+        });
+        
+        if (response.success) {
+          toast({
+            title: "Template updated",
+            description: `"${name}" has been saved.`,
+          });
+          onSave?.(response.data?.template || { id: template.id, name, type, content, subject });
+          onOpenChange(false);
+        }
+      } else {
+        // Create new template
+        const response = await createTemplate({
+          name,
+          content,
+          type,
+        });
+        
+        if (response.success) {
+          toast({
+            title: "Template created",
+            description: `"${name}" has been saved.`,
+          });
+          onSave?.(response.data?.template || { name, type, content, subject });
+          onOpenChange(false);
+        }
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const charCount = content.length;

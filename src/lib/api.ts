@@ -149,7 +149,10 @@ export const checkCampaignCredits = (recipientCount: number, type: 'sms' | 'emai
 export const importContacts = (formData: FormData) => api.upload<{ imported: number; failed: number; duplicates: number; message: string }>('/contacts/import', formData);
 export const getContactGroups = () => api.get<{ groups: any[] }>('/contact-groups');
 export const createContactGroup = (name: string, description?: string) => api.post<{ group: any }>('/contact-groups', { name, description });
+export const updateContactGroup = (id: string, name: string, description?: string) => api.put<{ group: any }>(`/contact-groups/${id}`, { name, description });
+export const deleteContactGroup = (id: string) => api.delete<void>(`/contact-groups/${id}`);
 export const deleteContacts = (ids: string[]) => api.post<any>('/contacts/bulk-delete', { ids });
+export const deleteContact = (id: string) => api.delete<void>(`/contacts/${id}`);
 export const exportContacts = (groupId?: string) => {
   const token = localStorage.getItem('auth_token');
   const url = groupId 
@@ -177,7 +180,7 @@ export const deleteAttachment = (id: string) => api.delete(`/attachments/${id}`)
 export const getTemplates = (type?: string) => api.get<any[]>('/templates', type ? { type } : undefined);
 export const getTemplate = (id: string) => api.get<any>(`/templates/${id}`);
 export const createTemplate = (data: { name: string; content: string; type: string }) => api.post<any>('/templates', data);
-export const updateTemplate = (id: string, data: { name?: string; content?: string; type?: string }) => api.put<any>(`/templates/${id}`, data);
+export const updateTemplate = (id: string, data: { name?: string; content?: string; subject?: string }) => api.put<any>(`/templates/${id}`, data);
 export const deleteTemplate = (id: string) => api.delete(`/templates/${id}`);
 
 // Profile
