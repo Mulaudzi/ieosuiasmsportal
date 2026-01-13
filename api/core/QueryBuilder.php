@@ -133,6 +133,20 @@ class QueryBuilder {
         return (int) ($result['count'] ?? 0);
     }
     
+    public function sum(string $column): float {
+        $escapedColumn = $this->escapeColumn($column);
+        $sql = "SELECT COALESCE(SUM($escapedColumn), 0) as total FROM {$this->table}";
+        
+        if (!empty($this->wheres)) {
+            $sql .= " WHERE " . implode(' AND ', $this->wheres);
+        }
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->bindings);
+        $result = $stmt->fetch();
+        return (float) ($result['total'] ?? 0);
+    }
+    
     public function insert(array $data): int {
         $columns = implode(', ', array_map(fn($col) => $this->escapeColumn($col), array_keys($data)));
         $placeholders = implode(', ', array_fill(0, count($data), '?'));

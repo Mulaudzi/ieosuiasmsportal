@@ -22,7 +22,7 @@ class TelnyxService {
      * Send SMS via Telnyx
      * Uses messaging profile (number pool) for automatic number selection
      */
-    public function send(string $phone, string $message, string $senderId = null): array {
+    public function send(string $phone, string $message, ?string $senderId = null): array {
         if (!$this->apiKey) {
             return ['success' => false, 'error' => 'SMS gateway not configured'];
         }
