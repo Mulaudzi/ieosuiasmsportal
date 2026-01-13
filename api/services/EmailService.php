@@ -142,6 +142,29 @@ class EmailService
     }
 
     /**
+     * Send payment confirmation email
+     */
+    public static function sendPaymentConfirmationEmail(string $email, string $name, float $amount, int $credits, string $reference): array
+    {
+        $appUrl = env('FRONTEND_URL', env('APP_URL', 'https://sms.ieosuia.com'));
+        $walletUrl = $appUrl . '/wallet';
+        $appName = env('SMTP_FROM_NAME', env('MAIL_FROM_NAME', 'IEOSUIA SMS Portal'));
+        
+        $subject = 'Payment Confirmed - ' . number_format($credits) . ' Credits Added';
+        
+        $html = self::getEmailTemplate(
+            'Payment Successful!',
+            "Hello $name,",
+            'Great news! Your payment of <strong>R' . number_format($amount, 2) . '</strong> has been successfully processed. We have added <strong>' . number_format($credits) . ' SMS credits</strong> to your account.<br><br>Reference: <code>' . htmlspecialchars($reference) . '</code>',
+            $walletUrl,
+            'View Your Wallet',
+            'Thank you for your purchase! Your credits are ready to use immediately. If you have any questions about your payment, please contact our support team.'
+        );
+        
+        return self::send($email, $subject, $html);
+    }
+    
+    /**
      * Send welcome email after verification
      */
     public static function sendWelcomeEmail(string $email, string $name): array
