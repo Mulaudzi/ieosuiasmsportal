@@ -24,6 +24,8 @@ import Contacts from "./pages/Contacts";
 import Templates from "./pages/Templates";
 import Wallet from "./pages/Wallet";
 import PaymentHistory from "./pages/PaymentHistory";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import PaymentFailed from "./pages/PaymentFailed";
 import Reports from "./pages/Reports";
 import CampaignComparison from "./pages/CampaignComparison";
 import Settings from "./pages/Settings";
@@ -86,6 +88,8 @@ const App = () => (
             <Route path="/templates" element={<ProtectedRoute requireVerified><Templates /></ProtectedRoute>} />
             <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
             <Route path="/wallet/payments" element={<ProtectedRoute><PaymentHistory /></ProtectedRoute>} />
+            <Route path="/payment/success" element={<ProtectedRoute><PaymentSuccess /></ProtectedRoute>} />
+            <Route path="/payment/failed" element={<ProtectedRoute><PaymentFailed /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute requireVerified><Reports /></ProtectedRoute>} />
             <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

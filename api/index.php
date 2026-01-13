@@ -213,6 +213,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/wallet/stats', 'WalletController@stats');
     $router->get('/wallet/transactions', 'WalletController@transactions');
     $router->get('/wallet/payments', 'WalletController@payments');
+    $router->get('/wallet/receipt', 'WalletController@receipt');
     $router->post('/wallet/buy', 'WalletController@buy');
     
     // Settings
@@ -259,6 +260,7 @@ $router->post('/webhooks/telnyx/inbound', 'TelnyxWebhookController@inbound');
 
 // Payment Webhooks (public with signature validation)
 $router->post('/payments/payfast/itn', 'PaymentWebhookController@payfastItn');
+$router->post('/payments/payfast/subscription', 'PaymentWebhookController@payfastSubscriptionItn');
 $router->post('/payments/paystack/webhook', 'PaymentWebhookController@paystackWebhook');
 $router->post('/payments/ozow/notify', 'PaymentWebhookController@ozowNotify');
 

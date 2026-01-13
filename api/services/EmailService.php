@@ -327,4 +327,13 @@ HTML;
 </html>
 HTML;
     }
+    
+    /**
+     * Send a simple raw text email
+     */
+    public static function sendRawEmail(string $to, string $subject, string $body): array
+    {
+        $html = nl2br(htmlspecialchars($body));
+        return self::send($to, $subject, $html, $body);
+    }
 }
