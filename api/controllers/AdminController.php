@@ -432,4 +432,252 @@ class AdminController
         echo $html;
         exit;
     }
+    
+    /**
+     * Get system health status
+     */
+    public function systemHealth(): void
+    {
+        $this->requireAdmin();
+        
+        $health = [
+            'database' => $this->checkDatabaseHealth(),
+            'smtp' => $this->checkSmtpHealth(),
+            'api' => $this->checkApiHealth(),
+            'storage' => $this->checkStorageHealth(),
+        ];
+        
+        // Overall status
+        $statuses = array_column($health, 'status');
+        if (in_array('error', $statuses)) {
+            $health['overall'] = 'error';
+        } elseif (in_array('warning', $statuses)) {
+            $health['overall'] = 'warning';
+        } else {
+            $health['overall'] = 'healthy';
+        }
+        
+        Response::success(['health' => $health]);
+    }
+    
+    private function checkDatabaseHealth(): array
+    {
+        $start = microtime(true);
+        try {
+            $pdo = db();
+            $stmt = $pdo->query("SELECT 1");
+            $stmt->fetch();
+            $responseTime = round((microtime(true) - $start) * 1000, 2);
+            
+            // Get some stats
+            $userCount = table('users')->count();
+            $messageCount = table('messages')->count();
+            
+            return [
+                'status' => $responseTime < 100 ? 'healthy' : ($responseTime < 500 ? 'warning' : 'error'),
+                'response_time_ms' => $responseTime,
+                'message' => 'Database connected',
+                'details' => [
+                    'users' => $userCount,
+                    'messages' => $messageCount,
+                ],
+            ];
+        } catch (Exception $e) {
+            return [
+                'status' => 'error',
+                'response_time_ms' => null,
+                'message' => 'Database connection failed',
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+    
+    private function checkSmtpHealth(): array
+    {
+        try {
+            // Check if SMTP settings exist and were recently tested
+            $smtpSettings = table('smtp_settings')
+                ->where('setting_type', 'system')
+                ->where('is_active', 1)
+                ->first();
+            
+            if (!$smtpSettings) {
+                return [
+                    'status' => 'warning',
+                    'message' => 'SMTP not configured',
+                    'last_tested' => null,
+                ];
+            }
+            
+            $lastTestResult = $smtpSettings['last_test_result'] ?? null;
+            $lastTestedAt = $smtpSettings['last_tested_at'] ?? null;
+            
+            return [
+                'status' => $lastTestResult === 'success' ? 'healthy' : ($lastTestResult === 'failed' ? 'error' : 'warning'),
+                'message' => $lastTestResult === 'success' ? 'SMTP connected' : ($lastTestResult === 'failed' ? 'SMTP test failed' : 'SMTP not tested'),
+                'last_tested' => $lastTestedAt,
+                'host' => $smtpSettings['host'] ?? null,
+                'error' => $smtpSettings['last_test_error'] ?? null,
+            ];
+        } catch (Exception $e) {
+            return [
+                'status' => 'error',
+                'message' => 'Error checking SMTP',
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+    
+    private function checkApiHealth(): array
+    {
+        // Measure time for a simple operation
+        $start = microtime(true);
+        $auth = Auth::user();
+        $responseTime = round((microtime(true) - $start) * 1000, 2);
+        
+        // Get recent error rate from audit logs (last hour)
+        $pdo = db();
+        $oneHourAgo = date('Y-m-d H:i:s', strtotime('-1 hour'));
+        
+        $stmt = $pdo->prepare("
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN action LIKE '%failed%' OR action LIKE '%error%' THEN 1 ELSE 0 END) as errors
+            FROM audit_logs
+            WHERE created_at >= ?
+        ");
+        $stmt->execute([$oneHourAgo]);
+        $stats = $stmt->fetch();
+        
+        $errorRate = $stats['total'] > 0 ? round(($stats['errors'] / $stats['total']) * 100, 1) : 0;
+        
+        return [
+            'status' => $responseTime < 50 && $errorRate < 5 ? 'healthy' : ($responseTime < 200 && $errorRate < 20 ? 'warning' : 'error'),
+            'response_time_ms' => $responseTime,
+            'message' => 'API responsive',
+            'details' => [
+                'requests_last_hour' => (int) $stats['total'],
+                'error_rate' => $errorRate . '%',
+            ],
+        ];
+    }
+    
+    private function checkStorageHealth(): array
+    {
+        $uploadDir = __DIR__ . '/../uploads';
+        
+        if (!is_dir($uploadDir)) {
+            return [
+                'status' => 'warning',
+                'message' => 'Upload directory not found',
+            ];
+        }
+        
+        $isWritable = is_writable($uploadDir);
+        $freeSpace = disk_free_space($uploadDir);
+        $totalSpace = disk_total_space($uploadDir);
+        $usedPercent = $totalSpace > 0 ? round((($totalSpace - $freeSpace) / $totalSpace) * 100, 1) : 0;
+        
+        return [
+            'status' => $isWritable && $usedPercent < 80 ? 'healthy' : ($isWritable && $usedPercent < 95 ? 'warning' : 'error'),
+            'message' => $isWritable ? 'Storage accessible' : 'Storage not writable',
+            'details' => [
+                'free_space_gb' => round($freeSpace / 1073741824, 2),
+                'total_space_gb' => round($totalSpace / 1073741824, 2),
+                'used_percent' => $usedPercent . '%',
+            ],
+        ];
+    }
+    
+    /**
+     * Get activity heatmap data
+     */
+    public function activityHeatmap(): void
+    {
+        $this->requireAdmin();
+        
+        $pdo = db();
+        $thirtyDaysAgo = date('Y-m-d', strtotime('-30 days'));
+        
+        // Registration activity by hour and day of week
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(created_at) as hour,
+                DAYOFWEEK(created_at) as day_of_week,
+                COUNT(*) as count
+            FROM users
+            WHERE created_at >= ?
+            GROUP BY HOUR(created_at), DAYOFWEEK(created_at)
+        ");
+        $stmt->execute([$thirtyDaysAgo]);
+        $registrations = $stmt->fetchAll();
+        
+        // Campaign activity by hour and day of week
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(created_at) as hour,
+                DAYOFWEEK(created_at) as day_of_week,
+                COUNT(*) as count
+            FROM campaigns
+            WHERE created_at >= ?
+            GROUP BY HOUR(created_at), DAYOFWEEK(created_at)
+        ");
+        $stmt->execute([$thirtyDaysAgo]);
+        $campaigns = $stmt->fetchAll();
+        
+        // Messages by hour and day of week  
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(sent_at) as hour,
+                DAYOFWEEK(sent_at) as day_of_week,
+                COUNT(*) as count
+            FROM messages
+            WHERE sent_at >= ? AND sent_at IS NOT NULL
+            GROUP BY HOUR(sent_at), DAYOFWEEK(sent_at)
+        ");
+        $stmt->execute([$thirtyDaysAgo]);
+        $messages = $stmt->fetchAll();
+        
+        // Format into heatmap grid (7 days x 24 hours)
+        $registrationGrid = $this->buildHeatmapGrid($registrations);
+        $campaignGrid = $this->buildHeatmapGrid($campaigns);
+        $messageGrid = $this->buildHeatmapGrid($messages);
+        
+        Response::success([
+            'heatmap' => [
+                'registrations' => $registrationGrid,
+                'campaigns' => $campaignGrid,
+                'messages' => $messageGrid,
+            ],
+            'period' => '30 days',
+        ]);
+    }
+    
+    private function buildHeatmapGrid(array $data): array
+    {
+        // Initialize 7x24 grid (Sunday=1 to Saturday=7, hours 0-23)
+        $grid = [];
+        for ($day = 1; $day <= 7; $day++) {
+            $grid[$day] = array_fill(0, 24, 0);
+        }
+        
+        // Fill with data
+        foreach ($data as $row) {
+            $day = (int) $row['day_of_week'];
+            $hour = (int) $row['hour'];
+            $grid[$day][$hour] = (int) $row['count'];
+        }
+        
+        // Convert to array format with day names
+        $dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        $result = [];
+        for ($day = 1; $day <= 7; $day++) {
+            $result[] = [
+                'day' => $dayNames[$day - 1],
+                'hours' => $grid[$day],
+            ];
+        }
+        
+        return $result;
+    }
 }

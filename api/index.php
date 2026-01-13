@@ -85,6 +85,8 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/sender-ids', 'AdminController@senderIds');
     $router->get('/admin/audit-logs', 'AdminController@auditLogs');
     $router->get('/admin/audit-logs/export', 'AdminController@exportAuditLogs');
+    $router->get('/admin/system-health', 'AdminController@systemHealth');
+    $router->get('/admin/activity-heatmap', 'AdminController@activityHeatmap');
     
     // Admin notification settings
     $router->get('/admin/notification-settings', 'AdminNotificationSettingsController@index');
