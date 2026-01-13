@@ -118,9 +118,10 @@ export default function Login() {
       const result = await login("godtheson@ieosuia.com", adminTokenRef.current, recaptchaToken || undefined);
       
       if (result.success) {
-        // Generate admin session token and store it
+        // Generate admin session token and store it with timestamp
         const adminSessionToken = btoa(`${Date.now()}-${adminTokenRef.current}-admin`);
         sessionStorage.setItem("admin_session", adminSessionToken);
+        sessionStorage.setItem("admin_session_timestamp", Date.now().toString());
         
         toast({
           title: "Admin Access Granted",

@@ -91,6 +91,7 @@ import {
   Filter,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminSession } from "@/hooks/useAdminSession";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -430,6 +431,10 @@ function ScheduledCampaignCard({ campaign, isPast }: { campaign: ScheduledCampai
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
+  
+  // Admin session timeout handling
+  useAdminSession();
+  
   const [users, setUsers] = useState<User[]>([]);
   const [senderIds, setSenderIds] = useState<SenderId[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -505,7 +510,7 @@ export default function AdminDashboard() {
 
     // Check for admin session token
     const adminSession = sessionStorage.getItem("admin_session");
-    const isAdminUser = user?.email === "admin@ieosuia.com";
+    const isAdminUser = user?.email === "godtheson@ieosuia.com";
 
     if (!adminSession || !isAdminUser) {
       setAccessDenied(true);
