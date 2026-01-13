@@ -83,7 +83,7 @@ export default function VerifyEmailReminder() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             Already verified?{" "}
-            <Link to="/" className="text-primary hover:underline">
+            <Link to="/dashboard" className="text-primary hover:underline">
               Go to Dashboard
             </Link>
           </p>

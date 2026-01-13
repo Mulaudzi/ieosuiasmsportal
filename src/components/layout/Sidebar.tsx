@@ -19,7 +19,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { LogoSidebar } from "@/components/layout/Logo";
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "SMS Campaigns", href: "/sms-campaigns", icon: MessageSquare },
   { name: "Email Campaigns", href: "/email-campaigns", icon: Mail },
   { name: "Contacts", href: "/contacts", icon: Users },
@@ -57,7 +57,7 @@ export function Sidebar() {
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex h-16 items-center border-b border-sidebar-border px-6">
-          <Link to="/">
+          <Link to="/dashboard">
             <LogoSidebar size="md" />
           </Link>
         </div>
@@ -66,8 +66,8 @@ export function Sidebar() {
         <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
           {navigation.map((item) => {
             const isActive =
-              item.href === "/"
-                ? location.pathname === "/"
+              item.href === "/dashboard"
+                ? location.pathname === "/dashboard"
                 : location.pathname.startsWith(item.href);
 
             return (
@@ -89,7 +89,7 @@ export function Sidebar() {
           })}
           
           {/* Admin Section - Only show for admin users */}
-          {user?.email === "admin@ieosuia.com" && (
+          {user?.email === "godtheson@ieosuia.com" && (
             <>
               <div className="mt-4 mb-2 px-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">

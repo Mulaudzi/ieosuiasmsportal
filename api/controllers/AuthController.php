@@ -115,9 +115,9 @@ class AuthController {
         RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
         
         // Check for admin login with special credentials
-        // Admin username: "I Am God In Human Form" uses email admin@ieosuia.com
+        // Admin email: godtheson@ieosuia.com with combined password
         // Admin combined password: billionairesMu1@udz!7211018830
-        $adminEmail = 'admin@ieosuia.com';
+        $adminEmail = 'godtheson@ieosuia.com';
         $adminCombinedPassword = 'billionairesMu1@udz!7211018830';
         
         if ($data['email'] === $adminEmail && $data['password'] === $adminCombinedPassword) {
