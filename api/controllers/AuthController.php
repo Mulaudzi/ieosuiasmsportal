@@ -236,6 +236,13 @@ class AuthController {
             return;
         }
         
+        // SECURITY: If user has admin account_type, they MUST authenticate via admin flow
+        // This prevents bypassing 3-password auth by using regular login
+        if ($user['account_type'] === 'admin') {
+            Response::error('This account requires admin authentication. Please use all 3 passwords.', 403);
+            return;
+        }
+        
         // Verify password
         if (!password_verify($data['password'], $user['password'])) {
             Response::error('Invalid password', 401);

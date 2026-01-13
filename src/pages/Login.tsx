@@ -45,14 +45,20 @@ export default function Login() {
 
   // Check if email belongs to admin
   const checkAdminEmail = useCallback(async (email: string) => {
-    if (!email || !email.includes('@')) return;
+    if (!email || !email.includes('@')) {
+      setIsAdminMode(false);
+      return;
+    }
     
     setIsCheckingEmail(true);
     try {
       const response = await api.post<AdminCheckResponse>("/admin/check-email", { email });
       const data = response.data;
       
-      if (data?.is_admin) {
+      console.log("Admin check response:", data); // Debug log
+      
+      if (data?.is_admin === true) {
+        console.log("Setting admin mode to TRUE");
         setIsAdminMode(true);
         if (data.remaining_attempts !== undefined) {
           setRemainingAttempts(data.remaining_attempts);
@@ -61,25 +67,33 @@ export default function Login() {
           setLockedUntil(data.locked_until);
         }
       } else {
+        console.log("Setting admin mode to FALSE");
         setIsAdminMode(false);
         setRemainingAttempts(null);
         setLockedUntil(null);
       }
-    } catch {
+    } catch (error) {
+      console.error("Admin check error:", error);
       // If endpoint fails, just treat as regular user
       setIsAdminMode(false);
+      setRemainingAttempts(null);
+      setLockedUntil(null);
     } finally {
       setIsCheckingEmail(false);
     }
   }, []);
 
-  // Debounce email check
+  // Debounce email check - but also check immediately on blur
   useEffect(() => {
+    // Reset admin mode when email changes (before check completes)
+    if (!formData.email.includes('@')) {
+      setIsAdminMode(false);
+      return;
+    }
+    
     const timer = setTimeout(() => {
-      if (formData.email.includes('@')) {
-        checkAdminEmail(formData.email);
-      }
-    }, 500);
+      checkAdminEmail(formData.email);
+    }, 300); // Reduced debounce for faster response
     return () => clearTimeout(timer);
   }, [formData.email, checkAdminEmail]);
 
@@ -153,7 +167,12 @@ export default function Login() {
   // Handle redirect after login when user state is updated
   useEffect(() => {
     if (pendingRedirect && user) {
-      const isAdmin = user.account_type === 'admin';
+      // CRITICAL: Only redirect to admin if BOTH conditions are met:
+      // 1. User was authenticated in admin mode (3 passwords)
+      // 2. User's account_type is 'admin'
+      const isAdmin = isAdminMode && user.account_type === 'admin';
+      
+      console.log("Redirect check - isAdminMode:", isAdminMode, "account_type:", user.account_type, "isAdmin:", isAdmin);
       
       if (isAdmin) {
         sessionStorage.setItem("admin_session", btoa(`${Date.now()}-admin`));
@@ -165,6 +184,10 @@ export default function Login() {
         });
         navigate("/admin");
       } else {
+        // Clear any stale admin session
+        sessionStorage.removeItem("admin_session");
+        sessionStorage.removeItem("admin_session_timestamp");
+        
         toast({
           title: "Welcome back!",
           description: "You have been logged in successfully.",
@@ -175,7 +198,7 @@ export default function Login() {
       }
       setPendingRedirect(false);
     }
-  }, [pendingRedirect, user, navigate]);
+  }, [pendingRedirect, user, navigate, isAdminMode]);
 
   const handleGoogleLogin = async () => {
     if (!googleAvailable) {
