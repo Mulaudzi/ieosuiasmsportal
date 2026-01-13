@@ -194,6 +194,50 @@ class WalletController {
         exit;
     }
     
+    /**
+     * Get available credit packages
+     */
+    public function packages(): void {
+        // Return hardcoded packages for now
+        // Can be made dynamic from database later
+        $packages = [
+            [
+                'id' => 1,
+                'credits' => 1000,
+                'price' => 270,
+                'currency' => 'ZAR',
+                'price_per_credit' => 0.27,
+                'popular' => false,
+            ],
+            [
+                'id' => 2,
+                'credits' => 5000,
+                'price' => 1350,
+                'currency' => 'ZAR',
+                'price_per_credit' => 0.27,
+                'popular' => true,
+            ],
+            [
+                'id' => 3,
+                'credits' => 10000,
+                'price' => 2700,
+                'currency' => 'ZAR',
+                'price_per_credit' => 0.27,
+                'popular' => false,
+            ],
+            [
+                'id' => 4,
+                'credits' => 25000,
+                'price' => 6750,
+                'currency' => 'ZAR',
+                'price_per_credit' => 0.27,
+                'popular' => false,
+            ],
+        ];
+        
+        Response::success(['packages' => $packages]);
+    }
+    
     public function buy(): void {
         $data = Request::validate([
             'amount' => 'required|numeric|min:10',

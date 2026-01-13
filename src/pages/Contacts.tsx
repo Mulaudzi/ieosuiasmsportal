@@ -83,7 +83,9 @@ export default function Contacts() {
       }
       
       if (groupsRes.success && groupsRes.data) {
-        setGroups(groupsRes.data || []);
+        // Handle response format: { groups: [...] }
+        const groupsData = Array.isArray(groupsRes.data) ? groupsRes.data : (groupsRes.data.groups || []);
+        setGroups(groupsData);
       }
     } catch (error) {
       handleApiError(error);
