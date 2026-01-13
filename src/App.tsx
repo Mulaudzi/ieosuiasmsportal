@@ -36,6 +36,7 @@ import Contact from "./pages/Contact";
 import SenderIds from "./pages/SenderIds";
 import CreateEmailCampaign from "./pages/CreateEmailCampaign";
 import AdminDashboard from "./pages/AdminDashboard";
+import Pricing from "./pages/Pricing";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ const App = () => (
           <CookieConsent />
           <Routes>
             <Route path="/landing" element={<Landing />} />
+            <Route path="/pricing" element={<Pricing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />

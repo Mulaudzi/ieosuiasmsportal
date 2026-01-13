@@ -110,10 +110,10 @@ export function Footer({ variant = "full" }: FooterProps) {
           
           {/* Product */}
           <div>
-            <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Product</h4>
+          <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Product</h4>
             <ul className="space-y-2 text-sm text-sidebar-muted">
-              <li><a href="#features" className="hover:text-sidebar-primary-foreground">Features</a></li>
-              <li><a href="#pricing" className="hover:text-sidebar-primary-foreground">Pricing</a></li>
+              <li><Link to="/landing#features" className="hover:text-sidebar-primary-foreground">Features</Link></li>
+              <li><Link to="/pricing" className="hover:text-sidebar-primary-foreground">Pricing</Link></li>
               <li><Link to="/documentation" className="hover:text-sidebar-primary-foreground">Documentation</Link></li>
               <li><Link to="/login" className="hover:text-sidebar-primary-foreground">Login</Link></li>
               <li><Link to="/register" className="hover:text-sidebar-primary-foreground">Sign Up</Link></li>
