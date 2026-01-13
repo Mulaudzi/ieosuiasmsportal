@@ -406,6 +406,268 @@ HTML;
     }
     
     /**
+     * Get submission trends for the last 30 days (admin only)
+     */
+    public static function trends(): void
+    {
+        $user = Auth::user();
+        if (!$user || $user['account_type'] !== 'admin') {
+            Response::error('Unauthorized', 403);
+            return;
+        }
+        
+        $db = db();
+        $days = (int) ($_GET['days'] ?? 30);
+        $days = min(max($days, 7), 90); // Limit between 7 and 90 days
+        
+        // Get daily submission counts
+        $stmt = $db->prepare("
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as total,
+                SUM(CASE WHEN purpose = 'general' THEN 1 ELSE 0 END) as general,
+                SUM(CASE WHEN purpose = 'support' THEN 1 ELSE 0 END) as support,
+                SUM(CASE WHEN purpose = 'sales' THEN 1 ELSE 0 END) as sales,
+                SUM(CASE WHEN replied = 1 THEN 1 ELSE 0 END) as replied,
+                SUM(CASE WHEN status = 'bounced' THEN 1 ELSE 0 END) as bounced
+            FROM contact_email_logs
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+            GROUP BY DATE(created_at)
+            ORDER BY date ASC
+        ");
+        $stmt->execute([$days]);
+        $results = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        // Create a complete date range with zeros for missing days
+        $trends = [];
+        $startDate = new \DateTime("-{$days} days");
+        $endDate = new \DateTime();
+        $interval = new \DateInterval('P1D');
+        $period = new \DatePeriod($startDate, $interval, $endDate->modify('+1 day'));
+        
+        $dataByDate = [];
+        foreach ($results as $row) {
+            $dataByDate[$row['date']] = $row;
+        }
+        
+        foreach ($period as $date) {
+            $dateStr = $date->format('Y-m-d');
+            if (isset($dataByDate[$dateStr])) {
+                $trends[] = [
+                    'date' => $dateStr,
+                    'total' => (int) $dataByDate[$dateStr]['total'],
+                    'general' => (int) $dataByDate[$dateStr]['general'],
+                    'support' => (int) $dataByDate[$dateStr]['support'],
+                    'sales' => (int) $dataByDate[$dateStr]['sales'],
+                    'replied' => (int) $dataByDate[$dateStr]['replied'],
+                    'bounced' => (int) $dataByDate[$dateStr]['bounced'],
+                ];
+            } else {
+                $trends[] = [
+                    'date' => $dateStr,
+                    'total' => 0,
+                    'general' => 0,
+                    'support' => 0,
+                    'sales' => 0,
+                    'replied' => 0,
+                    'bounced' => 0,
+                ];
+            }
+        }
+        
+        Response::success(['trends' => $trends]);
+    }
+    
+    /**
+     * Export contact email logs as CSV (admin only)
+     */
+    public static function exportCsv(): void
+    {
+        $user = Auth::user();
+        if (!$user || $user['account_type'] !== 'admin') {
+            Response::error('Unauthorized', 403);
+            return;
+        }
+        
+        $status = $_GET['status'] ?? null;
+        $purpose = $_GET['purpose'] ?? null;
+        $dateFrom = $_GET['date_from'] ?? null;
+        $dateTo = $_GET['date_to'] ?? null;
+        
+        $query = table('contact_email_logs');
+        
+        if ($status) {
+            $query->where('status', $status);
+        }
+        if ($purpose) {
+            $query->where('purpose', $purpose);
+        }
+        if ($dateFrom) {
+            $query->whereRaw('DATE(created_at) >= ?', [$dateFrom]);
+        }
+        if ($dateTo) {
+            $query->whereRaw('DATE(created_at) <= ?', [$dateTo]);
+        }
+        
+        $emails = $query->orderBy('created_at', 'DESC')->get();
+        
+        // Generate CSV
+        $filename = 'contact_emails_' . date('Y-m-d_His') . '.csv';
+        
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        
+        $output = fopen('php://output', 'w');
+        
+        // CSV Headers
+        fputcsv($output, [
+            'ID',
+            'Sender Name',
+            'Sender Email',
+            'Recipient',
+            'Category',
+            'Subject',
+            'Message',
+            'Status',
+            'Read',
+            'Replied',
+            'Response Time',
+            'Origin URL',
+            'IP Address',
+            'Notes',
+            'Created At',
+            'Replied At',
+        ]);
+        
+        foreach ($emails as $email) {
+            $responseTime = null;
+            if ($email['replied'] && $email['replied_at']) {
+                $created = new \DateTime($email['created_at']);
+                $replied = new \DateTime($email['replied_at']);
+                $diff = $created->diff($replied);
+                if ($diff->days > 0) {
+                    $responseTime = $diff->days . ' days ' . $diff->h . ' hours';
+                } elseif ($diff->h > 0) {
+                    $responseTime = $diff->h . ' hours ' . $diff->i . ' minutes';
+                } else {
+                    $responseTime = $diff->i . ' minutes';
+                }
+            }
+            
+            fputcsv($output, [
+                $email['id'],
+                $email['sender_name'],
+                $email['sender_email'],
+                $email['recipient_email'],
+                $email['purpose'],
+                $email['subject'],
+                $email['message'],
+                $email['status'],
+                $email['read_by_admin'] ? 'Yes' : 'No',
+                $email['replied'] ? 'Yes' : 'No',
+                $responseTime ?? 'N/A',
+                $email['origin_url'] ?? '',
+                $email['ip_address'] ?? '',
+                $email['notes'] ?? '',
+                $email['created_at'],
+                $email['replied_at'] ?? '',
+            ]);
+        }
+        
+        fclose($output);
+        exit;
+    }
+    
+    /**
+     * Export statistics as JSON for PDF generation (admin only)
+     */
+    public static function exportReport(): void
+    {
+        $user = Auth::user();
+        if (!$user || $user['account_type'] !== 'admin') {
+            Response::error('Unauthorized', 403);
+            return;
+        }
+        
+        $db = db();
+        $dateFrom = $_GET['date_from'] ?? date('Y-m-d', strtotime('-30 days'));
+        $dateTo = $_GET['date_to'] ?? date('Y-m-d');
+        
+        // Get stats for the period
+        $stmt = $db->prepare("
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+                SUM(CASE WHEN status = 'bounced' THEN 1 ELSE 0 END) as bounced,
+                SUM(CASE WHEN read_by_admin = 1 THEN 1 ELSE 0 END) as `read`,
+                SUM(CASE WHEN replied = 1 THEN 1 ELSE 0 END) as replied,
+                SUM(CASE WHEN purpose = 'general' THEN 1 ELSE 0 END) as general,
+                SUM(CASE WHEN purpose = 'support' THEN 1 ELSE 0 END) as support,
+                SUM(CASE WHEN purpose = 'sales' THEN 1 ELSE 0 END) as sales
+            FROM contact_email_logs
+            WHERE DATE(created_at) BETWEEN ? AND ?
+        ");
+        $stmt->execute([$dateFrom, $dateTo]);
+        $stats = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        // Get daily trends
+        $trendStmt = $db->prepare("
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as total
+            FROM contact_email_logs
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            GROUP BY DATE(created_at)
+            ORDER BY date ASC
+        ");
+        $trendStmt->execute([$dateFrom, $dateTo]);
+        $trends = $trendStmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        // Calculate response rate
+        $responseRate = (int) $stats['read'] > 0 
+            ? round(((int) $stats['replied'] / (int) $stats['read']) * 100, 1) 
+            : 0;
+        
+        // Get average response time
+        $avgStmt = $db->prepare("
+            SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, replied_at)) as avg_hours
+            FROM contact_email_logs 
+            WHERE replied = 1 AND replied_at IS NOT NULL
+            AND DATE(created_at) BETWEEN ? AND ?
+        ");
+        $avgStmt->execute([$dateFrom, $dateTo]);
+        $avgResult = $avgStmt->fetch(\PDO::FETCH_ASSOC);
+        $avgResponseHours = $avgResult['avg_hours'] ? round((float) $avgResult['avg_hours'], 1) : null;
+        
+        Response::success([
+            'report' => [
+                'period' => [
+                    'from' => $dateFrom,
+                    'to' => $dateTo,
+                ],
+                'summary' => [
+                    'total_submissions' => (int) $stats['total'],
+                    'sent' => (int) $stats['sent'],
+                    'failed' => (int) $stats['failed'],
+                    'bounced' => (int) $stats['bounced'],
+                    'read' => (int) $stats['read'],
+                    'replied' => (int) $stats['replied'],
+                    'response_rate' => $responseRate,
+                    'avg_response_hours' => $avgResponseHours,
+                ],
+                'by_category' => [
+                    'general' => (int) $stats['general'],
+                    'support' => (int) $stats['support'],
+                    'sales' => (int) $stats['sales'],
+                ],
+                'daily_trends' => $trends,
+                'generated_at' => date('Y-m-d H:i:s'),
+            ],
+        ]);
+    }
+    
+    /**
      * Handle email bounce webhook
      * Updates the status of bounced emails in the database
      */
