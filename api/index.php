@@ -214,6 +214,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/wallet/transactions', 'WalletController@transactions');
     $router->get('/wallet/payments', 'WalletController@payments');
     $router->get('/wallet/receipt', 'WalletController@receipt');
+    $router->get('/wallet/packages', 'WalletController@packages');
     $router->post('/wallet/buy', 'WalletController@buy');
     
     // Settings

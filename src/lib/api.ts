@@ -146,9 +146,9 @@ export const exportCampaignMessages = (id: string, type: 'sms' | 'email' = 'sms'
 };
 export const checkCampaignCredits = (recipientCount: number, type: 'sms' | 'email') => 
   api.post<any>('/campaigns/check-credits', { recipient_count: recipientCount, type });
-export const importContacts = (formData: FormData) => api.upload<any>('/contacts/import', formData);
-export const getContactGroups = () => api.get<any[]>('/contact-groups');
-export const createContactGroup = (name: string) => api.post<any>('/contact-groups', { name });
+export const importContacts = (formData: FormData) => api.upload<{ imported: number; failed: number; duplicates: number; message: string }>('/contacts/import', formData);
+export const getContactGroups = () => api.get<{ groups: any[] }>('/contact-groups');
+export const createContactGroup = (name: string, description?: string) => api.post<{ group: any }>('/contact-groups', { name, description });
 export const deleteContacts = (ids: string[]) => api.post<any>('/contacts/bulk-delete', { ids });
 export const exportContacts = (groupId?: string) => {
   const token = localStorage.getItem('auth_token');
