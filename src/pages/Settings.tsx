@@ -217,10 +217,6 @@ export default function Settings() {
             <Building className="h-4 w-4" />
             Organization
           </TabsTrigger>
-          <TabsTrigger value="senderids" className="gap-2">
-            <Key className="h-4 w-4" />
-            Sender IDs
-          </TabsTrigger>
           <TabsTrigger value="notifications" className="gap-2">
             <Bell className="h-4 w-4" />
             Notifications
@@ -466,51 +462,6 @@ export default function Settings() {
           </form>
         </TabsContent>
 
-        <TabsContent value="senderids">
-          <div className="rounded-xl border border-border bg-card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">
-                  Sender IDs
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Manage your registered sender IDs
-                </p>
-              </div>
-              <Button onClick={handleAddSenderId}>Add Sender ID</Button>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              {["IEOSUIA", "COMPANY", "PROMO"].map((senderId) => (
-                <div
-                  key={senderId}
-                  className="flex items-center justify-between rounded-lg border border-border p-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Key className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{senderId}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Registered sender ID
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success">
-                      <Check className="h-3 w-3" />
-                      Verified
-                    </span>
-                    <Button variant="outline" size="sm" onClick={() => handleEditSenderId(senderId)}>
-                      Edit
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </TabsContent>
 
         <TabsContent value="notifications">
           <div className="rounded-xl border border-border bg-card p-6">

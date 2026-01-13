@@ -39,12 +39,6 @@ const adminNavigation = [
     description: "All platform users"
   },
   { 
-    name: "Sender IDs", 
-    href: "/admin?tab=sender-ids", 
-    icon: Key,
-    description: "Pending approvals"
-  },
-  { 
     name: "Contact Emails", 
     href: "/admin?tab=contact-emails", 
     icon: Mail,

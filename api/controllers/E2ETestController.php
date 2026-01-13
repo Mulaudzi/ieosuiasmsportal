@@ -265,9 +265,9 @@ class E2ETestController
                 }
             );
         } else {
-            $tests[] = self::skipTest('GET Single Contact', 'contacts', 'No contact created');
-            $tests[] = self::skipTest('UPDATE Contact', 'contacts', 'No contact created');
-            $tests[] = self::skipTest('DELETE Contact', 'contacts', 'No contact created');
+            $tests[] = self::failTest('GET Single Contact', 'contacts', 'CREATE Contact failed - no contact ID available');
+            $tests[] = self::failTest('UPDATE Contact', 'contacts', 'CREATE Contact failed - no contact ID available');
+            $tests[] = self::failTest('DELETE Contact', 'contacts', 'CREATE Contact failed - no contact ID available');
         }
         
         return $tests;
@@ -349,8 +349,8 @@ class E2ETestController
                 }
             );
         } else {
-            $tests[] = self::skipTest('UPDATE Contact Group', 'contact_groups', 'No group created');
-            $tests[] = self::skipTest('DELETE Contact Group', 'contact_groups', 'No group created');
+            $tests[] = self::failTest('UPDATE Contact Group', 'contact_groups', 'CREATE Contact Group failed - no group ID available');
+            $tests[] = self::failTest('DELETE Contact Group', 'contact_groups', 'CREATE Contact Group failed - no group ID available');
         }
         
         return $tests;
@@ -446,9 +446,9 @@ class E2ETestController
                 }
             );
         } else {
-            $tests[] = self::skipTest('GET Single Template', 'templates', 'No template created');
-            $tests[] = self::skipTest('UPDATE Template', 'templates', 'No template created');
-            $tests[] = self::skipTest('DELETE Template', 'templates', 'No template created');
+            $tests[] = self::failTest('GET Single Template', 'templates', 'CREATE Template failed - no template ID available');
+            $tests[] = self::failTest('UPDATE Template', 'templates', 'CREATE Template failed - no template ID available');
+            $tests[] = self::failTest('DELETE Template', 'templates', 'CREATE Template failed - no template ID available');
         }
         
         return $tests;
@@ -526,8 +526,8 @@ class E2ETestController
                 }
             );
         } else {
-            $tests[] = self::skipTest('GET Single SMS Campaign', 'sms_campaigns', 'No campaign created');
-            $tests[] = self::skipTest('DELETE SMS Campaign', 'sms_campaigns', 'No campaign created');
+            $tests[] = self::failTest('GET Single SMS Campaign', 'sms_campaigns', 'CREATE SMS Campaign failed - no campaign ID available');
+            $tests[] = self::failTest('DELETE SMS Campaign', 'sms_campaigns', 'CREATE SMS Campaign failed - no campaign ID available');
         }
         
         return $tests;
@@ -606,8 +606,8 @@ class E2ETestController
                 }
             );
         } else {
-            $tests[] = self::skipTest('GET Single Email Campaign', 'email_campaigns', 'No campaign created');
-            $tests[] = self::skipTest('DELETE Email Campaign', 'email_campaigns', 'No campaign created');
+            $tests[] = self::failTest('GET Single Email Campaign', 'email_campaigns', 'CREATE Email Campaign failed - no campaign ID available');
+            $tests[] = self::failTest('DELETE Email Campaign', 'email_campaigns', 'CREATE Email Campaign failed - no campaign ID available');
         }
         
         return $tests;
@@ -872,13 +872,21 @@ class E2ETestController
         return $result;
     }
     
-    private static function skipTest(string $name, string $module, string $reason): array
+    private static function failTest(string $name, string $module, string $reason): array
     {
         return [
             'name' => $name,
             'module' => $module,
-            'status' => 'skipped',
-            'error' => $reason,
+            'method' => 'N/A',
+            'endpoint' => 'N/A',
+            'payload' => null,
+            'status' => 'failed',
+            'response_status' => null,
+            'response_body' => null,
+            'db_query' => null,
+            'db_result' => null,
+            'error' => 'DEPENDENCY FAILED: ' . $reason,
+            'stack_trace' => null,
             'duration_ms' => 0,
         ];
     }

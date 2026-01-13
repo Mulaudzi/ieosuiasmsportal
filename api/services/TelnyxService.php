@@ -207,7 +207,7 @@ class TelnyxService {
     /**
      * Make API request to Telnyx
      */
-    private function request(string $method, string $endpoint, array $data = null): array {
+    private function request(string $method, string $endpoint, ?array $data = null): array {
         $url = $this->apiBaseUrl . $endpoint;
         
         $ch = curl_init();
