@@ -158,6 +158,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     // Contacts
     $router->get('/contacts', 'ContactController@index');
     $router->post('/contacts', 'ContactController@store');
+    $router->post('/contacts/bulk-delete', 'ContactController@bulkDelete');
     $router->get('/contacts/{id}', 'ContactController@show');
     $router->put('/contacts/{id}', 'ContactController@update');
     $router->delete('/contacts/{id}', 'ContactController@destroy');
