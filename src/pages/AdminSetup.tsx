@@ -1,34 +1,47 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Shield, UserPlus, Key, AlertTriangle } from "lucide-react";
+import { Loader2, Shield, UserPlus, Key, AlertTriangle, ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 
 export default function AdminSetup() {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [createForm, setCreateForm] = useState({
     email: "",
-    password: "",
-    confirmPassword: "",
+    password_1: "",
+    confirmPassword_1: "",
+    password_2: "",
+    confirmPassword_2: "",
+    password_3: "",
+    confirmPassword_3: "",
     name: "",
     setupKey: "",
   });
   const [updateForm, setUpdateForm] = useState({
     email: "",
-    currentPassword: "",
-    newPassword: "",
-    confirmNewPassword: "",
+    currentPassword_1: "",
+    currentPassword_2: "",
+    currentPassword_3: "",
+    newPassword_1: "",
+    confirmNewPassword_1: "",
+    newPassword_2: "",
+    confirmNewPassword_2: "",
+    newPassword_3: "",
+    confirmNewPassword_3: "",
     setupKey: "",
   });
 
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!createForm.email || !createForm.password || !createForm.name || !createForm.setupKey) {
+    if (!createForm.email || !createForm.password_1 || !createForm.password_2 || 
+        !createForm.password_3 || !createForm.name || !createForm.setupKey) {
       toast({
         title: "Missing fields",
         description: "Please fill in all required fields.",
@@ -37,42 +50,56 @@ export default function AdminSetup() {
       return;
     }
 
-    if (createForm.password.length < 12) {
-      toast({
-        title: "Weak password",
-        description: "Password must be at least 12 characters long.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Validate all passwords
+    const passwords = [
+      { pwd: createForm.password_1, confirm: createForm.confirmPassword_1, num: 1 },
+      { pwd: createForm.password_2, confirm: createForm.confirmPassword_2, num: 2 },
+      { pwd: createForm.password_3, confirm: createForm.confirmPassword_3, num: 3 },
+    ];
 
-    if (createForm.password !== createForm.confirmPassword) {
-      toast({
-        title: "Password mismatch",
-        description: "Passwords do not match.",
-        variant: "destructive",
-      });
-      return;
+    for (const { pwd, confirm, num } of passwords) {
+      if (pwd.length < 12) {
+        toast({
+          title: `Weak password ${num}`,
+          description: `Password ${num} must be at least 12 characters long.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (pwd !== confirm) {
+        toast({
+          title: `Password ${num} mismatch`,
+          description: `Password ${num} and confirmation do not match.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setIsLoading(true);
     try {
       await api.post("/admin-users/create", {
         email: createForm.email,
-        password: createForm.password,
+        password_1: createForm.password_1,
+        password_2: createForm.password_2,
+        password_3: createForm.password_3,
         name: createForm.name,
         setup_key: createForm.setupKey,
       });
 
       toast({
         title: "Admin created",
-        description: "New admin user has been created successfully.",
+        description: "New admin user has been created successfully with 3 passwords.",
       });
 
       setCreateForm({
         email: "",
-        password: "",
-        confirmPassword: "",
+        password_1: "",
+        confirmPassword_1: "",
+        password_2: "",
+        confirmPassword_2: "",
+        password_3: "",
+        confirmPassword_3: "",
         name: "",
         setupKey: "",
       });
@@ -90,7 +117,9 @@ export default function AdminSetup() {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!updateForm.email || !updateForm.currentPassword || !updateForm.newPassword || !updateForm.setupKey) {
+    if (!updateForm.email || !updateForm.currentPassword_1 || !updateForm.currentPassword_2 ||
+        !updateForm.currentPassword_3 || !updateForm.newPassword_1 || !updateForm.newPassword_2 ||
+        !updateForm.newPassword_3 || !updateForm.setupKey) {
       toast({
         title: "Missing fields",
         description: "Please fill in all required fields.",
@@ -99,49 +128,67 @@ export default function AdminSetup() {
       return;
     }
 
-    if (updateForm.newPassword.length < 12) {
-      toast({
-        title: "Weak password",
-        description: "Password must be at least 12 characters long.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Validate all new passwords
+    const passwords = [
+      { pwd: updateForm.newPassword_1, confirm: updateForm.confirmNewPassword_1, num: 1 },
+      { pwd: updateForm.newPassword_2, confirm: updateForm.confirmNewPassword_2, num: 2 },
+      { pwd: updateForm.newPassword_3, confirm: updateForm.confirmNewPassword_3, num: 3 },
+    ];
 
-    if (updateForm.newPassword !== updateForm.confirmNewPassword) {
-      toast({
-        title: "Password mismatch",
-        description: "New passwords do not match.",
-        variant: "destructive",
-      });
-      return;
+    for (const { pwd, confirm, num } of passwords) {
+      if (pwd.length < 12) {
+        toast({
+          title: `Weak password ${num}`,
+          description: `New password ${num} must be at least 12 characters long.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (pwd !== confirm) {
+        toast({
+          title: `Password ${num} mismatch`,
+          description: `New password ${num} and confirmation do not match.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setIsLoading(true);
     try {
       await api.post("/admin-users/update-password", {
         email: updateForm.email,
-        current_password: updateForm.currentPassword,
-        new_password: updateForm.newPassword,
+        current_password_1: updateForm.currentPassword_1,
+        current_password_2: updateForm.currentPassword_2,
+        current_password_3: updateForm.currentPassword_3,
+        new_password_1: updateForm.newPassword_1,
+        new_password_2: updateForm.newPassword_2,
+        new_password_3: updateForm.newPassword_3,
         setup_key: updateForm.setupKey,
       });
 
       toast({
-        title: "Password updated",
-        description: "Admin password has been updated successfully.",
+        title: "Passwords updated",
+        description: "All 3 admin passwords have been updated successfully.",
       });
 
       setUpdateForm({
         email: "",
-        currentPassword: "",
-        newPassword: "",
-        confirmNewPassword: "",
+        currentPassword_1: "",
+        currentPassword_2: "",
+        currentPassword_3: "",
+        newPassword_1: "",
+        confirmNewPassword_1: "",
+        newPassword_2: "",
+        confirmNewPassword_2: "",
+        newPassword_3: "",
+        confirmNewPassword_3: "",
         setupKey: "",
       });
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update password.",
+        description: error.message || "Failed to update passwords.",
         variant: "destructive",
       });
     } finally {
@@ -150,21 +197,32 @@ export default function AdminSetup() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 flex items-center justify-center p-4">
-      <Card className="w-full max-w-lg">
+    <div className="min-h-screen bg-gradient-to-br from-background to-muted/30 p-4">
+      <div className="mb-4">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => navigate(-1)}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+      </div>
+      <div className="flex items-center justify-center">
+      <Card className="w-full max-w-2xl">
         <CardHeader className="text-center">
           <div className="mx-auto w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
             <Shield className="h-6 w-6 text-destructive" />
           </div>
           <CardTitle className="text-2xl">Admin Setup</CardTitle>
           <CardDescription>
-            Temporary page for admin user management. Remove after setup.
+            Create or update admin users with 3-password security
           </CardDescription>
           <div className="mt-4 p-3 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-2">
             <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
             <p className="text-sm text-muted-foreground text-left">
-              <strong>Security Warning:</strong> This page should be removed or protected after initial setup. 
-              The setup key is required for all operations.
+              <strong>Security:</strong> Admin accounts require 3 separate passwords for login.
+              Each password must be at least 12 characters. The setup key is required for all operations.
             </p>
           </div>
         </CardHeader>
@@ -177,60 +235,71 @@ export default function AdminSetup() {
               </TabsTrigger>
               <TabsTrigger value="update" className="gap-2">
                 <Key className="h-4 w-4" />
-                Update Password
+                Update Passwords
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="create" className="mt-6">
               <form onSubmit={handleCreateAdmin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="create-name">Full Name</Label>
-                  <Input
-                    id="create-name"
-                    placeholder="System Administrator"
-                    value={createForm.name}
-                    onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-                    disabled={isLoading}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="create-name">Full Name</Label>
+                    <Input
+                      id="create-name"
+                      placeholder="System Administrator"
+                      value={createForm.name}
+                      onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="create-email">Email Address</Label>
+                    <Input
+                      id="create-email"
+                      type="email"
+                      placeholder="admin@example.com"
+                      value={createForm.email}
+                      onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="create-email">Email Address</Label>
-                  <Input
-                    id="create-email"
-                    type="email"
-                    placeholder="admin@example.com"
-                    value={createForm.email}
-                    onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                    disabled={isLoading}
-                  />
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3 flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    3-Password Security Setup
+                  </h4>
+                  
+                  {[1, 2, 3].map((num) => (
+                    <div key={num} className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`create-password-${num}`}>Password {num}</Label>
+                        <Input
+                          id={`create-password-${num}`}
+                          type="password"
+                          placeholder="Min 12 characters"
+                          value={createForm[`password_${num}` as keyof typeof createForm]}
+                          onChange={(e) => setCreateForm({ ...createForm, [`password_${num}`]: e.target.value })}
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`create-confirm-${num}`}>Confirm Password {num}</Label>
+                        <Input
+                          id={`create-confirm-${num}`}
+                          type="password"
+                          placeholder="Confirm password"
+                          value={createForm[`confirmPassword_${num}` as keyof typeof createForm]}
+                          onChange={(e) => setCreateForm({ ...createForm, [`confirmPassword_${num}`]: e.target.value })}
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="create-password">Password (min 12 characters)</Label>
-                  <Input
-                    id="create-password"
-                    type="password"
-                    placeholder="••••••••••••"
-                    value={createForm.password}
-                    onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                    disabled={isLoading}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="create-confirm">Confirm Password</Label>
-                  <Input
-                    id="create-confirm"
-                    type="password"
-                    placeholder="••••••••••••"
-                    value={createForm.confirmPassword}
-                    onChange={(e) => setCreateForm({ ...createForm, confirmPassword: e.target.value })}
-                    disabled={isLoading}
-                  />
-                </div>
-
-                <div className="space-y-2">
+                <div className="space-y-2 border-t pt-4">
                   <Label htmlFor="create-setup-key">Setup Key</Label>
                   <Input
                     id="create-setup-key"
@@ -272,43 +341,56 @@ export default function AdminSetup() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="update-current">Current Password</Label>
-                  <Input
-                    id="update-current"
-                    type="password"
-                    placeholder="••••••••••••"
-                    value={updateForm.currentPassword}
-                    onChange={(e) => setUpdateForm({ ...updateForm, currentPassword: e.target.value })}
-                    disabled={isLoading}
-                  />
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3">Current Passwords</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    {[1, 2, 3].map((num) => (
+                      <div key={num} className="space-y-2">
+                        <Label htmlFor={`update-current-${num}`}>Current #{num}</Label>
+                        <Input
+                          id={`update-current-${num}`}
+                          type="password"
+                          placeholder="••••••••"
+                          value={updateForm[`currentPassword_${num}` as keyof typeof updateForm]}
+                          onChange={(e) => setUpdateForm({ ...updateForm, [`currentPassword_${num}`]: e.target.value })}
+                          disabled={isLoading}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="update-new">New Password (min 12 characters)</Label>
-                  <Input
-                    id="update-new"
-                    type="password"
-                    placeholder="••••••••••••"
-                    value={updateForm.newPassword}
-                    onChange={(e) => setUpdateForm({ ...updateForm, newPassword: e.target.value })}
-                    disabled={isLoading}
-                  />
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-3">New Passwords</h4>
+                  {[1, 2, 3].map((num) => (
+                    <div key={num} className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`update-new-${num}`}>New Password {num}</Label>
+                        <Input
+                          id={`update-new-${num}`}
+                          type="password"
+                          placeholder="Min 12 characters"
+                          value={updateForm[`newPassword_${num}` as keyof typeof updateForm]}
+                          onChange={(e) => setUpdateForm({ ...updateForm, [`newPassword_${num}`]: e.target.value })}
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`update-confirm-${num}`}>Confirm New #{num}</Label>
+                        <Input
+                          id={`update-confirm-${num}`}
+                          type="password"
+                          placeholder="Confirm"
+                          value={updateForm[`confirmNewPassword_${num}` as keyof typeof updateForm]}
+                          onChange={(e) => setUpdateForm({ ...updateForm, [`confirmNewPassword_${num}`]: e.target.value })}
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="update-confirm">Confirm New Password</Label>
-                  <Input
-                    id="update-confirm"
-                    type="password"
-                    placeholder="••••••••••••"
-                    value={updateForm.confirmNewPassword}
-                    onChange={(e) => setUpdateForm({ ...updateForm, confirmNewPassword: e.target.value })}
-                    disabled={isLoading}
-                  />
-                </div>
-
-                <div className="space-y-2">
+                <div className="space-y-2 border-t pt-4">
                   <Label htmlFor="update-setup-key">Setup Key</Label>
                   <Input
                     id="update-setup-key"
@@ -329,7 +411,7 @@ export default function AdminSetup() {
                   ) : (
                     <>
                       <Key className="mr-2 h-4 w-4" />
-                      Update Password
+                      Update All Passwords
                     </>
                   )}
                 </Button>
@@ -338,6 +420,7 @@ export default function AdminSetup() {
           </Tabs>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

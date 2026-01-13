@@ -315,7 +315,7 @@ export default function AdminManagement() {
             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button size="sm" onClick={() => navigate("/admin-setup")}>
+          <Button size="sm" onClick={() => navigate("/admin/setup")}>
             <UserPlus className="h-4 w-4 mr-2" />
             Add Admin
           </Button>
@@ -342,7 +342,7 @@ export default function AdminManagement() {
                 <Button
                   variant="outline"
                   className="mt-4"
-                  onClick={() => navigate("/admin-setup")}
+                  onClick={() => navigate("/admin/setup")}
                 >
                   <UserPlus className="h-4 w-4 mr-2" />
                   Create First Admin
