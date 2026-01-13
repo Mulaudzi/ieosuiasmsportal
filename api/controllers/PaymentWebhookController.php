@@ -10,13 +10,10 @@ class PaymentWebhookController {
      * PayFast ITN (Instant Transaction Notification) Handler
      */
     public function payfastItn(): void {
-        // Log incoming request
         error_log("PayFast ITN received: " . json_encode($_POST));
         
-        // Get POST data
         $data = $_POST;
         
-        // Validate required fields
         $requiredFields = ['m_payment_id', 'payment_status', 'amount_gross', 'pf_payment_id'];
         foreach ($requiredFields as $field) {
             if (empty($data[$field])) {
@@ -32,7 +29,6 @@ class PaymentWebhookController {
         $amount = (float) $data['amount_gross'];
         $payfastPaymentId = $data['pf_payment_id'];
         
-        // Verify signature
         if (!$this->verifyPayfastSignature($data)) {
             error_log("PayFast ITN: Invalid signature for $reference");
             http_response_code(403);
@@ -40,7 +36,6 @@ class PaymentWebhookController {
             return;
         }
         
-        // Find the pending transaction
         $transaction = table('wallet_transactions')
             ->where('reference', $reference)
             ->where('status', 'pending')
@@ -62,7 +57,6 @@ class PaymentWebhookController {
             return;
         }
         
-        // Create payment record
         $paymentId = table('payments')->insert([
             'user_id' => $wallet['user_id'],
             'wallet_id' => $wallet['id'],
@@ -83,7 +77,6 @@ class PaymentWebhookController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        // Process based on status
         if ($status === 'COMPLETE') {
             $this->processSuccessfulPayment($transaction, $wallet, $amount, $paymentId);
             echo "OK";
@@ -91,10 +84,117 @@ class PaymentWebhookController {
             $this->processFailedPayment($transaction, $paymentId, $status);
             echo "OK";
         } else {
-            // Pending or other status - just log
             error_log("PayFast ITN: Status $status for $reference");
             echo "OK";
         }
+    }
+    
+    /**
+     * PayFast Subscription ITN Handler
+     */
+    public function payfastSubscriptionItn(): void {
+        error_log("PayFast Subscription ITN received: " . json_encode($_POST));
+        
+        $data = $_POST;
+        
+        if (!$this->verifyPayfastSignature($data)) {
+            error_log("PayFast Subscription ITN: Invalid signature");
+            http_response_code(403);
+            echo "Invalid signature";
+            return;
+        }
+        
+        $subscriptionType = $data['item_name'] ?? '';
+        $tokenValue = $data['token'] ?? null;
+        $billingDate = $data['billing_date'] ?? null;
+        $amount = (float) ($data['amount_gross'] ?? 0);
+        $status = $data['payment_status'] ?? '';
+        $email = $data['email_address'] ?? null;
+        
+        if (!$email) {
+            http_response_code(400);
+            echo "Missing email";
+            return;
+        }
+        
+        $user = table('users')->where('email', $email)->first();
+        if (!$user) {
+            error_log("PayFast Subscription: User not found for email $email");
+            http_response_code(200);
+            echo "User not found";
+            return;
+        }
+        
+        // Handle subscription status changes
+        if ($status === 'COMPLETE') {
+            // Recurring payment successful
+            $wallet = table('wallets')->where('user_id', $user['id'])->first();
+            if ($wallet) {
+                $pricePerCredit = (float) env('SMS_PRICE_PER_CREDIT', 0.27);
+                $credits = (int) floor($amount / $pricePerCredit);
+                
+                table('wallets')->where('id', $wallet['id'])->update([
+                    'balance' => (float) $wallet['balance'] + $credits,
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+                
+                table('payments')->insert([
+                    'user_id' => $user['id'],
+                    'wallet_id' => $wallet['id'],
+                    'gateway' => 'payfast',
+                    'gateway_reference' => $tokenValue,
+                    'merchant_reference' => 'SUB-' . time(),
+                    'amount' => $amount,
+                    'currency' => 'ZAR',
+                    'status' => 'completed',
+                    'gateway_status' => $status,
+                    'payment_method' => 'subscription',
+                    'payer_email' => $email,
+                    'credits_added' => $credits,
+                    'metadata' => json_encode($data),
+                    'webhook_received_at' => date('Y-m-d H:i:s'),
+                    'processed_at' => date('Y-m-d H:i:s'),
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+                
+                $this->sendSubscriptionEmail($user, 'renewed', $subscriptionType, $amount);
+            }
+            
+            table('audit_logs')->insert([
+                'user_id' => $user['id'],
+                'action' => 'subscription_renewed',
+                'entity_type' => 'subscription',
+                'details' => json_encode(['gateway' => 'payfast', 'amount' => $amount, 'token' => $tokenValue]),
+                'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+        } elseif ($status === 'CANCELLED') {
+            table('audit_logs')->insert([
+                'user_id' => $user['id'],
+                'action' => 'subscription_cancelled',
+                'entity_type' => 'subscription',
+                'details' => json_encode(['gateway' => 'payfast', 'token' => $tokenValue]),
+                'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+            
+            $this->sendSubscriptionEmail($user, 'cancelled', $subscriptionType, 0);
+        } elseif ($status === 'FAILED') {
+            table('audit_logs')->insert([
+                'user_id' => $user['id'],
+                'action' => 'subscription_payment_failed',
+                'entity_type' => 'subscription',
+                'details' => json_encode(['gateway' => 'payfast', 'amount' => $amount]),
+                'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+            
+            $this->sendSubscriptionEmail($user, 'payment_failed', $subscriptionType, $amount);
+        }
+        
+        http_response_code(200);
+        echo "OK";
     }
     
     /**
@@ -127,52 +227,176 @@ class PaymentWebhookController {
         $event = $data['event'];
         $paymentData = $data['data'];
         
+        // Handle one-time payments
         if ($event === 'charge.success') {
-            $reference = $paymentData['reference'];
-            $amount = (float) $paymentData['amount'] / 100; // Paystack sends amount in kobo/cents
-            $paystackReference = $paymentData['id'];
-            
-            // Find the pending transaction
-            $transaction = table('wallet_transactions')
-                ->where('reference', $reference)
-                ->where('status', 'pending')
-                ->first();
-            
-            if (!$transaction) {
-                error_log("Paystack webhook: Transaction not found for $reference");
-                http_response_code(200);
-                echo "Transaction not found";
-                return;
-            }
-            
-            $wallet = table('wallets')->where('id', $transaction['wallet_id'])->first();
-            
-            // Create payment record
-            $paymentId = table('payments')->insert([
-                'user_id' => $wallet['user_id'],
-                'wallet_id' => $wallet['id'],
-                'transaction_id' => $transaction['id'],
-                'gateway' => 'paystack',
-                'gateway_reference' => $paystackReference,
-                'merchant_reference' => $reference,
-                'amount' => $amount,
-                'currency' => $paymentData['currency'] ?? 'ZAR',
-                'status' => 'pending',
-                'gateway_status' => $paymentData['status'],
-                'payment_method' => $paymentData['channel'] ?? 'card',
-                'payer_email' => $paymentData['customer']['email'] ?? null,
-                'payer_name' => $paymentData['customer']['first_name'] ?? null,
-                'metadata' => json_encode($paymentData),
-                'webhook_received_at' => date('Y-m-d H:i:s'),
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
-            
-            $this->processSuccessfulPayment($transaction, $wallet, $amount, $paymentId);
+            $this->handlePaystackChargeSuccess($paymentData);
+        }
+        
+        // Handle subscription events
+        if ($event === 'subscription.create') {
+            $this->handlePaystackSubscriptionCreate($paymentData);
+        }
+        
+        if ($event === 'subscription.disable' || $event === 'subscription.not_renew') {
+            $this->handlePaystackSubscriptionCancel($paymentData);
+        }
+        
+        if ($event === 'invoice.payment_failed') {
+            $this->handlePaystackInvoiceFailed($paymentData);
+        }
+        
+        if ($event === 'invoice.create' || $event === 'invoice.update') {
+            $this->handlePaystackInvoice($paymentData, $event);
         }
         
         http_response_code(200);
         echo "OK";
+    }
+    
+    /**
+     * Handle Paystack charge success
+     */
+    private function handlePaystackChargeSuccess(array $paymentData): void {
+        $reference = $paymentData['reference'];
+        $amount = (float) $paymentData['amount'] / 100;
+        $paystackReference = $paymentData['id'];
+        
+        $transaction = table('wallet_transactions')
+            ->where('reference', $reference)
+            ->where('status', 'pending')
+            ->first();
+        
+        if (!$transaction) {
+            error_log("Paystack webhook: Transaction not found for $reference");
+            return;
+        }
+        
+        $wallet = table('wallets')->where('id', $transaction['wallet_id'])->first();
+        
+        $paymentId = table('payments')->insert([
+            'user_id' => $wallet['user_id'],
+            'wallet_id' => $wallet['id'],
+            'transaction_id' => $transaction['id'],
+            'gateway' => 'paystack',
+            'gateway_reference' => $paystackReference,
+            'merchant_reference' => $reference,
+            'amount' => $amount,
+            'currency' => $paymentData['currency'] ?? 'ZAR',
+            'status' => 'pending',
+            'gateway_status' => $paymentData['status'],
+            'payment_method' => $paymentData['channel'] ?? 'card',
+            'payer_email' => $paymentData['customer']['email'] ?? null,
+            'payer_name' => $paymentData['customer']['first_name'] ?? null,
+            'metadata' => json_encode($paymentData),
+            'webhook_received_at' => date('Y-m-d H:i:s'),
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        $this->processSuccessfulPayment($transaction, $wallet, $amount, $paymentId);
+    }
+    
+    /**
+     * Handle Paystack subscription creation
+     */
+    private function handlePaystackSubscriptionCreate(array $data): void {
+        error_log("Paystack subscription created: " . json_encode($data));
+        
+        $customerEmail = $data['customer']['email'] ?? null;
+        $subscriptionCode = $data['subscription_code'] ?? null;
+        $planCode = $data['plan']['plan_code'] ?? null;
+        $amount = (float) ($data['amount'] ?? 0) / 100;
+        
+        if (!$customerEmail) return;
+        
+        $user = table('users')->where('email', $customerEmail)->first();
+        if (!$user) return;
+        
+        // Log subscription event
+        table('audit_logs')->insert([
+            'user_id' => $user['id'],
+            'action' => 'subscription_created',
+            'entity_type' => 'subscription',
+            'entity_id' => null,
+            'details' => json_encode([
+                'gateway' => 'paystack',
+                'subscription_code' => $subscriptionCode,
+                'plan_code' => $planCode,
+                'amount' => $amount,
+            ]),
+            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        // Send notification email
+        $this->sendSubscriptionEmail($user, 'created', $planCode, $amount);
+    }
+    
+    /**
+     * Handle Paystack subscription cancellation
+     */
+    private function handlePaystackSubscriptionCancel(array $data): void {
+        error_log("Paystack subscription cancelled: " . json_encode($data));
+        
+        $customerEmail = $data['customer']['email'] ?? null;
+        $subscriptionCode = $data['subscription_code'] ?? null;
+        
+        if (!$customerEmail) return;
+        
+        $user = table('users')->where('email', $customerEmail)->first();
+        if (!$user) return;
+        
+        table('audit_logs')->insert([
+            'user_id' => $user['id'],
+            'action' => 'subscription_cancelled',
+            'entity_type' => 'subscription',
+            'entity_id' => null,
+            'details' => json_encode([
+                'gateway' => 'paystack',
+                'subscription_code' => $subscriptionCode,
+            ]),
+            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        $this->sendSubscriptionEmail($user, 'cancelled', null, 0);
+    }
+    
+    /**
+     * Handle Paystack invoice payment failed
+     */
+    private function handlePaystackInvoiceFailed(array $data): void {
+        error_log("Paystack invoice failed: " . json_encode($data));
+        
+        $customerEmail = $data['customer']['email'] ?? null;
+        $amount = (float) ($data['amount'] ?? 0) / 100;
+        
+        if (!$customerEmail) return;
+        
+        $user = table('users')->where('email', $customerEmail)->first();
+        if (!$user) return;
+        
+        table('audit_logs')->insert([
+            'user_id' => $user['id'],
+            'action' => 'subscription_payment_failed',
+            'entity_type' => 'subscription',
+            'entity_id' => null,
+            'details' => json_encode([
+                'gateway' => 'paystack',
+                'amount' => $amount,
+            ]),
+            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        $this->sendSubscriptionEmail($user, 'payment_failed', null, $amount);
+    }
+    
+    /**
+     * Handle Paystack invoice events
+     */
+    private function handlePaystackInvoice(array $data, string $event): void {
+        error_log("Paystack invoice event $event: " . json_encode($data));
     }
     
     /**
@@ -395,7 +619,6 @@ class PaymentWebhookController {
         $hash = $data['Hash'] ?? '';
         unset($data['Hash']);
         
-        // Ozow hash is calculated from specific fields
         $hashFields = [
             'SiteCode', 'TransactionId', 'TransactionReference', 'Amount',
             'Status', 'Optional1', 'Optional2', 'Optional3', 'Optional4', 'Optional5',
@@ -411,5 +634,42 @@ class PaymentWebhookController {
         $calculatedHash = strtolower(hash('sha512', strtolower($hashString)));
         
         return $calculatedHash === strtolower($hash);
+    }
+    
+    /**
+     * Send subscription-related email notifications
+     */
+    private function sendSubscriptionEmail(array $user, string $type, ?string $planName, float $amount): void {
+        try {
+            require_once __DIR__ . '/../services/EmailService.php';
+            
+            $email = $user['email'] ?? null;
+            $name = $user['name'] ?? 'Customer';
+            
+            if (!$email) return;
+            
+            $subjects = [
+                'created' => 'Subscription Activated - ' . env('COMPANY_NAME', 'IEOSUIA SMS Portal'),
+                'renewed' => 'Subscription Renewed - ' . env('COMPANY_NAME', 'IEOSUIA SMS Portal'),
+                'cancelled' => 'Subscription Cancelled - ' . env('COMPANY_NAME', 'IEOSUIA SMS Portal'),
+                'payment_failed' => 'Subscription Payment Failed - Action Required',
+            ];
+            
+            $bodies = [
+                'created' => "Hi $name,\n\nYour subscription has been successfully activated.\n\nPlan: $planName\nAmount: R" . number_format($amount, 2) . "\n\nThank you for subscribing!",
+                'renewed' => "Hi $name,\n\nYour subscription has been successfully renewed.\n\nPlan: $planName\nAmount: R" . number_format($amount, 2) . "\n\nCredits have been added to your account.",
+                'cancelled' => "Hi $name,\n\nYour subscription has been cancelled.\n\nYou will continue to have access until the end of your current billing period.\n\nWe're sorry to see you go. If you change your mind, you can resubscribe at any time.",
+                'payment_failed' => "Hi $name,\n\nWe were unable to process your subscription payment of R" . number_format($amount, 2) . ".\n\nPlease update your payment method to avoid service interruption.\n\nIf you need assistance, please contact support.",
+            ];
+            
+            $subject = $subjects[$type] ?? 'Subscription Update';
+            $body = $bodies[$type] ?? "Hi $name,\n\nYour subscription has been updated.";
+            
+            EmailService::sendRawEmail($email, $subject, $body);
+            
+            error_log("Subscription email sent to $email: $type");
+        } catch (\Exception $e) {
+            error_log("Failed to send subscription email: " . $e->getMessage());
+        }
     }
 }

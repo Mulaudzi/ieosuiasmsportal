@@ -156,6 +156,44 @@ class WalletController {
         Response::paginate($formattedPayments, $total, $page, $perPage);
     }
     
+    /**
+     * Generate PDF receipt for a payment
+     */
+    public function receipt(): void {
+        $paymentId = (int) Request::query('id');
+        
+        if (!$paymentId) {
+            Response::error('Payment ID is required', 400);
+        }
+        
+        $userId = Auth::id();
+        
+        $payment = table('payments')
+            ->where('id', $paymentId)
+            ->where('user_id', $userId)
+            ->first();
+        
+        if (!$payment) {
+            Response::error('Payment not found', 404);
+        }
+        
+        if ($payment['status'] !== 'completed') {
+            Response::error('Receipt only available for completed payments', 400);
+        }
+        
+        $user = Auth::user();
+        
+        require_once __DIR__ . '/../services/PdfReceiptService.php';
+        
+        $html = PdfReceiptService::generateReceipt($payment, $user);
+        
+        // Return HTML for browser rendering/printing
+        header('Content-Type: text/html; charset=UTF-8');
+        header('Content-Disposition: inline; filename="receipt-' . $payment['merchant_reference'] . '.html"');
+        echo $html;
+        exit;
+    }
+    
     public function buy(): void {
         $data = Request::validate([
             'amount' => 'required|numeric|min:10',
@@ -235,8 +273,8 @@ class WalletController {
         $data = [
             'merchant_id' => $merchantId,
             'merchant_key' => $merchantKey,
-            'return_url' => env('FRONTEND_URL') . '/wallet?success=1',
-            'cancel_url' => env('FRONTEND_URL') . '/wallet?cancelled=1',
+            'return_url' => env('FRONTEND_URL') . '/payment/success?reference=' . $reference,
+            'cancel_url' => env('FRONTEND_URL') . '/payment/failed?cancelled=1&reference=' . $reference,
             'notify_url' => env('APP_URL') . '/payments/payfast/itn',
             'name_first' => explode(' ', $user['name'])[0],
             'email_address' => $user['email'],
@@ -281,9 +319,9 @@ class WalletController {
             'Optional4' => '',
             'Optional5' => '',
             'Customer' => Auth::user()['email'],
-            'CancelUrl' => env('FRONTEND_URL') . '/wallet?cancelled=1',
-            'ErrorUrl' => env('FRONTEND_URL') . '/wallet?error=1',
-            'SuccessUrl' => env('FRONTEND_URL') . '/wallet?success=1',
+            'CancelUrl' => env('FRONTEND_URL') . '/payment/failed?cancelled=1&reference=' . $reference,
+            'ErrorUrl' => env('FRONTEND_URL') . '/payment/failed?reference=' . $reference,
+            'SuccessUrl' => env('FRONTEND_URL') . '/payment/success?reference=' . $reference,
             'NotifyUrl' => env('APP_URL') . '/payments/ozow/notify',
             'IsTest' => $sandbox ? 'true' : 'false',
         ];
@@ -313,12 +351,13 @@ class WalletController {
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode([
                 'email' => $user['email'],
-                'amount' => (int) ($amount * 100), // Paystack uses kobo/cents
+                'amount' => (int) ($amount * 100),
                 'reference' => $reference,
-                'callback_url' => env('FRONTEND_URL') . '/wallet?success=1',
+                'callback_url' => env('FRONTEND_URL') . '/payment/success?reference=' . $reference,
                 'metadata' => [
                     'user_id' => $user['id'],
                     'user_name' => $user['name'],
+                    'cancel_action' => env('FRONTEND_URL') . '/payment/failed?cancelled=1&reference=' . $reference,
                 ],
             ]),
             CURLOPT_HTTPHEADER => [

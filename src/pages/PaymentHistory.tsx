@@ -117,6 +117,17 @@ const PaymentHistory = () => {
   const handleExport = () => {
     toast.info('Export functionality coming soon');
   };
+  
+  const handleDownloadReceipt = async (paymentId: number, reference: string) => {
+    try {
+      // Open receipt in new window for printing/saving
+      const baseUrl = import.meta.env.VITE_API_URL || '/api';
+      const token = localStorage.getItem('auth_token');
+      window.open(`${baseUrl}/wallet/receipt?id=${paymentId}&token=${token}`, '_blank');
+    } catch (error) {
+      toast.error('Failed to download receipt');
+    }
+  };
 
   return (
     <DashboardLayout title="Payment History">
@@ -222,6 +233,7 @@ const PaymentHistory = () => {
                         <TableHead>Amount</TableHead>
                         <TableHead>Credits</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -247,6 +259,17 @@ const PaymentHistory = () => {
                             )}
                           </TableCell>
                           <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                          <TableCell className="text-right">
+                            {payment.status === 'completed' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDownloadReceipt(payment.id, payment.merchant_reference)}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
