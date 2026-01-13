@@ -9,6 +9,19 @@ require_once __DIR__ . '/../services/AuditLogService.php';
 
 class AuthController {
     
+    // Valid account types matching database enum
+    private const VALID_ACCOUNT_TYPES = ['individual', 'business', 'organization', 'standard'];
+    
+    /**
+     * Validate and sanitize account type
+     */
+    private function validateAccountType(?string $type): string {
+        if ($type === null || !in_array($type, self::VALID_ACCOUNT_TYPES, true)) {
+            return 'standard'; // Default fallback
+        }
+        return $type;
+    }
+    
     /**
      * Register a new user
      */
@@ -18,6 +31,7 @@ class AuthController {
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:8|confirmed',
             'phone' => 'max:20',
+            'account_type' => 'max:20',
             'recaptcha_token' => 'max:2048',
         ]);
         
@@ -38,13 +52,16 @@ class AuthController {
         // Generate verification token
         $verificationToken = bin2hex(random_bytes(32));
         
+        // Validate account type
+        $accountType = $this->validateAccountType($data['account_type'] ?? null);
+        
         // Create user
         $userId = table('users')->insert([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Auth::hashPassword($data['password']),
             'phone' => $data['phone'] ?? null,
-            'account_type' => 'standard',
+            'account_type' => $accountType,
             'email_verification_token' => $verificationToken,
             'email_verification_sent_at' => date('Y-m-d H:i:s'),
             'created_at' => date('Y-m-d H:i:s'),

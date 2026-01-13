@@ -29,12 +29,16 @@ export default function Register() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  // Valid account types matching database enum
+  const VALID_ACCOUNT_TYPES = ['individual', 'business', 'organization', 'standard'] as const;
+  type AccountType = typeof VALID_ACCOUNT_TYPES[number];
+  
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     confirmPassword: "",
-    accountType: "business",
+    accountType: "business" as AccountType,
     company: "",
   });
 
@@ -343,7 +347,7 @@ export default function Register() {
               <Label htmlFor="accountType">Account Type</Label>
               <Select
                 value={formData.accountType}
-                onValueChange={(value) => setFormData({ ...formData, accountType: value })}
+                onValueChange={(value: AccountType) => setFormData({ ...formData, accountType: value })}
                 disabled={isLoading}
               >
                 <SelectTrigger className="mt-1.5">
