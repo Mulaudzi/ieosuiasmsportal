@@ -94,12 +94,12 @@ export default function Careers() {
               <p className="text-sm text-muted-foreground mb-4">
                 Send us your CV and we'll reach out when positions become available.
               </p>
-              <a href="mailto:careers@ieosuia.com?subject=Career Enquiry - IEOSUIA SMS Portal">
+              <Link to="/contact?purpose=general">
                 <Button className="gap-2">
                   <Mail className="h-4 w-4" />
                   Send Your CV
                 </Button>
-              </a>
+              </Link>
             </div>
             <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <MapPin className="h-4 w-4" />

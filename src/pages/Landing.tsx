@@ -462,7 +462,7 @@ export default function Landing() {
                   </table>
                 </div>
                 <p className="text-xs text-muted-foreground mt-4">
-                  * For 500,000+ emails, contact <a href="mailto:sales@ieosuia.com" className="text-primary hover:underline">sales@ieosuia.com</a>
+                  * For 500,000+ emails, <Link to="/contact?purpose=sales" className="text-primary hover:underline">contact our sales team</Link>
                 </p>
               </div>
             </div>

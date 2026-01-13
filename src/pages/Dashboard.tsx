@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getDashboardStats, handleApiError } from "@/lib/api";
+import { OnboardingTrigger } from "@/components/onboarding/OnboardingTrigger";
 
 interface DashboardData {
   smsSent: number;
@@ -75,26 +76,28 @@ export default function Dashboard() {
   };
 
   return (
-    <DashboardLayout
-      title="Dashboard"
-      subtitle="Welcome back! Here's an overview of your messaging performance."
-      actions={
-        <div className="flex gap-3">
-          <Link to="/sms-campaigns/new">
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              New SMS Campaign
-            </Button>
-          </Link>
-          <Link to="/email-campaigns/new">
-            <Button variant="outline" className="gap-2">
-              <Mail className="h-4 w-4" />
-              New Email Campaign
-            </Button>
-          </Link>
-        </div>
-      }
-    >
+    <>
+      <OnboardingTrigger />
+      <DashboardLayout
+        title="Dashboard"
+        subtitle="Welcome back! Here's an overview of your messaging performance."
+        actions={
+          <div className="flex gap-3">
+            <Link to="/sms-campaigns/new">
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                New SMS Campaign
+              </Button>
+            </Link>
+            <Link to="/email-campaigns/new">
+              <Button variant="outline" className="gap-2">
+                <Mail className="h-4 w-4" />
+                New Email Campaign
+              </Button>
+            </Link>
+          </div>
+        }
+      >
       {/* Quick Stats */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {loading ? (
@@ -211,6 +214,7 @@ export default function Dashboard() {
           <ArrowRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
         </Link>
       </div>
-    </DashboardLayout>
+      </DashboardLayout>
+    </>
   );
 }

@@ -140,9 +140,9 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">12. Contact Us</h2>
             <p className="text-muted-foreground leading-relaxed">
-              If you have any questions about this Privacy Policy or our data practices, please contact 
-              us at <a href="mailto:support@ieosuia.com" className="text-primary hover:underline">support@ieosuia.com</a>{" "}
-              or visit our <Link to="/contact" className="text-primary hover:underline">Contact page</Link>.
+              If you have any questions about this Privacy Policy or our data practices, please visit 
+              our <Link to="/contact?purpose=support" className="text-primary hover:underline">Contact page</Link> to 
+              reach our support team.
             </p>
           </section>
         </div>

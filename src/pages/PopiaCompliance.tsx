@@ -249,7 +249,7 @@ export default function PopiaCompliance() {
             <div className="bg-muted/50 rounded-lg p-4">
               <p className="text-muted-foreground">
                 <strong className="text-foreground">Information Officer:</strong> IEOSUIA PTY LTD<br />
-                <strong className="text-foreground">Email:</strong> <a href="mailto:hello@ieosuia.com" className="text-primary hover:underline">hello@ieosuia.com</a><br />
+                <strong className="text-foreground">Email:</strong> <Link to="/contact?purpose=general" className="text-primary hover:underline">Contact us here</Link><br />
                 <strong className="text-foreground">Address:</strong> 26 Rock Alder, Extension 15, Naturena, Johannesburg, 2095<br />
                 <strong className="text-foreground">Phone:</strong> 079 928 2775 / 063 154 0696
               </p>
