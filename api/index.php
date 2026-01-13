@@ -126,6 +126,12 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/realtime/poll', 'RealtimeController@poll');
     $router->post('/admin/realtime/cleanup', 'RealtimeController@cleanup');
     
+    // QA Console (admin only)
+    $router->post('/admin/qa/run', 'QaController@runTests');
+    $router->get('/admin/qa/health', 'QaController@healthOverview');
+    $router->post('/admin/qa/seed', 'QaController@seedTestData');
+    $router->post('/admin/qa/cleanup', 'QaController@cleanupTestData');
+    
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
     $router->get('/dashboard/chart', 'DashboardController@chart');
