@@ -756,4 +756,226 @@ class AdminController
         
         return $result;
     }
+    
+    /**
+     * Export heatmap data
+     */
+    public function exportHeatmap(): void
+    {
+        $this->requireAdmin();
+        
+        $format = Request::query('format', 'csv');
+        
+        $pdo = db();
+        $thirtyDaysAgo = date('Y-m-d', strtotime('-30 days'));
+        
+        // Get comprehensive message stats by hour and day
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(m.sent_at) as hour,
+                DAYOFWEEK(m.sent_at) as day_of_week,
+                COUNT(*) as total_sent,
+                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as failed
+            FROM messages m
+            WHERE m.sent_at >= ? AND m.sent_at IS NOT NULL
+            GROUP BY HOUR(m.sent_at), DAYOFWEEK(m.sent_at)
+            ORDER BY day_of_week, hour
+        ");
+        $stmt->execute([$thirtyDaysAgo]);
+        $messageStats = $stmt->fetchAll();
+        
+        // Get registration stats
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(created_at) as hour,
+                DAYOFWEEK(created_at) as day_of_week,
+                COUNT(*) as count
+            FROM users
+            WHERE created_at >= ?
+            GROUP BY HOUR(created_at), DAYOFWEEK(created_at)
+            ORDER BY day_of_week, hour
+        ");
+        $stmt->execute([$thirtyDaysAgo]);
+        $registrationStats = $stmt->fetchAll();
+        
+        // Get campaign stats
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(created_at) as hour,
+                DAYOFWEEK(created_at) as day_of_week,
+                COUNT(*) as count
+            FROM campaigns
+            WHERE created_at >= ?
+            GROUP BY HOUR(created_at), DAYOFWEEK(created_at)
+            ORDER BY day_of_week, hour
+        ");
+        $stmt->execute([$thirtyDaysAgo]);
+        $campaignStats = $stmt->fetchAll();
+        
+        if ($format === 'csv') {
+            $this->exportHeatmapCSV($messageStats, $registrationStats, $campaignStats);
+        } else {
+            $this->exportHeatmapPDF($messageStats, $registrationStats, $campaignStats);
+        }
+    }
+    
+    private function exportHeatmapCSV(array $messageStats, array $registrationStats, array $campaignStats): void
+    {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="heatmap_data_' . date('Y-m-d') . '.csv"');
+        
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
+        
+        $dayNames = ['', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        
+        // Message delivery section
+        fputcsv($output, ['MESSAGE DELIVERY STATISTICS (Last 30 Days)']);
+        fputcsv($output, ['Day', 'Hour', 'Total Sent', 'Delivered', 'Failed', 'Delivery Rate %']);
+        
+        foreach ($messageStats as $row) {
+            $rate = $row['total_sent'] > 0 ? round(($row['delivered'] / $row['total_sent']) * 100, 1) : 0;
+            fputcsv($output, [
+                $dayNames[(int)$row['day_of_week']],
+                $row['hour'] . ':00',
+                $row['total_sent'],
+                $row['delivered'],
+                $row['failed'],
+                $rate . '%',
+            ]);
+        }
+        
+        fputcsv($output, []); // Empty row
+        
+        // Registration section
+        fputcsv($output, ['USER REGISTRATIONS (Last 30 Days)']);
+        fputcsv($output, ['Day', 'Hour', 'Registrations']);
+        
+        foreach ($registrationStats as $row) {
+            fputcsv($output, [
+                $dayNames[(int)$row['day_of_week']],
+                $row['hour'] . ':00',
+                $row['count'],
+            ]);
+        }
+        
+        fputcsv($output, []); // Empty row
+        
+        // Campaign section
+        fputcsv($output, ['CAMPAIGNS CREATED (Last 30 Days)']);
+        fputcsv($output, ['Day', 'Hour', 'Campaigns']);
+        
+        foreach ($campaignStats as $row) {
+            fputcsv($output, [
+                $dayNames[(int)$row['day_of_week']],
+                $row['hour'] . ':00',
+                $row['count'],
+            ]);
+        }
+        
+        fclose($output);
+        exit;
+    }
+    
+    private function exportHeatmapPDF(array $messageStats, array $registrationStats, array $campaignStats): void
+    {
+        header('Content-Type: text/html; charset=utf-8');
+        
+        $dayNames = ['', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        
+        $html = '<!DOCTYPE html><html><head><meta charset="utf-8">';
+        $html .= '<title>Activity Heatmap Report - ' . date('Y-m-d') . '</title>';
+        $html .= '<style>
+            body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; color: #333; }
+            h1 { font-size: 20px; margin-bottom: 5px; color: #1a1a1a; }
+            h2 { font-size: 14px; margin-top: 25px; margin-bottom: 10px; color: #444; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
+            .subtitle { color: #666; font-size: 12px; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th { background-color: #007bff; color: white; padding: 8px; text-align: left; font-weight: 600; }
+            td { border: 1px solid #ddd; padding: 6px 8px; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
+            .rate-high { background-color: #d4edda; color: #155724; }
+            .rate-medium { background-color: #fff3cd; color: #856404; }
+            .rate-low { background-color: #f8d7da; color: #721c24; }
+            .summary { background-color: #e7f3ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+            .summary h3 { margin: 0 0 10px 0; font-size: 13px; }
+            .stat-grid { display: flex; gap: 20px; flex-wrap: wrap; }
+            .stat-item { text-align: center; }
+            .stat-value { font-size: 24px; font-weight: bold; color: #007bff; }
+            .stat-label { font-size: 10px; color: #666; }
+            @media print { body { margin: 0; } .page-break { page-break-before: always; } }
+        </style></head><body>';
+        
+        $html .= '<h1>Activity Heatmap Report</h1>';
+        $html .= '<p class="subtitle">Generated: ' . date('F j, Y \a\t g:i A') . ' | Period: Last 30 Days</p>';
+        
+        // Summary stats
+        $totalSent = array_sum(array_column($messageStats, 'total_sent'));
+        $totalDelivered = array_sum(array_column($messageStats, 'delivered'));
+        $totalFailed = array_sum(array_column($messageStats, 'failed'));
+        $overallRate = $totalSent > 0 ? round(($totalDelivered / $totalSent) * 100, 1) : 0;
+        $totalRegistrations = array_sum(array_column($registrationStats, 'count'));
+        $totalCampaigns = array_sum(array_column($campaignStats, 'count'));
+        
+        $html .= '<div class="summary">';
+        $html .= '<h3>Summary Statistics</h3>';
+        $html .= '<div class="stat-grid">';
+        $html .= '<div class="stat-item"><div class="stat-value">' . number_format($totalSent) . '</div><div class="stat-label">Messages Sent</div></div>';
+        $html .= '<div class="stat-item"><div class="stat-value">' . number_format($totalDelivered) . '</div><div class="stat-label">Delivered</div></div>';
+        $html .= '<div class="stat-item"><div class="stat-value">' . $overallRate . '%</div><div class="stat-label">Delivery Rate</div></div>';
+        $html .= '<div class="stat-item"><div class="stat-value">' . number_format($totalRegistrations) . '</div><div class="stat-label">Registrations</div></div>';
+        $html .= '<div class="stat-item"><div class="stat-value">' . number_format($totalCampaigns) . '</div><div class="stat-label">Campaigns</div></div>';
+        $html .= '</div></div>';
+        
+        // Message delivery table
+        $html .= '<h2>📊 Message Delivery by Hour & Day</h2>';
+        $html .= '<table><thead><tr><th>Day</th><th>Hour</th><th>Sent</th><th>Delivered</th><th>Failed</th><th>Rate</th></tr></thead><tbody>';
+        
+        foreach ($messageStats as $row) {
+            $rate = $row['total_sent'] > 0 ? round(($row['delivered'] / $row['total_sent']) * 100, 1) : 0;
+            $rateClass = $rate >= 90 ? 'rate-high' : ($rate >= 70 ? 'rate-medium' : 'rate-low');
+            $html .= '<tr>';
+            $html .= '<td>' . htmlspecialchars($dayNames[(int)$row['day_of_week']]) . '</td>';
+            $html .= '<td>' . $row['hour'] . ':00</td>';
+            $html .= '<td>' . number_format($row['total_sent']) . '</td>';
+            $html .= '<td>' . number_format($row['delivered']) . '</td>';
+            $html .= '<td>' . number_format($row['failed']) . '</td>';
+            $html .= '<td class="' . $rateClass . '">' . $rate . '%</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</tbody></table>';
+        
+        // Registration table
+        $html .= '<h2>👥 User Registrations by Hour & Day</h2>';
+        $html .= '<table><thead><tr><th>Day</th><th>Hour</th><th>Registrations</th></tr></thead><tbody>';
+        
+        foreach ($registrationStats as $row) {
+            $html .= '<tr>';
+            $html .= '<td>' . htmlspecialchars($dayNames[(int)$row['day_of_week']]) . '</td>';
+            $html .= '<td>' . $row['hour'] . ':00</td>';
+            $html .= '<td>' . number_format($row['count']) . '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</tbody></table>';
+        
+        // Campaign table
+        $html .= '<h2>📨 Campaigns Created by Hour & Day</h2>';
+        $html .= '<table><thead><tr><th>Day</th><th>Hour</th><th>Campaigns</th></tr></thead><tbody>';
+        
+        foreach ($campaignStats as $row) {
+            $html .= '<tr>';
+            $html .= '<td>' . htmlspecialchars($dayNames[(int)$row['day_of_week']]) . '</td>';
+            $html .= '<td>' . $row['hour'] . ':00</td>';
+            $html .= '<td>' . number_format($row['count']) . '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</tbody></table>';
+        
+        $html .= '<script>window.onload = function() { window.print(); }</script>';
+        $html .= '</body></html>';
+        
+        echo $html;
+        exit;
+    }
 }
