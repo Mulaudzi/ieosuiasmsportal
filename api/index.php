@@ -86,6 +86,11 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/audit-logs', 'AdminController@auditLogs');
     $router->get('/admin/audit-logs/export', 'AdminController@exportAuditLogs');
     
+    // Admin notification settings
+    $router->get('/admin/notification-settings', 'AdminNotificationSettingsController@index');
+    $router->put('/admin/notification-settings/{event_type}', 'AdminNotificationSettingsController@update');
+    $router->post('/admin/notification-settings/bulk', 'AdminNotificationSettingsController@bulkUpdate');
+    
     // SMTP Settings management (admin only)
     $router->get('/admin/smtp-settings', 'SmtpSettingsController@index');
     $router->get('/admin/smtp-settings/{type}', 'SmtpSettingsController@show');
