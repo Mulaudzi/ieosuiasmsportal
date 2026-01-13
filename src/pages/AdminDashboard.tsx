@@ -1037,12 +1037,18 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
   return (
     <DashboardLayout
       title="Admin Dashboard"
-      subtitle="Manage users, sender IDs, and system settings"
+      subtitle="Central hub for system administration and user management"
       actions={
-        <Button variant="outline" onClick={loadData} disabled={loading} className="gap-2">
-          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate("/admin/users")}>
+            <Shield className="h-4 w-4 mr-2" />
+            Manage Admins
+          </Button>
+          <Button variant="outline" onClick={loadData} disabled={loading} className="gap-2">
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       }
     >
       {/* Stats */}
@@ -1090,6 +1096,78 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
               <p className="text-2xl font-bold text-foreground">R{(stats?.total_revenue || 0).toFixed(2)}</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Quick Navigation Cards */}
+      <div className="mb-8">
+        <h3 className="text-lg font-semibold text-foreground mb-4">Quick Navigation</h3>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <button
+            onClick={() => navigate("/admin/users")}
+            className="group rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary hover:shadow-md"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10 group-hover:bg-destructive/20 transition-colors">
+                <Shield className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Admin Users</p>
+                <p className="text-xs text-muted-foreground">Manage administrators</p>
+              </div>
+            </div>
+          </button>
+          <button
+            onClick={() => {
+              const tabs = document.querySelector('[value="users"]') as HTMLElement;
+              tabs?.click();
+            }}
+            className="group rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary hover:shadow-md"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                <Users className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">User Management</p>
+                <p className="text-xs text-muted-foreground">{stats?.total_users || 0} total users</p>
+              </div>
+            </div>
+          </button>
+          <button
+            onClick={() => {
+              const tabs = document.querySelector('[value="sender-ids"]') as HTMLElement;
+              tabs?.click();
+            }}
+            className="group rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary hover:shadow-md"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 group-hover:bg-warning/20 transition-colors">
+                <Key className="h-5 w-5 text-warning" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Sender IDs</p>
+                <p className="text-xs text-muted-foreground">{pendingCount} pending approval</p>
+              </div>
+            </div>
+          </button>
+          <button
+            onClick={() => {
+              const tabs = document.querySelector('[value="settings"]') as HTMLElement;
+              tabs?.click();
+            }}
+            className="group rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary hover:shadow-md"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted group-hover:bg-muted/80 transition-colors">
+                <Settings className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Settings</p>
+                <p className="text-xs text-muted-foreground">SMTP, notifications</p>
+              </div>
+            </div>
+          </button>
         </div>
       </div>
 
