@@ -68,7 +68,7 @@ const App = () => (
             <Route path="/documentation" element={<Documentation />} />
             <Route path="/careers" element={<Careers />} />
             <Route path="/contact" element={<Contact />} />
-            <Route path="/admin-setup" element={<AdminSetup />} />
+            <Route path="/admin/setup" element={<AdminSetup />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/sms-campaigns" element={<ProtectedRoute requireVerified><SmsCampaigns /></ProtectedRoute>} />
