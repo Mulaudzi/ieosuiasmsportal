@@ -19,7 +19,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isEmailVerified: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, recaptchaToken?: string, password2?: string, password3?: string) => Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean }>;
+  login: (email: string, password: string, recaptchaToken?: string, password2?: string, password3?: string) => Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }>;
   register: (data: { name: string; email: string; password: string; accountType: string; recaptchaToken?: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (email: string, password: string, recaptchaToken?: string, password2?: string, password3?: string): Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean }> => {
+  const login = async (email: string, password: string, recaptchaToken?: string, password2?: string, password3?: string): Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }> => {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
@@ -166,7 +166,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       if (response.status === 401) {
-        return { success: false, error: data.message || "Invalid password" };
+        // Include remaining attempts if provided
+        const remainingAttempts = data.data?.remaining_attempts;
+        return { 
+          success: false, 
+          error: data.message || "Authentication failed",
+          remaining_attempts: remainingAttempts
+        };
       }
       
       if (response.status === 400) {
@@ -178,7 +184,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!response.ok) {
-        return { success: false, error: data.message || "Login failed" };
+        const remainingAttempts = data.data?.remaining_attempts;
+        return { 
+          success: false, 
+          error: data.message || "Login failed",
+          remaining_attempts: remainingAttempts
+        };
       }
 
       // Successful response - handle both nested (data.data) and flat response formats

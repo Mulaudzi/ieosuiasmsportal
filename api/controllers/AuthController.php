@@ -147,14 +147,16 @@ class AuthController {
                 return;
             }
             
-            $adminUser = AdminUserController::authenticate(
+            $authResult = AdminUserController::authenticate(
                 $data['email'], 
                 $data['password'], 
                 $data['password_2'], 
                 $data['password_3']
             );
             
-            if ($adminUser) {
+            if ($authResult['success'] && isset($authResult['admin'])) {
+                $adminUser = $authResult['admin'];
+                
                 // Admin login successful - find or create user record
                 $userRecord = table('users')->where('email', $data['email'])->first();
                 
@@ -202,11 +204,8 @@ class AuthController {
                 ]);
                 return;
             }
-        }
-        
-        // Check if this was a failed admin login attempt (email exists in admin_users)
-        $adminExists = table('admin_users')->where('email', $data['email'])->first();
-        if ($adminExists) {
+            
+            // Admin authentication failed
             // Log failed admin attempt
             AuditLogService::log('admin_login_failed', 'security', null, null, [
                 'ip_address' => $ip,
@@ -217,7 +216,15 @@ class AuthController {
             // Send security alert email
             $this->sendAdminLoginAlert($ip, $_SERVER['HTTP_USER_AGENT'] ?? 'unknown');
             
-            Response::error('Invalid credentials', 401);
+            // Return generic error with remaining attempts (don't reveal which password failed)
+            Response::json([
+                'success' => false,
+                'message' => 'Authentication failed',
+                'data' => [
+                    'remaining_attempts' => $authResult['remaining_attempts'] ?? null,
+                    'locked_until' => $authResult['locked_until'] ?? null,
+                ],
+            ], 401);
             return;
         }
         

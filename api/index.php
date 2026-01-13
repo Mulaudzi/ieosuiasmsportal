@@ -53,6 +53,9 @@ $router->post('/auth/forgot-password', 'AuthController@forgotPassword');
 $router->post('/auth/reset-password', 'AuthController@resetPassword');
 $router->post('/auth/verify-email', 'AuthController@verifyEmail');
 
+// Admin email check (public - for login form detection)
+$router->post('/admin/check-email', 'AdminUserController@checkEmail');
+
 // Admin user management (public but requires setup key)
 $router->post('/admin-users/create', 'AdminUserController@create');
 $router->post('/admin-users/update-password', 'AdminUserController@updatePassword');
