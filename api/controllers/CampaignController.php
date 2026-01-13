@@ -457,7 +457,6 @@ class CampaignController {
             ],
         ]);
     }
-    }
     
     public function emailStore(): void {
         $data = Request::validate([
