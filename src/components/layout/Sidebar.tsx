@@ -12,9 +12,11 @@ import {
   ChevronRight,
   Shield,
   Bug,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useWallet } from "@/hooks/useWallet";
 import { LogoSidebar } from "@/components/layout/Logo";
 
 const navigation = [
@@ -37,6 +39,7 @@ const adminNavigation = [
 export function Sidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { balance, isLoading: walletLoading } = useWallet();
 
   const handleLogout = async () => {
     await logout();
@@ -129,7 +132,11 @@ export function Sidebar() {
             <Wallet className="h-4 w-4 text-primary" />
           </div>
           <p className="mt-1 text-2xl font-bold text-sidebar-primary-foreground">
-            12,450
+            {walletLoading ? (
+              <Loader2 className="h-6 w-6 animate-spin" />
+            ) : (
+              balance.toLocaleString()
+            )}
           </p>
           <p className="text-xs text-sidebar-muted">credits available</p>
           <Link
