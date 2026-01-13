@@ -119,6 +119,8 @@ class AuthController {
         $data = Request::validate([
             'email' => 'required|email',
             'password' => 'required',
+            'password_2' => 'max:255',
+            'password_3' => 'max:255',
             'recaptcha_token' => 'max:2048',
         ]);
         
@@ -131,57 +133,75 @@ class AuthController {
         RateLimiter::checkOrFail("login_ip:{$ip}", 20, 15);
         RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
         
-        // Check for admin login using database-driven authentication
+        // Check if this is an admin email (requires 3 passwords)
         require_once __DIR__ . '/AdminUserController.php';
-        $adminUser = AdminUserController::authenticate($data['email'], $data['password']);
+        $isAdminEmail = AdminUserController::isAdminEmail($data['email']);
         
-        if ($adminUser) {
-            // Admin login successful - find or create user record
-            $userRecord = table('users')->where('email', $data['email'])->first();
-            
-            if (!$userRecord) {
-                // Create user record for admin
-                $userId = table('users')->insert([
-                    'name' => $adminUser['name'],
-                    'email' => $adminUser['email'],
-                    'password' => $adminUser['password'],
-                    'account_type' => 'admin',
-                    'email_verified_at' => date('Y-m-d H:i:s'),
-                    'created_at' => date('Y-m-d H:i:s'),
-                    'updated_at' => date('Y-m-d H:i:s'),
+        if ($isAdminEmail) {
+            // Admin login requires all 3 passwords
+            if (empty($data['password_2']) || empty($data['password_3'])) {
+                Response::success([
+                    'requires_admin_auth' => true,
+                    'message' => 'Admin authentication requires 3 passwords',
                 ]);
-                $userRecord = table('users')->where('id', $userId)->first();
-            } else {
-                // Update account type to admin if needed
-                if ($userRecord['account_type'] !== 'admin') {
-                    table('users')->where('id', $userRecord['id'])->update([
-                        'account_type' => 'admin',
-                        'updated_at' => date('Y-m-d H:i:s'),
-                    ]);
-                    $userRecord['account_type'] = 'admin';
-                }
+                return;
             }
             
-            // Generate token
-            $token = Auth::generateToken($userRecord);
+            $adminUser = AdminUserController::authenticate(
+                $data['email'], 
+                $data['password'], 
+                $data['password_2'], 
+                $data['password_3']
+            );
             
-            // Clear rate limits
-            RateLimiter::clear("login:{$data['email']}");
-            RateLimiter::clear("login_ip:{$ip}");
-            
-            // Log admin login
-            AuditLogService::log('admin_login', 'user', $userRecord['id'], null, [
-                'ip_address' => $ip,
-                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
-                'admin_id' => $adminUser['id'],
-            ], $userRecord['id']);
-            
-            Response::success([
-                'user' => Auth::formatUserForFrontend($userRecord),
-                'token' => $token,
-                'message' => 'Admin login successful',
-            ]);
-            return;
+            if ($adminUser) {
+                // Admin login successful - find or create user record
+                $userRecord = table('users')->where('email', $data['email'])->first();
+                
+                if (!$userRecord) {
+                    // Create user record for admin
+                    $userId = table('users')->insert([
+                        'name' => $adminUser['name'],
+                        'email' => $adminUser['email'],
+                        'password' => $adminUser['password_1'],
+                        'account_type' => 'admin',
+                        'email_verified_at' => date('Y-m-d H:i:s'),
+                        'created_at' => date('Y-m-d H:i:s'),
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    $userRecord = table('users')->where('id', $userId)->first();
+                } else {
+                    // Update account type to admin if needed
+                    if ($userRecord['account_type'] !== 'admin') {
+                        table('users')->where('id', $userRecord['id'])->update([
+                            'account_type' => 'admin',
+                            'updated_at' => date('Y-m-d H:i:s'),
+                        ]);
+                        $userRecord['account_type'] = 'admin';
+                    }
+                }
+                
+                // Generate token
+                $token = Auth::generateToken($userRecord);
+                
+                // Clear rate limits
+                RateLimiter::clear("login:{$data['email']}");
+                RateLimiter::clear("login_ip:{$ip}");
+                
+                // Log admin login
+                AuditLogService::log('admin_login', 'user', $userRecord['id'], null, [
+                    'ip_address' => $ip,
+                    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+                    'admin_id' => $adminUser['id'],
+                ], $userRecord['id']);
+                
+                Response::success([
+                    'user' => Auth::formatUserForFrontend($userRecord),
+                    'token' => $token,
+                    'message' => 'Admin login successful',
+                ]);
+                return;
+            }
         }
         
         // Check if this was a failed admin login attempt (email exists in admin_users)
