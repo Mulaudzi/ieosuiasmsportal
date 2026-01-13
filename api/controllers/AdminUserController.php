@@ -14,7 +14,9 @@ class AdminUserController {
     public function create(): void {
         $data = Request::validate([
             'email' => 'required|email|max:255',
-            'password' => 'required|min:12|max:255',
+            'password_1' => 'required|min:12|max:255',
+            'password_2' => 'required|min:12|max:255',
+            'password_3' => 'required|min:12|max:255',
             'name' => 'required|min:2|max:100',
             'setup_key' => 'required|max:100',
         ]);
@@ -33,13 +35,17 @@ class AdminUserController {
             return;
         }
         
-        // Hash password using same method as regular users
-        $hashedPassword = Auth::hashPassword($data['password']);
+        // Hash all 3 passwords using same method as regular users
+        $hashedPassword1 = Auth::hashPassword($data['password_1']);
+        $hashedPassword2 = Auth::hashPassword($data['password_2']);
+        $hashedPassword3 = Auth::hashPassword($data['password_3']);
         
-        // Create admin user
+        // Create admin user with 3 passwords
         $adminId = table('admin_users')->insert([
             'email' => $data['email'],
-            'password' => $hashedPassword,
+            'password_1' => $hashedPassword1,
+            'password_2' => $hashedPassword2,
+            'password_3' => $hashedPassword3,
             'name' => $data['name'],
             'is_active' => 1,
             'created_at' => date('Y-m-d H:i:s'),
@@ -84,8 +90,12 @@ class AdminUserController {
     public function updatePassword(): void {
         $data = Request::validate([
             'email' => 'required|email',
-            'current_password' => 'required',
-            'new_password' => 'required|min:12|max:255',
+            'current_password_1' => 'required',
+            'current_password_2' => 'required',
+            'current_password_3' => 'required',
+            'new_password_1' => 'required|min:12|max:255',
+            'new_password_2' => 'required|min:12|max:255',
+            'new_password_3' => 'required|min:12|max:255',
             'setup_key' => 'required|max:100',
         ]);
         
@@ -103,15 +113,25 @@ class AdminUserController {
             return;
         }
         
-        // Verify current password
-        if (!password_verify($data['current_password'], $admin['password'])) {
-            Response::error('Current password is incorrect', 401);
+        // Verify all 3 current passwords
+        if (!password_verify($data['current_password_1'], $admin['password_1'])) {
+            Response::error('Current password 1 is incorrect', 401);
+            return;
+        }
+        if (!password_verify($data['current_password_2'], $admin['password_2'])) {
+            Response::error('Current password 2 is incorrect', 401);
+            return;
+        }
+        if (!password_verify($data['current_password_3'], $admin['password_3'])) {
+            Response::error('Current password 3 is incorrect', 401);
             return;
         }
         
-        // Update password
+        // Update all 3 passwords
         table('admin_users')->where('id', $admin['id'])->update([
-            'password' => Auth::hashPassword($data['new_password']),
+            'password_1' => Auth::hashPassword($data['new_password_1']),
+            'password_2' => Auth::hashPassword($data['new_password_2']),
+            'password_3' => Auth::hashPassword($data['new_password_3']),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
@@ -121,7 +141,7 @@ class AdminUserController {
             'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
         ], null);
         
-        Response::success(['message' => 'Password updated successfully']);
+        Response::success(['message' => 'All passwords updated successfully']);
     }
     
     /**
@@ -298,9 +318,20 @@ class AdminUserController {
     }
     
     /**
-     * Authenticate admin user (used by login endpoint)
+     * Check if email belongs to an admin user
      */
-    public static function authenticate(string $email, string $password): ?array {
+    public static function isAdminEmail(string $email): bool {
+        $admin = table('admin_users')
+            ->where('email', $email)
+            ->where('is_active', 1)
+            ->first();
+        return $admin !== null;
+    }
+    
+    /**
+     * Authenticate admin user with 3 passwords (used by login endpoint)
+     */
+    public static function authenticate(string $email, string $password1, string $password2, string $password3): ?array {
         $admin = table('admin_users')
             ->where('email', $email)
             ->where('is_active', 1)
@@ -315,8 +346,13 @@ class AdminUserController {
             return null;
         }
         
-        // Verify password
-        if (!password_verify($password, $admin['password'])) {
+        // Verify all 3 passwords
+        $allPasswordsValid = 
+            password_verify($password1, $admin['password_1']) &&
+            password_verify($password2, $admin['password_2']) &&
+            password_verify($password3, $admin['password_3']);
+        
+        if (!$allPasswordsValid) {
             // Increment failed attempts
             $failedAttempts = ($admin['failed_attempts'] ?? 0) + 1;
             $lockUntil = null;

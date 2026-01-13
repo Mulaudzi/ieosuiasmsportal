@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff, Shield, ArrowLeft, ArrowRight } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
@@ -20,11 +20,21 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [pendingRedirect, setPendingRedirect] = useState(false);
+  
+  // Admin multi-password flow
+  const [adminStep, setAdminStep] = useState(0); // 0 = normal login, 1-3 = admin password steps
+  const [adminPasswords, setAdminPasswords] = useState({
+    password_1: "",
+    password_2: "",
+    password_3: "",
+  });
+  const [adminEmail, setAdminEmail] = useState("");
+  
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
-  const [pendingRedirect, setPendingRedirect] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,8 +53,21 @@ export default function Login() {
       const recaptchaToken = await executeRecaptcha('login');
       
       const result = await login(formData.email, formData.password, recaptchaToken || undefined);
+      
+      // Check if admin auth is required (3 passwords)
+      if (result.requires_admin_auth) {
+        setAdminEmail(formData.email);
+        setAdminPasswords(prev => ({ ...prev, password_1: formData.password }));
+        setAdminStep(2); // Move to password 2
+        setFormData({ ...formData, password: "" });
+        toast({
+          title: "Admin Authentication Required",
+          description: "Please enter your second password.",
+        });
+        return;
+      }
+      
       if (result.success) {
-        // Mark for redirect - useEffect will handle navigation after user state updates
         setPendingRedirect(true);
       } else {
         toast({
@@ -62,6 +85,93 @@ export default function Login() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAdminPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (adminStep === 2) {
+      if (!formData.password) {
+        toast({
+          title: "Missing field",
+          description: "Please enter your second password.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setAdminPasswords(prev => ({ ...prev, password_2: formData.password }));
+      setAdminStep(3);
+      setFormData({ ...formData, password: "" });
+      toast({
+        title: "Password 2 Accepted",
+        description: "Please enter your third password.",
+      });
+      return;
+    }
+    
+    if (adminStep === 3) {
+      if (!formData.password) {
+        toast({
+          title: "Missing field",
+          description: "Please enter your third password.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setIsLoading(true);
+      try {
+        const recaptchaToken = await executeRecaptcha('login');
+        const finalPasswords = {
+          ...adminPasswords,
+          password_3: formData.password,
+        };
+        
+        const result = await login(
+          adminEmail, 
+          finalPasswords.password_1, 
+          recaptchaToken || undefined,
+          finalPasswords.password_2,
+          finalPasswords.password_3
+        );
+        
+        if (result.success) {
+          setPendingRedirect(true);
+        } else {
+          // Reset admin flow on failure
+          setAdminStep(0);
+          setAdminPasswords({ password_1: "", password_2: "", password_3: "" });
+          setAdminEmail("");
+          setFormData({ email: adminEmail, password: "" });
+          toast({
+            title: "Login Failed",
+            description: result.error || "Invalid credentials. Please try again.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error("Login error:", error);
+        toast({
+          title: "Connection Error",
+          description: "Unable to connect to the server. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleBackToStep = (step: number) => {
+    if (step === 0) {
+      setAdminStep(0);
+      setAdminPasswords({ password_1: "", password_2: "", password_3: "" });
+      setAdminEmail("");
+      setFormData({ email: "", password: "" });
+    } else {
+      setAdminStep(step);
+      setFormData({ ...formData, password: "" });
     }
   };
 
@@ -122,6 +232,157 @@ export default function Login() {
       setIsGoogleLoading(false);
     }
   };
+
+  // Admin multi-password form
+  if (adminStep > 0) {
+    return (
+      <div className="min-h-screen flex">
+        {/* Left Panel - Branding */}
+        <div className="hidden lg:flex lg:w-1/2 bg-sidebar items-center justify-center p-12">
+          <div className="max-w-md">
+            <div className="mb-8">
+              <img 
+                src={smsPortalLogoWhite} 
+                alt="IEOSUIA SMS Portal" 
+                className="h-14 w-auto"
+              />
+            </div>
+            <h1 className="text-4xl font-bold text-sidebar-primary-foreground mb-4">
+              Admin Authentication
+            </h1>
+            <p className="text-lg text-sidebar-muted">
+              Enhanced security requires 3 passwords for admin access. Enter each password to proceed.
+            </p>
+            <div className="mt-12 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className={`h-10 w-10 rounded-full flex items-center justify-center ${adminStep >= 1 ? 'bg-primary' : 'bg-primary/20'}`}>
+                  <span className="text-sidebar-primary-foreground font-bold">1</span>
+                </div>
+                <span className={`${adminStep >= 1 ? 'text-sidebar-primary-foreground' : 'text-sidebar-muted'}`}>
+                  Password 1 {adminStep > 1 && '✓'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className={`h-10 w-10 rounded-full flex items-center justify-center ${adminStep >= 2 ? 'bg-primary' : 'bg-primary/20'}`}>
+                  <span className="text-sidebar-primary-foreground font-bold">2</span>
+                </div>
+                <span className={`${adminStep >= 2 ? 'text-sidebar-primary-foreground' : 'text-sidebar-muted'}`}>
+                  Password 2 {adminStep > 2 && '✓'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className={`h-10 w-10 rounded-full flex items-center justify-center ${adminStep >= 3 ? 'bg-primary' : 'bg-primary/20'}`}>
+                  <span className="text-sidebar-primary-foreground font-bold">3</span>
+                </div>
+                <span className={`${adminStep >= 3 ? 'text-sidebar-primary-foreground' : 'text-sidebar-muted'}`}>
+                  Password 3
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Admin Password Form */}
+        <div className="flex-1 flex items-center justify-center p-8 bg-background">
+          <div className="w-full max-w-md">
+            <div className="lg:hidden flex items-center justify-center mb-8">
+              <img 
+                src={smsPortalLogo} 
+                alt="IEOSUIA SMS Portal" 
+                className="h-12 w-auto"
+              />
+            </div>
+
+            <div className="text-center mb-8">
+              <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                <Shield className="h-6 w-6 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground">
+                Enter Password {adminStep}
+              </h2>
+              <p className="mt-2 text-muted-foreground">
+                Step {adminStep} of 3 - Admin authentication for {adminEmail}
+              </p>
+            </div>
+
+            {/* Step indicators for mobile */}
+            <div className="lg:hidden flex justify-center gap-2 mb-6">
+              {[1, 2, 3].map((step) => (
+                <div
+                  key={step}
+                  className={`h-2 w-12 rounded-full ${
+                    step < adminStep ? 'bg-primary' : 
+                    step === adminStep ? 'bg-primary' : 'bg-muted'
+                  }`}
+                />
+              ))}
+            </div>
+
+            <form onSubmit={handleAdminPasswordSubmit} className="space-y-5">
+              <div>
+                <Label htmlFor="admin-password">Password {adminStep}</Label>
+                <div className="relative mt-1.5">
+                  <Input
+                    id="admin-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    disabled={isLoading}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => handleBackToStep(adminStep - 1)}
+                  disabled={isLoading}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+                <Button type="submit" className="flex-1" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Verifying...
+                    </>
+                  ) : adminStep === 3 ? (
+                    "Sign In"
+                  ) : (
+                    <>
+                      Next
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+
+            <p className="mt-8 text-center text-sm text-muted-foreground">
+              <button 
+                onClick={() => handleBackToStep(0)} 
+                className="text-primary hover:underline"
+              >
+                ← Cancel admin login
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">

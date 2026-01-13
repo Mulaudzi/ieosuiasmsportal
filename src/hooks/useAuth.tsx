@@ -19,7 +19,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isEmailVerified: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, recaptchaToken?: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string, recaptchaToken?: string, password2?: string, password3?: string) => Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean }>;
   register: (data: { name: string; email: string; password: string; accountType: string; recaptchaToken?: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -139,15 +139,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (email: string, password: string, recaptchaToken?: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string, recaptchaToken?: string, password2?: string, password3?: string): Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean }> => {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
+        body: JSON.stringify({ 
+          email, 
+          password, 
+          password_2: password2,
+          password_3: password3,
+          recaptcha_token: recaptchaToken 
+        }),
       });
 
       const data = await response.json();
+
+      // Check if admin auth is required (3 passwords needed)
+      if (data.success && data.data?.requires_admin_auth) {
+        return { success: false, requires_admin_auth: true };
+      }
 
       // Handle different HTTP status codes with specific messages
       if (response.status === 404) {
