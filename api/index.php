@@ -221,6 +221,9 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->put('/settings/password', 'SettingsController@updatePassword');
     
     // Reports
+    $router->get('/reports/stats', 'ReportController@stats');
+    $router->get('/reports/chart', 'ReportController@chart');
+    $router->get('/reports/delivery', 'ReportController@delivery');
     $router->get('/reports/campaigns', 'ReportController@campaigns');
     $router->get('/reports/messages', 'ReportController@messages');
     $router->get('/reports/export', 'ReportController@export');
@@ -252,6 +255,11 @@ $router->get('/dlr/status/{messageId}', 'DlrController@status');
 $router->post('/webhooks/telnyx/dlr', 'TelnyxWebhookController@dlr');
 $router->post('/webhooks/telnyx/dlr-failover', 'TelnyxWebhookController@dlrFailover');
 $router->post('/webhooks/telnyx/inbound', 'TelnyxWebhookController@inbound');
+
+// Payment Webhooks (public with signature validation)
+$router->post('/payments/payfast/itn', 'PaymentWebhookController@payfastItn');
+$router->post('/payments/paystack/webhook', 'PaymentWebhookController@paystackWebhook');
+$router->post('/payments/ozow/notify', 'PaymentWebhookController@ozowNotify');
 
 // Run router
 $router->dispatch();

@@ -153,28 +153,35 @@ export function ContactImportModal({ open, onOpenChange, onSuccess }: ContactImp
   };
 
   const handleImport = async () => {
+    if (!file) {
+      toast({
+        title: "No file selected",
+        description: "Please select a file to import.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setStep("importing");
     try {
-      // Convert parsed contacts to FormData for upload
+      // Create FormData for upload
       const formData = new FormData();
-      if (file) {
-        formData.append('file', file);
-      }
-      formData.append('has_header', skipFirstRow ? 'true' : 'false');
+      formData.append('file', file);
       
       const response = await importContacts(formData);
       if (response.success) {
         toast({
           title: "Import successful",
-          description: `${response.data?.imported} contacts imported, ${response.data?.duplicatesSkipped || 0} duplicates skipped.`,
+          description: `${response.data?.imported || 0} contacts imported${response.data?.duplicates ? `, ${response.data.duplicates} duplicates skipped` : ''}${response.data?.failed ? `, ${response.data.failed} failed` : ''}.`,
         });
         onSuccess?.();
         handleClose();
       }
     } catch (error) {
+      console.error("Import error:", error);
       toast({
         title: "Import failed",
-        description: "Please check your file and try again.",
+        description: error instanceof Error ? error.message : "Please check your file and try again.",
         variant: "destructive",
       });
       setStep("preview");
