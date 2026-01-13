@@ -26,6 +26,7 @@ import { buyCredits, handleApiError } from "@/lib/api";
 interface BuyCreditsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onPurchaseComplete?: () => void;
   selectedCredits?: number;
   selectedPrice?: number;
 }
@@ -68,6 +69,7 @@ const bankDetails = {
 export function BuyCreditsModal({
   open,
   onOpenChange,
+  onPurchaseComplete,
   selectedCredits = 0,
   selectedPrice = 0,
 }: BuyCreditsModalProps) {
@@ -176,6 +178,8 @@ export function BuyCreditsModal({
     setSelectedPayment(null);
     setPaymentReference("");
     setEftBankDetails(null);
+    // Trigger balance refresh when closing after purchase
+    onPurchaseComplete?.();
     onOpenChange(false);
   };
 
