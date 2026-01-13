@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { MetricCard } from "@/components/dashboard/MetricCard";
@@ -16,6 +17,7 @@ import {
   ShoppingCart,
   RefreshCw,
   XCircle,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -44,6 +46,7 @@ interface CreditPackage {
 }
 
 export default function Wallet() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<WalletStats>({ balance: 0, used_this_month: 0, total_spent: 0 });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [packages, setPackages] = useState<CreditPackage[]>([]);
@@ -217,7 +220,13 @@ export default function Wallet() {
           <div className="mt-8">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-foreground">Transaction History</h2>
-              <Button variant="outline" size="sm">View All</Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => navigate('/wallet/payments')}>
+                  <History className="h-4 w-4 mr-2" />
+                  Payment History
+                </Button>
+                <Button variant="outline" size="sm">View All</Button>
+              </div>
             </div>
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               {transactions.length === 0 ? (

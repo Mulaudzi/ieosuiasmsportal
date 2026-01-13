@@ -94,6 +94,68 @@ class WalletController {
         Response::paginate($transactions, $total, $page, $perPage);
     }
     
+    /**
+     * Get payment history from payments table
+     */
+    public function payments(): void {
+        $userId = Auth::id();
+        
+        $page = (int) Request::query('page', 1);
+        $perPage = (int) Request::query('per_page', 20);
+        $status = Request::query('status');
+        $gateway = Request::query('gateway');
+        
+        $query = table('payments')->where('user_id', $userId);
+        
+        if ($status) {
+            $query->where('status', $status);
+        }
+        
+        if ($gateway) {
+            $query->where('gateway', $gateway);
+        }
+        
+        $total = $query->count();
+        
+        $payments = table('payments')
+            ->where('user_id', $userId);
+            
+        if ($status) {
+            $payments->where('status', $status);
+        }
+        
+        if ($gateway) {
+            $payments->where('gateway', $gateway);
+        }
+        
+        $payments = $payments
+            ->orderBy('created_at', 'DESC')
+            ->limit($perPage)
+            ->offset(($page - 1) * $perPage)
+            ->get();
+        
+        // Format payments for response
+        $formattedPayments = array_map(function($payment) {
+            return [
+                'id' => $payment['id'],
+                'gateway' => $payment['gateway'],
+                'gateway_reference' => $payment['gateway_reference'],
+                'merchant_reference' => $payment['merchant_reference'],
+                'amount' => (float) $payment['amount'],
+                'currency' => $payment['currency'],
+                'status' => $payment['status'],
+                'gateway_status' => $payment['gateway_status'],
+                'payment_method' => $payment['payment_method'],
+                'credits_added' => (int) $payment['credits_added'],
+                'created_at' => $payment['created_at'],
+                'processed_at' => $payment['processed_at'],
+                'error_message' => $payment['error_message'],
+            ];
+        }, $payments);
+        
+        Response::paginate($formattedPayments, $total, $page, $perPage);
+    }
+    
     public function buy(): void {
         $data = Request::validate([
             'amount' => 'required|numeric|min:10',

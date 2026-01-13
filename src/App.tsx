@@ -23,6 +23,7 @@ import EmailCampaigns from "./pages/EmailCampaigns";
 import Contacts from "./pages/Contacts";
 import Templates from "./pages/Templates";
 import Wallet from "./pages/Wallet";
+import PaymentHistory from "./pages/PaymentHistory";
 import Reports from "./pages/Reports";
 import CampaignComparison from "./pages/CampaignComparison";
 import Settings from "./pages/Settings";
@@ -84,6 +85,7 @@ const App = () => (
             <Route path="/contacts/import" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute requireVerified><Templates /></ProtectedRoute>} />
             <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
+            <Route path="/wallet/payments" element={<ProtectedRoute><PaymentHistory /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute requireVerified><Reports /></ProtectedRoute>} />
             <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
