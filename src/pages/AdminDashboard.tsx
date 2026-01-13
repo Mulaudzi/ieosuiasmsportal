@@ -338,16 +338,34 @@ const statusConfig = {
 };
 
 const actionConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  // User management
   activate_user: { label: "Activated User", icon: UserCheck, color: "text-success" },
   deactivate_user: { label: "Deactivated User", icon: UserX, color: "text-destructive" },
   change_role: { label: "Changed Role", icon: Shield, color: "text-primary" },
+  user_registered: { label: "User Registered", icon: UserCheck, color: "text-primary" },
+  
+  // Admin user management
+  admin_login: { label: "Admin Login", icon: Shield, color: "text-success" },
+  admin_login_failed: { label: "Failed Admin Login", icon: ShieldAlert, color: "text-destructive" },
+  admin_user_created: { label: "Admin User Created", icon: UserCheck, color: "text-success" },
+  admin_user_updated: { label: "Admin User Updated", icon: Settings, color: "text-primary" },
+  admin_user_activated: { label: "Admin User Activated", icon: ShieldAlert, color: "text-success" },
+  admin_user_deactivated: { label: "Admin User Deactivated", icon: ShieldAlert, color: "text-destructive" },
+  admin_password_changed: { label: "Admin Password Changed", icon: KeyRound, color: "text-warning" },
+  admin_password_reset: { label: "Admin Password Reset", icon: KeyRound, color: "text-warning" },
+  admin_user_deleted: { label: "Admin User Deleted", icon: UserX, color: "text-destructive" },
+  
+  // Sender IDs
   approve_sender_id: { label: "Approved Sender ID", icon: CheckCircle, color: "text-success" },
   reject_sender_id: { label: "Rejected Sender ID", icon: XCircle, color: "text-destructive" },
+  
+  // Campaigns
   campaign_created: { label: "Campaign Created", icon: MessageSquare, color: "text-primary" },
   campaign_sent: { label: "Campaign Sent", icon: CheckCircle, color: "text-success" },
   campaign_scheduled_sent: { label: "Scheduled Campaign Sent", icon: Timer, color: "text-success" },
   campaign_deleted: { label: "Campaign Deleted", icon: XCircle, color: "text-destructive" },
-  user_registered: { label: "User Registered", icon: UserCheck, color: "text-primary" },
+  
+  // System
   cron_executed: { label: "Cron Executed", icon: Timer, color: "text-muted-foreground" },
   smtp_settings_updated: { label: "SMTP Settings Updated", icon: Settings, color: "text-primary" },
   notification_settings_updated: { label: "Notification Settings Updated", icon: Bell, color: "text-primary" },
@@ -2159,17 +2177,38 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Actions</SelectItem>
+                  
+                  {/* Admin Actions */}
+                  <SelectItem value="admin_login">Admin Login</SelectItem>
+                  <SelectItem value="admin_login_failed">Failed Admin Login</SelectItem>
+                  <SelectItem value="admin_user_created">Admin User Created</SelectItem>
+                  <SelectItem value="admin_user_updated">Admin User Updated</SelectItem>
+                  <SelectItem value="admin_user_activated">Admin User Activated</SelectItem>
+                  <SelectItem value="admin_user_deactivated">Admin User Deactivated</SelectItem>
+                  <SelectItem value="admin_password_changed">Admin Password Changed</SelectItem>
+                  <SelectItem value="admin_password_reset">Admin Password Reset</SelectItem>
+                  <SelectItem value="admin_user_deleted">Admin User Deleted</SelectItem>
+                  
+                  {/* User Actions */}
                   <SelectItem value="activate_user">Activate User</SelectItem>
                   <SelectItem value="deactivate_user">Deactivate User</SelectItem>
                   <SelectItem value="change_role">Change Role</SelectItem>
+                  <SelectItem value="user_registered">User Registered</SelectItem>
+                  
+                  {/* Sender IDs */}
                   <SelectItem value="approve_sender_id">Approve Sender ID</SelectItem>
                   <SelectItem value="reject_sender_id">Reject Sender ID</SelectItem>
+                  
+                  {/* Campaigns */}
                   <SelectItem value="campaign_created">Campaign Created</SelectItem>
                   <SelectItem value="campaign_sent">Campaign Sent</SelectItem>
                   <SelectItem value="campaign_scheduled_sent">Scheduled Campaign Sent</SelectItem>
                   <SelectItem value="campaign_deleted">Campaign Deleted</SelectItem>
-                  <SelectItem value="user_registered">User Registered</SelectItem>
+                  
+                  {/* System */}
                   <SelectItem value="cron_executed">Cron Executed</SelectItem>
+                  <SelectItem value="smtp_settings_updated">SMTP Settings Updated</SelectItem>
+                  <SelectItem value="notification_settings_updated">Notification Settings Updated</SelectItem>
                 </SelectContent>
               </Select>
               
