@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { MetricCard } from "@/components/dashboard/MetricCard";
@@ -21,14 +22,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { getWalletStats, getTransactions, getCreditPackages, handleApiError } from "@/lib/api";
+import { getTransactions, getCreditPackages, handleApiError } from "@/lib/api";
+import { useWalletStats } from "@/hooks/useWallet";
 import { format } from "date-fns";
-
-interface WalletStats {
-  balance: number;
-  used_this_month: number;
-  total_spent: number;
-}
+import { useQuery } from "@tanstack/react-query";
 
 interface Transaction {
   id: string;
@@ -47,56 +44,47 @@ interface CreditPackage {
 
 export default function Wallet() {
   const navigate = useNavigate();
-  const [stats, setStats] = useState<WalletStats>({ balance: 0, used_this_month: 0, total_spent: 0 });
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [packages, setPackages] = useState<CreditPackage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
   const [showBuyModal, setShowBuyModal] = useState(false);
   const [selectedPackage, setSelectedPackage] = useState<{ credits: number; price: number } | null>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [statsRes, transactionsRes, packagesRes] = await Promise.all([
-        getWalletStats(),
-        getTransactions({ limit: 10 }),
-        getCreditPackages(),
-      ]);
+  // Use the shared wallet stats hook
+  const { balance, usedThisMonth, totalSpent, isLoading: statsLoading, refetch: refetchStats } = useWalletStats();
 
-      if (statsRes.success && statsRes.data) {
-        setStats(statsRes.data);
-      }
-      
-      if (transactionsRes.success && transactionsRes.data) {
-        setTransactions(transactionsRes.data.transactions || []);
-      }
-      
-      if (packagesRes.success && packagesRes.data) {
-        setPackages(packagesRes.data.packages || [
-          { credits: 1000, price: 270, popular: false },
-          { credits: 5000, price: 1350, popular: true },
-          { credits: 10000, price: 2700, popular: false },
-          { credits: 25000, price: 6750, popular: false },
-        ]);
-      }
-    } catch (error) {
-      handleApiError(error);
-      // Set default packages if API fails
-      setPackages([
+  // Transactions query
+  const { data: transactionsData, isLoading: transactionsLoading, refetch: refetchTransactions } = useQuery({
+    queryKey: ["wallet-transactions"],
+    queryFn: async () => {
+      const res = await getTransactions({ limit: 10 });
+      return res.data?.transactions || [];
+    },
+  });
+
+  // Packages query
+  const { data: packages = [] } = useQuery({
+    queryKey: ["credit-packages"],
+    queryFn: async () => {
+      const res = await getCreditPackages();
+      return res.data?.packages || [
         { credits: 1000, price: 270, popular: false },
         { credits: 5000, price: 1350, popular: true },
         { credits: 10000, price: 2700, popular: false },
         { credits: 25000, price: 6750, popular: false },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      ];
+    },
+    staleTime: 5 * 60 * 1000, // Cache packages for 5 minutes
+  });
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const transactions = transactionsData || [];
+  const loading = statsLoading || transactionsLoading;
+
+  const refreshAll = useCallback(() => {
+    refetchStats();
+    refetchTransactions();
+    // Also invalidate the sidebar wallet query
+    queryClient.invalidateQueries({ queryKey: ["wallet"] });
+  }, [refetchStats, refetchTransactions, queryClient]);
 
   const handleBuyCredits = (credits: number, price: number) => {
     setSelectedPackage({ credits, price });
@@ -134,7 +122,7 @@ export default function Wallet() {
       subtitle="Manage your credits and view transaction history"
       actions={
         <div className="flex gap-3">
-          <Button variant="outline" size="icon" onClick={loadData} disabled={loading}>
+          <Button variant="outline" size="icon" onClick={refreshAll} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
           <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting}>
@@ -150,7 +138,8 @@ export default function Wallet() {
     >
       <BuyCreditsModal 
         open={showBuyModal} 
-        onOpenChange={(open) => { setShowBuyModal(open); if (!open) loadData(); }} 
+        onOpenChange={(open) => { setShowBuyModal(open); if (!open) refreshAll(); }} 
+        onPurchaseComplete={refreshAll}
         selectedCredits={selectedPackage?.credits} 
         selectedPrice={selectedPackage?.price} 
       />
@@ -162,18 +151,18 @@ export default function Wallet() {
       ) : (
         <>
           <div className="grid gap-6 md:grid-cols-3">
-            <MetricCard title="Available Credits" value={stats.balance} icon={WalletIcon} iconColor="primary" />
+            <MetricCard title="Available Credits" value={balance} icon={WalletIcon} iconColor="primary" />
             <MetricCard 
               title="Credits Used This Month" 
-              value={stats.used_this_month} 
-              change={stats.balance > 0 ? `${((stats.used_this_month / (stats.balance + stats.used_this_month)) * 100).toFixed(0)}% of total` : "0%"} 
+              value={usedThisMonth} 
+              change={balance > 0 ? `${((usedThisMonth / (balance + usedThisMonth)) * 100).toFixed(0)}% of total` : "0%"} 
               changeType="neutral" 
               icon={TrendingUp} 
               iconColor="accent" 
             />
             <MetricCard 
               title="Total Spent" 
-              value={`R ${stats.total_spent.toLocaleString()}`} 
+              value={`R ${totalSpent.toLocaleString()}`} 
               change="Lifetime value" 
               changeType="neutral" 
               icon={CreditCard} 
