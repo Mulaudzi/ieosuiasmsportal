@@ -133,6 +133,9 @@ class ContactFormController
             'confirmation_sent' => $confirmResult['success'] ? 1 : 0,
         ]);
         
+        // Send notification to admin about new contact form submission
+        self::sendAdminNotification($name, $senderEmail, $purpose, $purposeLabels[$purpose], $logId);
+        
         Response::success([
             'message' => 'Your message has been sent successfully. We will get back to you soon.',
             'recipient' => $recipientEmail,
@@ -555,5 +558,79 @@ HTML;
 </body>
 </html>
 HTML;
+    }
+    
+    /**
+     * Send admin notification about new contact form submission
+     */
+    private static function sendAdminNotification(string $senderName, string $senderEmail, string $purpose, string $purposeLabel, int $logId): void
+    {
+        $appName = env('SMTP_FROM_NAME', 'IEOSUIA SMS Portal');
+        $adminEmail = 'admin@ieosuia.com';
+        $frontendUrl = env('FRONTEND_URL', 'https://sms.ieosuia.com');
+        $subject = "🔔 New Contact Form: {$purposeLabel} from {$senderName}";
+        
+        $date = date('F j, Y \a\t g:i A');
+        
+        $html = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Contact Form Submission</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 24px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 20px; font-weight: 700;">🔔 New Contact Form Submission</h1>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 24px;">
+                            <div style="background: #f4f4f5; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                                <p style="margin: 0 0 4px; color: #71717a; font-size: 12px; text-transform: uppercase;">Category</p>
+                                <p style="margin: 0; color: #18181b; font-size: 16px; font-weight: 600;">{$purposeLabel}</p>
+                            </div>
+                            <table style="width: 100%; margin-bottom: 16px;">
+                                <tr>
+                                    <td style="color: #71717a; font-size: 14px; padding: 4px 0;">From:</td>
+                                    <td style="color: #18181b; font-size: 14px; font-weight: 500; padding: 4px 0;">{$senderName}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #71717a; font-size: 14px; padding: 4px 0;">Email:</td>
+                                    <td style="color: #3b82f6; font-size: 14px; padding: 4px 0;">
+                                        <a href="mailto:{$senderEmail}" style="color: #3b82f6; text-decoration: none;">{$senderEmail}</a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="color: #71717a; font-size: 14px; padding: 4px 0;">Time:</td>
+                                    <td style="color: #18181b; font-size: 14px; padding: 4px 0;">{$date}</td>
+                                </tr>
+                            </table>
+                            <table role="presentation" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="border-radius: 8px; background: #3b82f6;">
+                                        <a href="{$frontendUrl}/admin" style="display: inline-block; padding: 12px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px;">View in Admin Dashboard</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+HTML;
+        
+        self::sendContactEmail($adminEmail, $subject, $html, 'noreply@ieosuia.com', $appName);
     }
 }
