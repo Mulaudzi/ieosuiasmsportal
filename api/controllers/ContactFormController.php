@@ -204,6 +204,203 @@ class ContactFormController
     }
     
     /**
+     * Get contact email statistics (admin only)
+     */
+    public static function stats(): void
+    {
+        $user = Auth::user();
+        if (!$user || $user['account_type'] !== 'admin') {
+            Response::error('Unauthorized', 403);
+            return;
+        }
+        
+        $db = db();
+        
+        // Total submissions
+        $total = table('contact_email_logs')->count();
+        
+        // Status breakdown
+        $sent = table('contact_email_logs')->where('status', 'sent')->count();
+        $failed = table('contact_email_logs')->where('status', 'failed')->count();
+        $bounced = table('contact_email_logs')->where('status', 'bounced')->count();
+        
+        // Read/Unread counts
+        $read = table('contact_email_logs')->where('read_by_admin', 1)->count();
+        $unread = table('contact_email_logs')->where('read_by_admin', 0)->count();
+        
+        // Reply stats
+        $replied = table('contact_email_logs')->where('replied', 1)->count();
+        $pending = table('contact_email_logs')->where('replied', 0)->count();
+        
+        // Response rate (replied / total that were read)
+        $responseRate = $read > 0 ? round(($replied / $read) * 100, 1) : 0;
+        
+        // Calculate average response time (time between created_at and replied_at)
+        $avgResponseTime = null;
+        $avgResponseStmt = $db->prepare("
+            SELECT AVG(TIMESTAMPDIFF(SECOND, created_at, replied_at)) as avg_seconds
+            FROM contact_email_logs 
+            WHERE replied = 1 AND replied_at IS NOT NULL
+        ");
+        $avgResponseStmt->execute();
+        $avgResult = $avgResponseStmt->fetch(\PDO::FETCH_ASSOC);
+        if ($avgResult && $avgResult['avg_seconds']) {
+            $seconds = (int) $avgResult['avg_seconds'];
+            if ($seconds < 60) {
+                $avgResponseTime = $seconds . ' seconds';
+            } elseif ($seconds < 3600) {
+                $avgResponseTime = round($seconds / 60) . ' minutes';
+            } elseif ($seconds < 86400) {
+                $avgResponseTime = round($seconds / 3600, 1) . ' hours';
+            } else {
+                $avgResponseTime = round($seconds / 86400, 1) . ' days';
+            }
+        }
+        
+        // Purpose breakdown
+        $general = table('contact_email_logs')->where('purpose', 'general')->count();
+        $support = table('contact_email_logs')->where('purpose', 'support')->count();
+        $sales = table('contact_email_logs')->where('purpose', 'sales')->count();
+        
+        // This week's submissions
+        $thisWeek = table('contact_email_logs')
+            ->whereRaw('created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)')
+            ->count();
+        
+        // Today's submissions
+        $today = table('contact_email_logs')
+            ->whereRaw('DATE(created_at) = CURDATE()')
+            ->count();
+        
+        Response::success([
+            'stats' => [
+                'total' => $total,
+                'today' => $today,
+                'this_week' => $thisWeek,
+                'status' => [
+                    'sent' => $sent,
+                    'failed' => $failed,
+                    'bounced' => $bounced,
+                ],
+                'read_status' => [
+                    'read' => $read,
+                    'unread' => $unread,
+                ],
+                'reply_status' => [
+                    'replied' => $replied,
+                    'pending' => $pending,
+                    'response_rate' => $responseRate,
+                    'avg_response_time' => $avgResponseTime,
+                ],
+                'purpose' => [
+                    'general' => $general,
+                    'support' => $support,
+                    'sales' => $sales,
+                ],
+            ],
+        ]);
+    }
+    
+    /**
+     * Handle email bounce webhook
+     * Updates the status of bounced emails in the database
+     */
+    public static function bounceWebhook(): void
+    {
+        // Get raw POST data
+        $rawData = file_get_contents('php://input');
+        $data = json_decode($rawData, true);
+        
+        // Validate webhook secret if configured
+        $webhookSecret = env('EMAIL_WEBHOOK_SECRET', '');
+        if ($webhookSecret) {
+            $providedSecret = $_SERVER['HTTP_X_WEBHOOK_SECRET'] ?? '';
+            if (!hash_equals($webhookSecret, $providedSecret)) {
+                Response::error('Invalid webhook secret', 401);
+                return;
+            }
+        }
+        
+        // Log webhook receipt for debugging
+        error_log("Email bounce webhook received: " . $rawData);
+        
+        // Extract bounce info based on common ESP formats
+        $email = null;
+        $bounceType = 'hard'; // hard or soft
+        $reason = null;
+        $timestamp = date('Y-m-d H:i:s');
+        
+        // Amazon SES format
+        if (isset($data['notificationType']) && $data['notificationType'] === 'Bounce') {
+            $bounce = $data['bounce'] ?? [];
+            $email = $bounce['bouncedRecipients'][0]['emailAddress'] ?? null;
+            $bounceType = strtolower($bounce['bounceType'] ?? 'hard');
+            $reason = $bounce['bouncedRecipients'][0]['diagnosticCode'] ?? null;
+        }
+        // Mailgun format
+        elseif (isset($data['event']) && in_array($data['event'], ['bounced', 'failed'])) {
+            $email = $data['recipient'] ?? null;
+            $bounceType = ($data['severity'] ?? '') === 'temporary' ? 'soft' : 'hard';
+            $reason = $data['reason'] ?? ($data['delivery-status']['message'] ?? null);
+        }
+        // SendGrid format
+        elseif (isset($data[0]['event']) && in_array($data[0]['event'], ['bounce', 'dropped'])) {
+            $email = $data[0]['email'] ?? null;
+            $bounceType = $data[0]['type'] ?? 'hard';
+            $reason = $data[0]['reason'] ?? null;
+        }
+        // Postmark format
+        elseif (isset($data['RecordType']) && $data['RecordType'] === 'Bounce') {
+            $email = $data['Email'] ?? null;
+            $bounceType = $data['Type'] ?? 'hard';
+            $reason = $data['Description'] ?? null;
+        }
+        // Generic format
+        elseif (isset($data['email'])) {
+            $email = $data['email'];
+            $bounceType = $data['type'] ?? 'hard';
+            $reason = $data['reason'] ?? null;
+        }
+        
+        if (!$email) {
+            Response::error('No email address found in webhook payload', 400);
+            return;
+        }
+        
+        // Update the email log status
+        $updated = table('contact_email_logs')
+            ->where('sender_email', $email)
+            ->where('status', 'sent')
+            ->update([
+                'status' => 'bounced',
+                'error_message' => $reason ? substr($reason, 0, 500) : "Email bounced ({$bounceType})",
+                'updated_at' => $timestamp,
+            ]);
+        
+        // Also update by recipient email (for confirmation emails that bounced)
+        $updatedRecipient = table('contact_email_logs')
+            ->where('recipient_email', $email)
+            ->where('status', 'sent')
+            ->update([
+                'status' => 'bounced',
+                'error_message' => $reason ? substr($reason, 0, 500) : "Email bounced ({$bounceType})",
+                'updated_at' => $timestamp,
+            ]);
+        
+        $totalUpdated = $updated + $updatedRecipient;
+        
+        // Log the bounce for auditing
+        error_log("Email bounce processed: {$email} ({$bounceType}) - {$totalUpdated} records updated. Reason: {$reason}");
+        
+        Response::success([
+            'message' => 'Bounce processed',
+            'email' => $email,
+            'bounce_type' => $bounceType,
+            'records_updated' => $totalUpdated,
+        ]);
+    }
+    
+    /**
      * Get single contact form submission (admin only)
      */
     public static function show(array $params): void
