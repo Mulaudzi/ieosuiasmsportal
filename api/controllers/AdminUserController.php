@@ -125,6 +125,179 @@ class AdminUserController {
     }
     
     /**
+     * Update admin user details (requires authenticated admin)
+     */
+    public function update(): void {
+        Auth::check();
+        
+        if (!Auth::isAdmin()) {
+            Response::error('Admin access required', 403);
+            return;
+        }
+        
+        $data = Request::validate([
+            'id' => 'required',
+            'name' => 'min:2|max:100',
+            'email' => 'email|max:255',
+        ]);
+        
+        $admin = table('admin_users')->where('id', $data['id'])->first();
+        if (!$admin) {
+            Response::error('Admin user not found', 404);
+            return;
+        }
+        
+        // Check for email conflicts
+        if (isset($data['email']) && $data['email'] !== $admin['email']) {
+            $existing = table('admin_users')->where('email', $data['email'])->first();
+            if ($existing) {
+                Response::error('Email already in use by another admin', 400);
+                return;
+            }
+        }
+        
+        $updateData = ['updated_at' => date('Y-m-d H:i:s')];
+        if (isset($data['name'])) $updateData['name'] = $data['name'];
+        if (isset($data['email'])) $updateData['email'] = $data['email'];
+        
+        table('admin_users')->where('id', $data['id'])->update($updateData);
+        
+        // Log update
+        AuditLogService::log('admin_user_updated', 'security', $data['id'], null, [
+            'updated_fields' => array_keys($updateData),
+            'updated_by' => Auth::id(),
+        ], Auth::id());
+        
+        Response::success(['message' => 'Admin user updated successfully']);
+    }
+    
+    /**
+     * Toggle admin active status (requires authenticated admin)
+     */
+    public function toggleStatus(): void {
+        Auth::check();
+        
+        if (!Auth::isAdmin()) {
+            Response::error('Admin access required', 403);
+            return;
+        }
+        
+        $data = Request::validate([
+            'id' => 'required',
+        ]);
+        
+        $admin = table('admin_users')->where('id', $data['id'])->first();
+        if (!$admin) {
+            Response::error('Admin user not found', 404);
+            return;
+        }
+        
+        // Prevent self-deactivation
+        $currentUserEmail = Auth::user()['email'] ?? null;
+        if ($admin['email'] === $currentUserEmail) {
+            Response::error('Cannot deactivate your own account', 400);
+            return;
+        }
+        
+        $newStatus = $admin['is_active'] ? 0 : 1;
+        
+        table('admin_users')->where('id', $data['id'])->update([
+            'is_active' => $newStatus,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        $action = $newStatus ? 'activated' : 'deactivated';
+        
+        // Log status change
+        AuditLogService::log("admin_user_{$action}", 'security', $data['id'], null, [
+            'email' => $admin['email'],
+            'changed_by' => Auth::id(),
+        ], Auth::id());
+        
+        Response::success([
+            'message' => "Admin user {$action} successfully",
+            'is_active' => $newStatus,
+        ]);
+    }
+    
+    /**
+     * Reset admin password (requires authenticated admin)
+     */
+    public function resetPasswordAdmin(): void {
+        Auth::check();
+        
+        if (!Auth::isAdmin()) {
+            Response::error('Admin access required', 403);
+            return;
+        }
+        
+        $data = Request::validate([
+            'id' => 'required',
+            'new_password' => 'required|min:12|max:255',
+        ]);
+        
+        $admin = table('admin_users')->where('id', $data['id'])->first();
+        if (!$admin) {
+            Response::error('Admin user not found', 404);
+            return;
+        }
+        
+        table('admin_users')->where('id', $data['id'])->update([
+            'password' => Auth::hashPassword($data['new_password']),
+            'failed_attempts' => 0,
+            'locked_until' => null,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        // Log password reset
+        AuditLogService::log('admin_password_reset', 'security', $data['id'], null, [
+            'email' => $admin['email'],
+            'reset_by' => Auth::id(),
+        ], Auth::id());
+        
+        Response::success(['message' => 'Password reset successfully']);
+    }
+    
+    /**
+     * Delete admin user (requires authenticated admin)
+     */
+    public function delete(): void {
+        Auth::check();
+        
+        if (!Auth::isAdmin()) {
+            Response::error('Admin access required', 403);
+            return;
+        }
+        
+        $data = Request::validate([
+            'id' => 'required',
+        ]);
+        
+        $admin = table('admin_users')->where('id', $data['id'])->first();
+        if (!$admin) {
+            Response::error('Admin user not found', 404);
+            return;
+        }
+        
+        // Prevent self-deletion
+        $currentUserEmail = Auth::user()['email'] ?? null;
+        if ($admin['email'] === $currentUserEmail) {
+            Response::error('Cannot delete your own account', 400);
+            return;
+        }
+        
+        table('admin_users')->where('id', $data['id'])->delete();
+        
+        // Log deletion
+        AuditLogService::log('admin_user_deleted', 'security', $data['id'], null, [
+            'email' => $admin['email'],
+            'deleted_by' => Auth::id(),
+        ], Auth::id());
+        
+        Response::success(['message' => 'Admin user deleted successfully']);
+    }
+    
+    /**
      * Authenticate admin user (used by login endpoint)
      */
     public static function authenticate(string $email, string $password): ?array {

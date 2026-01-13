@@ -107,8 +107,12 @@ class ApiClient {
     }));
   }
 
-  async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
-    return this.handleResponse<T>(await fetch(`${this.baseUrl}${endpoint}`, { method: 'DELETE', headers: this.getHeaders() }));
+  async delete<T>(endpoint: string, options?: { data?: unknown }): Promise<ApiResponse<T>> {
+    return this.handleResponse<T>(await fetch(`${this.baseUrl}${endpoint}`, { 
+      method: 'DELETE', 
+      headers: this.getHeaders(),
+      body: options?.data ? JSON.stringify(options.data) : undefined
+    }));
   }
 
   async upload<T>(endpoint: string, formData: FormData): Promise<ApiResponse<T>> {

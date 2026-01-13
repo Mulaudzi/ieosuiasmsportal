@@ -508,9 +508,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (authLoading) return;
 
-    // Check for admin session token
+    // Check for admin session token and account type
     const adminSession = sessionStorage.getItem("admin_session");
-    const isAdminUser = user?.email === "godtheson@ieosuia.com";
+    const isAdminUser = user?.account_type === "admin";
 
     if (!adminSession || !isAdminUser) {
       setAccessDenied(true);
