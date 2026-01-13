@@ -30,9 +30,12 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import CookiePolicy from "./pages/CookiePolicy";
 import PopiaCompliance from "./pages/PopiaCompliance";
 import Support from "./pages/Support";
+import Documentation from "./pages/Documentation";
+import Careers from "./pages/Careers";
 import SenderIds from "./pages/SenderIds";
 import CreateEmailCampaign from "./pages/CreateEmailCampaign";
 import AdminDashboard from "./pages/AdminDashboard";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -56,6 +59,8 @@ const App = () => (
             <Route path="/cookie-policy" element={<CookiePolicy />} />
             <Route path="/popia-compliance" element={<PopiaCompliance />} />
             <Route path="/support" element={<Support />} />
+            <Route path="/documentation" element={<Documentation />} />
+            <Route path="/careers" element={<Careers />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/sms-campaigns" element={<ProtectedRoute requireVerified><SmsCampaigns /></ProtectedRoute>} />
