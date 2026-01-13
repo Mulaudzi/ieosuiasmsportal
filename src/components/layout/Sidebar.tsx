@@ -10,11 +10,11 @@ import {
   Settings,
   LogOut,
   ChevronRight,
-  Zap,
   Key,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { LogoSidebar } from "@/components/layout/Logo";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -49,16 +49,10 @@ export function Sidebar() {
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar">
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <Zap className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-sidebar-primary-foreground">
-              IEOSUIA SMS
-            </h1>
-            <p className="text-xs text-sidebar-muted">Portal</p>
-          </div>
+        <div className="flex h-16 items-center border-b border-sidebar-border px-6">
+          <Link to="/">
+            <LogoSidebar size="md" />
+          </Link>
         </div>
 
         {/* Navigation */}
