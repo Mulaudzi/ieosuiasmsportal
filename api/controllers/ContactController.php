@@ -337,14 +337,22 @@ class ContactController {
     public function createGroup(): void {
         $data = Request::validate([
             'name' => 'required|max:100',
+            'description' => 'max:500',
         ]);
         
-        $groupId = table('contact_groups')->insert([
+        $insertData = [
             'user_id' => Auth::id(),
             'name' => $data['name'],
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
-        ]);
+        ];
+        
+        // Add description if provided
+        if (!empty($data['description'])) {
+            $insertData['description'] = $data['description'];
+        }
+        
+        $groupId = table('contact_groups')->insert($insertData);
         
         $group = table('contact_groups')->where('id', $groupId)->first();
         $group['contact_count'] = 0;

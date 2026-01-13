@@ -72,9 +72,10 @@ export default function EmailCampaigns() {
         search: searchQuery || undefined,
       });
       
-      if (response.success && response.data) {
-        setCampaigns(response.data.campaigns || []);
-        setStats(response.data.stats || { total: 0, sent: 0, avg_open_rate: 0, avg_click_rate: 0 });
+      if (response.success) {
+        const data = response as any;
+        setCampaigns(data.campaigns || []);
+        setStats(data.stats || { total: 0, sent: 0, avg_open_rate: 0, avg_click_rate: 0 });
       }
     } catch (error) {
       handleApiError(error);

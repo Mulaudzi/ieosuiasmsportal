@@ -71,9 +71,10 @@ export default function SmsCampaigns() {
         search: searchQuery || undefined,
       });
       
-      if (response.success && response.data) {
-        setCampaigns(response.data.campaigns || []);
-        setStats(response.data.stats || { total: 0, sent: 0, scheduled: 0, credits_used: 0 });
+      if (response.success) {
+        const data = response as any;
+        setCampaigns(data.campaigns || []);
+        setStats(data.stats || { total: 0, sent: 0, scheduled: 0, credits_used: 0 });
       }
     } catch (error) {
       handleApiError(error);

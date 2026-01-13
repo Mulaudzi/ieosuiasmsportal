@@ -48,7 +48,7 @@ export function CreateGroupModal({ open, onOpenChange, onSuccess }: CreateGroupM
 
     setSaving(true);
     try {
-      const response = await createContactGroup(name);
+      const response = await createContactGroup(name, description || undefined);
       if (response.success) {
         toast({
           title: "Group created",
