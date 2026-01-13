@@ -94,7 +94,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/admin/users/{id}/activate', 'AdminController@activateUser');
     $router->post('/admin/users/{id}/deactivate', 'AdminController@deactivateUser');
     $router->put('/admin/users/{id}/role', 'AdminController@changeRole');
-    $router->get('/admin/sender-ids', 'AdminController@senderIds');
+    // Sender IDs route removed
     $router->get('/admin/audit-logs', 'AdminController@auditLogs');
     $router->get('/admin/audit-logs/export', 'AdminController@exportAuditLogs');
     $router->get('/admin/system-health', 'AdminController@systemHealth');

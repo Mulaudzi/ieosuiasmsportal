@@ -290,7 +290,6 @@ export default function CampaignDetails() {
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {campaign?.started_at ? `Sent on ${new Date(campaign.started_at).toLocaleString()}` : `Created ${new Date(campaign?.created_at).toLocaleString()}`}
-                  {campaign?.sender_id && ` • Sender ID: ${campaign.sender_id}`}
                 </p>
                 <div className="mt-4 rounded-lg bg-muted/50 p-4">
                   <p className="text-sm text-foreground">{campaign?.message || "No message content"}</p>

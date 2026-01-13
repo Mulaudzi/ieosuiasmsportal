@@ -33,8 +33,8 @@ class AdminController
         // Active users
         $activeUsers = table('users')->where('is_active', 1)->count();
         
-        // Pending sender IDs
-        $pendingSenderIds = table('sender_ids')->where('status', 'pending')->count();
+        // Sender IDs removed - not used
+        $pendingSenderIds = 0;
         
         // Total campaigns
         $totalCampaigns = table('campaigns')->count();
@@ -92,35 +92,7 @@ class AdminController
         Response::success(['users' => $users]);
     }
     
-    /**
-     * Get all sender IDs (for admin)
-     */
-    public function senderIds(): void
-    {
-        $this->requireAdmin();
-        
-        $status = Request::query('status');
-        
-        $pdo = db();
-        
-        $sql = "
-            SELECT s.*, u.name as user_name, u.email as user_email
-            FROM sender_ids s
-            LEFT JOIN users u ON s.user_id = u.id
-        ";
-        
-        if ($status && in_array($status, ['pending', 'approved', 'rejected'])) {
-            $sql .= " WHERE s.status = ?";
-            $stmt = $pdo->prepare($sql . " ORDER BY s.created_at DESC");
-            $stmt->execute([$status]);
-        } else {
-            $stmt = $pdo->query($sql . " ORDER BY s.created_at DESC");
-        }
-        
-        $senderIds = $stmt->fetchAll();
-        
-        Response::success(['sender_ids' => $senderIds]);
-    }
+    // Sender ID functionality removed
     
     /**
      * Activate a user

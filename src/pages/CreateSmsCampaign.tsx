@@ -50,7 +50,7 @@ export default function CreateSmsCampaign() {
     recipientMethod: "upload",
     contactGroup: "",
     message: "",
-    senderId: "IEOSUIA",
+    
     scheduleType: "now",
     scheduleDate: "",
     scheduleTime: "",
@@ -355,24 +355,6 @@ export default function CreateSmsCampaign() {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="senderId">Sender ID</Label>
-                <Select
-                  value={formData.senderId}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, senderId: value })
-                  }
-                >
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="IEOSUIA">IEOSUIA</SelectItem>
-                    <SelectItem value="COMPANY">COMPANY</SelectItem>
-                    <SelectItem value="PROMO">PROMO</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
 
               {/* A/B Testing Setup */}
               <ABTestSetup
@@ -421,7 +403,7 @@ export default function CreateSmsCampaign() {
                     <p className="text-sm font-medium text-foreground">Preview</p>
                     <div className="mt-2 rounded-lg bg-card p-4 shadow-sm">
                       <p className="text-xs text-muted-foreground">
-                        From: {formData.senderId}
+                        From: IEOSUIA
                       </p>
                       <p className="mt-2 text-sm text-foreground">
                         {formData.message || "Your message will appear here..."}
@@ -559,9 +541,9 @@ export default function CreateSmsCampaign() {
               </div>
 
               <div className="rounded-lg border border-border p-4">
-                <p className="text-sm text-muted-foreground">Sender ID</p>
+                <p className="text-sm text-muted-foreground">Sender</p>
                 <p className="mt-1 font-medium text-foreground">
-                  {formData.senderId}
+                  IEOSUIA
                 </p>
               </div>
 
