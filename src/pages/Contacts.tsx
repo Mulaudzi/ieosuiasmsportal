@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -22,91 +22,38 @@ import {
   UserPlus,
   Ban,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { deleteContacts } from "@/lib/api";
+import { getContacts, getContactGroups, deleteContacts, exportContacts, handleApiError } from "@/lib/api";
 import { ContactImportModal } from "@/components/contacts/ContactImportModal";
 import { AddContactModal } from "@/components/contacts/AddContactModal";
 import { CreateGroupModal } from "@/components/contacts/CreateGroupModal";
+import { format } from "date-fns";
 
 interface Contact {
   id: string;
   name: string;
   phone: string;
   email: string;
-  group: string;
-  status: "active" | "optedOut";
-  createdAt: string;
+  group_id: string;
+  group_name: string;
+  subscription_status: "subscribed" | "unsubscribed";
+  created_at: string;
 }
 
-const contacts: Contact[] = [
-  {
-    id: "1",
-    name: "John Smith",
-    phone: "+1 (555) 123-4567",
-    email: "john.smith@email.com",
-    group: "Customers",
-    status: "active",
-    createdAt: "Jan 5, 2026",
-  },
-  {
-    id: "2",
-    name: "Sarah Johnson",
-    phone: "+1 (555) 234-5678",
-    email: "sarah.j@company.com",
-    group: "VIP",
-    status: "active",
-    createdAt: "Jan 4, 2026",
-  },
-  {
-    id: "3",
-    name: "Mike Wilson",
-    phone: "+1 (555) 345-6789",
-    email: "mike.w@business.com",
-    group: "Leads",
-    status: "active",
-    createdAt: "Jan 3, 2026",
-  },
-  {
-    id: "4",
-    name: "Emily Davis",
-    phone: "+1 (555) 456-7890",
-    email: "emily.d@email.com",
-    group: "Customers",
-    status: "optedOut",
-    createdAt: "Jan 2, 2026",
-  },
-  {
-    id: "5",
-    name: "David Brown",
-    phone: "+1 (555) 567-8901",
-    email: "david.b@corp.com",
-    group: "Customers",
-    status: "active",
-    createdAt: "Jan 1, 2026",
-  },
-  {
-    id: "6",
-    name: "Lisa Anderson",
-    phone: "+1 (555) 678-9012",
-    email: "lisa.a@business.com",
-    group: "VIP",
-    status: "active",
-    createdAt: "Dec 31, 2025",
-  },
-];
-
-const groups = [
-  { name: "All Contacts", count: 12450 },
-  { name: "Customers", count: 8200 },
-  { name: "Leads", count: 3500 },
-  { name: "VIP", count: 750 },
-  { name: "Opted Out", count: 320 },
-];
+interface Group {
+  id: string;
+  name: string;
+  contact_count: number;
+}
 
 export default function Contacts() {
   const location = useLocation();
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
@@ -114,6 +61,40 @@ export default function Contacts() {
   const [importModalOpen, setImportModalOpen] = useState(location.pathname === "/contacts/import");
   const [addContactModalOpen, setAddContactModalOpen] = useState(false);
   const [createGroupModalOpen, setCreateGroupModalOpen] = useState(false);
+  const [pagination, setPagination] = useState({ page: 1, total: 0, limit: 50 });
+  const [sortOrder, setSortOrder] = useState("newest");
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [contactsRes, groupsRes] = await Promise.all([
+        getContacts({ 
+          group: selectedGroup !== "all" ? selectedGroup : undefined,
+          search: searchQuery || undefined,
+          page: pagination.page,
+          limit: pagination.limit
+        }),
+        getContactGroups()
+      ]);
+      
+      if (contactsRes.success && contactsRes.data) {
+        setContacts(contactsRes.data.contacts || []);
+        setPagination(prev => ({ ...prev, total: contactsRes.data?.total || 0 }));
+      }
+      
+      if (groupsRes.success && groupsRes.data) {
+        setGroups(groupsRes.data || []);
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedGroup, searchQuery, pagination.page, pagination.limit]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const toggleContact = (id: string) => {
     setSelectedContacts((prev) =>
@@ -131,20 +112,23 @@ export default function Contacts() {
 
   const handleExport = async () => {
     setLoadingAction("export");
-    // TODO: Implement with real API when available
-    setTimeout(() => {
+    try {
+      exportContacts(selectedGroup !== "all" ? selectedGroup : undefined);
       toast({
-        title: "Export ready",
-        description: "Your contacts have been exported.",
+        title: "Export started",
+        description: "Your contacts export is being prepared.",
       });
+    } catch (error) {
+      handleApiError(error);
+    } finally {
       setLoadingAction(null);
-    }, 1000);
+    }
   };
 
   const handleAddToGroup = async () => {
     if (selectedContacts.length === 0) return;
     setLoadingAction("addToGroup");
-    // TODO: Implement with real API when available
+    // TODO: Implement add to group API
     setTimeout(() => {
       toast({
         title: "Contacts added to group",
@@ -163,16 +147,13 @@ export default function Contacts() {
       if (response.success) {
         toast({
           title: "Contacts deleted",
-          description: `${response.data?.deleted} contacts removed.`,
+          description: `${response.data?.deleted || selectedContacts.length} contacts removed.`,
         });
         setSelectedContacts([]);
+        loadData();
       }
     } catch (error) {
-      toast({
-        title: "Delete failed",
-        description: "Please try again.",
-        variant: "destructive",
-      });
+      handleApiError(error);
     } finally {
       setLoadingAction(null);
     }
@@ -194,262 +175,299 @@ export default function Contacts() {
           title: "Contact deleted",
           description: "The contact has been removed.",
         });
+        loadData();
       }
     } catch (error) {
-      toast({
-        title: "Delete failed",
-        description: "Please try again.",
-        variant: "destructive",
-      });
+      handleApiError(error);
     } finally {
       setLoadingAction(null);
     }
   };
 
+  const formatDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), "MMM d, yyyy");
+    } catch {
+      return dateString;
+    }
+  };
+
+  const totalContacts = groups.reduce((acc, g) => acc + (g.contact_count || 0), 0);
+  const optedOutCount = contacts.filter(c => c.subscription_status === "unsubscribed").length;
+
   return (
     <>
-    <ContactImportModal open={importModalOpen} onOpenChange={setImportModalOpen} />
-    <AddContactModal open={addContactModalOpen} onOpenChange={setAddContactModalOpen} />
-    <CreateGroupModal open={createGroupModalOpen} onOpenChange={setCreateGroupModalOpen} />
-    <DashboardLayout
-      title="Contacts"
-      subtitle="Manage your contact lists and groups"
-      actions={
-        <div className="flex gap-3">
-          <Button variant="outline" className="gap-2" onClick={() => setImportModalOpen(true)}>
-            <Upload className="h-4 w-4" />
-            Import
-          </Button>
-          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={loadingAction === "export"}>
-            {loadingAction === "export" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Export
-          </Button>
-          <Button className="gap-2" onClick={() => setAddContactModalOpen(true)}>
-            <UserPlus className="h-4 w-4" />
-            Add Contact
-          </Button>
-        </div>
-      }
-    >
-      <div className="grid gap-6 lg:grid-cols-4">
-        {/* Groups Sidebar */}
-        <div className="lg:col-span-1">
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-semibold text-foreground">Groups</h3>
-              <Button variant="ghost" size="icon" onClick={() => setCreateGroupModalOpen(true)}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
+      <ContactImportModal open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) loadData(); }} />
+      <AddContactModal open={addContactModalOpen} onOpenChange={(open) => { setAddContactModalOpen(open); if (!open) loadData(); }} />
+      <CreateGroupModal open={createGroupModalOpen} onOpenChange={(open) => { setCreateGroupModalOpen(open); if (!open) loadData(); }} />
+      <DashboardLayout
+        title="Contacts"
+        subtitle="Manage your contact lists and groups"
+        actions={
+          <div className="flex gap-3">
+            <Button variant="outline" size="icon" onClick={loadData} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => setImportModalOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Import
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={handleExport} disabled={loadingAction === "export"}>
+              {loadingAction === "export" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Export
+            </Button>
+            <Button className="gap-2" onClick={() => setAddContactModalOpen(true)}>
+              <UserPlus className="h-4 w-4" />
+              Add Contact
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-6 lg:grid-cols-4">
+          {/* Groups Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="font-semibold text-foreground">Groups</h3>
+                <Button variant="ghost" size="icon" onClick={() => setCreateGroupModalOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
 
-            <div className="space-y-1">
-              {groups.map((group) => (
+              <div className="space-y-1">
                 <button
-                  key={group.name}
-                  onClick={() =>
-                    setSelectedGroup(group.name.toLowerCase().replace(" ", "-"))
-                  }
+                  onClick={() => setSelectedGroup("all")}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
-                    selectedGroup === group.name.toLowerCase().replace(" ", "-")
+                    selectedGroup === "all"
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    {group.name === "Opted Out" ? (
-                      <Ban className="h-4 w-4" />
-                    ) : (
-                      <Users className="h-4 w-4" />
-                    )}
-                    <span>{group.name}</span>
+                    <Users className="h-4 w-4" />
+                    <span>All Contacts</span>
                   </div>
-                  <span className="text-xs opacity-80">
-                    {group.count.toLocaleString()}
-                  </span>
+                  <span className="text-xs opacity-80">{totalContacts.toLocaleString()}</span>
                 </button>
-              ))}
-            </div>
-          </div>
-        </div>
+                
+                {groups.map((group) => (
+                  <button
+                    key={group.id}
+                    onClick={() => setSelectedGroup(group.id)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
+                      selectedGroup === group.id
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      <span>{group.name}</span>
+                    </div>
+                    <span className="text-xs opacity-80">{(group.contact_count || 0).toLocaleString()}</span>
+                  </button>
+                ))}
 
-        {/* Contacts List */}
-        <div className="lg:col-span-3">
-          {/* Filters */}
-          <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search contacts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <Select defaultValue="newest">
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newest">Newest</SelectItem>
-                  <SelectItem value="oldest">Oldest</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Selected Actions */}
-          {selectedContacts.length > 0 && (
-            <div className="mb-4 flex items-center gap-4 rounded-lg bg-primary/10 p-3">
-              <span className="text-sm font-medium text-primary">
-                {selectedContacts.length} selected
-              </span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleAddToGroup} disabled={loadingAction === "addToGroup"}>
-                  {loadingAction === "addToGroup" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                  Add to Group
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleExport} disabled={loadingAction === "export"}>
-                  Export
-                </Button>
-                <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={loadingAction === "bulkDelete"}>
-                  {loadingAction === "bulkDelete" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                  Delete
-                </Button>
+                <button
+                  onClick={() => setSelectedGroup("opted-out")}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
+                    selectedGroup === "opted-out"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Ban className="h-4 w-4" />
+                    <span>Opted Out</span>
+                  </div>
+                  <span className="text-xs opacity-80">{optedOutCount}</span>
+                </button>
               </div>
             </div>
-          )}
-
-          {/* Contacts Table */}
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-muted/50">
-                    <th className="px-4 py-4 text-left">
-                      <Checkbox
-                        checked={selectedContacts.length === contacts.length}
-                        onCheckedChange={toggleAll}
-                      />
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">
-                      Contact
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">
-                      Phone
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">
-                      Group
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">
-                      Added
-                    </th>
-                    <th className="px-4 py-4 text-right text-sm font-medium text-muted-foreground">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {contacts.map((contact) => (
-                    <tr
-                      key={contact.id}
-                      className="transition-colors hover:bg-muted/30"
-                    >
-                      <td className="px-4 py-4">
-                        <Checkbox
-                          checked={selectedContacts.includes(contact.id)}
-                          onCheckedChange={() => toggleContact(contact.id)}
-                        />
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
-                            {contact.name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")}
-                          </div>
-                          <div>
-                            <p className="font-medium text-foreground">
-                              {contact.name}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {contact.email}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-foreground">
-                        {contact.phone}
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
-                          {contact.group}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span
-                          className={cn(
-                            "status-badge",
-                            contact.status === "active"
-                              ? "status-delivered"
-                              : "status-failed"
-                          )}
-                        >
-                          {contact.status === "active" ? "Active" : "Opted Out"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-muted-foreground">
-                        {contact.createdAt}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleEditContact(contact.id)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => handleDeleteContact(contact.id)}
-                            disabled={loadingAction === `delete-${contact.id}`}
-                          >
-                            {loadingAction === `delete-${contact.id}` ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            )}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
 
-          {/* Pagination */}
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing 1-6 of 12,450 contacts
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm">
-                Next
-              </Button>
+          {/* Contacts List */}
+          <div className="lg:col-span-3">
+            {/* Filters */}
+            <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search contacts..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <Select value={sortOrder} onValueChange={setSortOrder}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest</SelectItem>
+                    <SelectItem value="oldest">Oldest</SelectItem>
+                    <SelectItem value="name">Name</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
+            {/* Selected Actions */}
+            {selectedContacts.length > 0 && (
+              <div className="mb-4 flex items-center gap-4 rounded-lg bg-primary/10 p-3">
+                <span className="text-sm font-medium text-primary">
+                  {selectedContacts.length} selected
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleAddToGroup} disabled={loadingAction === "addToGroup"}>
+                    {loadingAction === "addToGroup" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    Add to Group
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleExport} disabled={loadingAction === "export"}>
+                    Export
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={loadingAction === "bulkDelete"}>
+                    {loadingAction === "bulkDelete" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Contacts Table */}
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              {loading ? (
+                <div className="flex h-64 items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : contacts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Users className="h-12 w-12 text-muted-foreground/50" />
+                  <p className="mt-4 text-lg font-medium text-foreground">No contacts found</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {searchQuery ? "Try adjusting your search" : "Add contacts to get started"}
+                  </p>
+                  {!searchQuery && (
+                    <Button onClick={() => setAddContactModalOpen(true)} className="mt-4 gap-2">
+                      <UserPlus className="h-4 w-4" />
+                      Add Contact
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/50">
+                        <th className="px-4 py-4 text-left">
+                          <Checkbox
+                            checked={selectedContacts.length === contacts.length && contacts.length > 0}
+                            onCheckedChange={toggleAll}
+                          />
+                        </th>
+                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Contact</th>
+                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Phone</th>
+                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Group</th>
+                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Status</th>
+                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Added</th>
+                        <th className="px-4 py-4 text-right text-sm font-medium text-muted-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {contacts.map((contact) => (
+                        <tr key={contact.id} className="transition-colors hover:bg-muted/30">
+                          <td className="px-4 py-4">
+                            <Checkbox
+                              checked={selectedContacts.includes(contact.id)}
+                              onCheckedChange={() => toggleContact(contact.id)}
+                            />
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+                                {contact.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground">{contact.name}</p>
+                                <p className="text-sm text-muted-foreground">{contact.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-foreground">{contact.phone}</td>
+                          <td className="px-4 py-4">
+                            <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
+                              {contact.group_name || "No Group"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className={cn(
+                              "status-badge",
+                              contact.subscription_status === "subscribed" ? "status-delivered" : "status-failed"
+                            )}>
+                              {contact.subscription_status === "subscribed" ? "Active" : "Opted Out"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-muted-foreground">{formatDate(contact.created_at)}</td>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => handleEditContact(contact.id)}>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleDeleteContact(contact.id)}
+                                disabled={loadingAction === `delete-${contact.id}`}
+                              >
+                                {loadingAction === `delete-${contact.id}` ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                )}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Pagination */}
+            {!loading && contacts.length > 0 && (
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {((pagination.page - 1) * pagination.limit) + 1}-{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total.toLocaleString()} contacts
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    disabled={pagination.page <= 1}
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                  >
+                    Previous
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    disabled={pagination.page * pagination.limit >= pagination.total}
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-    </DashboardLayout>
+      </DashboardLayout>
     </>
   );
 }
