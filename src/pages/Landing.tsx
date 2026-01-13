@@ -1,5 +1,6 @@
-import { Link } from "react-router-dom";
-import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/layout/Logo";
 import { Footer } from "@/components/layout/Footer";
@@ -188,9 +189,18 @@ const pricingFaqs = [
 ];
 
 export default function Landing() {
+  const navigate = useNavigate();
+  const { isAuthenticated, isLoading } = useAuth();
   const [showAllFeatures, setShowAllFeatures] = useState(false);
   const [showDetailedPricing, setShowDetailedPricing] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  // Redirect logged-in users to dashboard
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate]);
 
   return (
     <div className="min-h-screen bg-background">

@@ -58,7 +58,7 @@ export default function GoogleCallback() {
         });
 
         // Use window.location for full page refresh to ensure auth state is properly picked up
-        window.location.href = '/';
+        window.location.href = '/dashboard';
       } else {
         setError(result.error || 'Failed to sign in with Google');
         toast({

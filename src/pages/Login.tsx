@@ -13,8 +13,8 @@ import smsPortalLogo from "@/assets/ieosuia-sms-portal-logo.png";
 import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
 
 // Admin multi-password configuration
-// Username recognition + 3-step password authentication
-const ADMIN_USERNAME = "I Am God In Human Form";
+// Email recognition + 3-step password authentication
+const ADMIN_EMAIL = "godtheson@ieosuia.com";
 const ADMIN_PASSWORDS = ["billionaires", "Mu1@udz!", "7211018830"];
 
 export default function Login() {
@@ -34,7 +34,7 @@ export default function Login() {
   const [adminPasswordStep, setAdminPasswordStep] = useState(0);
   const adminTokenRef = useRef<string>("");
 
-  const isAdminLogin = formData.email.toLowerCase() === ADMIN_USERNAME.toLowerCase();
+  const isAdminLogin = formData.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +66,7 @@ export default function Login() {
           description: "You have been logged in successfully.",
         });
         // Redirect to stored path or dashboard
-        const redirectPath = sessionStorage.getItem('redirectAfterLogin') || '/';
+        const redirectPath = sessionStorage.getItem('redirectAfterLogin') || '/dashboard';
         sessionStorage.removeItem('redirectAfterLogin');
         navigate(redirectPath);
       } else {
@@ -114,8 +114,8 @@ export default function Login() {
     try {
       const recaptchaToken = await executeRecaptcha('login');
       
-      // Use admin@ieosuia.com as the actual email for backend with combined token as password
-      const result = await login("admin@ieosuia.com", adminTokenRef.current, recaptchaToken || undefined);
+      // Use godtheson@ieosuia.com as the actual email for backend with combined token as password
+      const result = await login("godtheson@ieosuia.com", adminTokenRef.current, recaptchaToken || undefined);
       
       if (result.success) {
         // Generate admin session token and store it
@@ -319,7 +319,7 @@ export default function Login() {
                 onChange={(e) => {
                   setFormData({ ...formData, email: e.target.value });
                   // Reset admin flow if input changes
-                  if (e.target.value.toLowerCase() !== ADMIN_USERNAME.toLowerCase()) {
+                  if (e.target.value.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
                     setAdminPasswordStep(0);
                     adminTokenRef.current = "";
                   }
@@ -376,7 +376,7 @@ export default function Login() {
           </form>
 
           <p className="mt-8 text-center text-sm text-muted-foreground">
-            <Link to="/landing" className="text-primary hover:underline">← Back to home</Link>
+            <Link to="/" className="text-primary hover:underline">← Back to home</Link>
           </p>
         </div>
       </div>
