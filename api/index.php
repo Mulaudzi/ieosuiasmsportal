@@ -145,11 +145,9 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/realtime/poll', 'RealtimeController@poll');
     $router->post('/admin/realtime/cleanup', 'RealtimeController@cleanup');
     
-    // QA Console (all authenticated users)
-    $router->post('/qa/run', 'QaController@runTests');
-    $router->get('/qa/health', 'QaController@healthOverview');
-    $router->post('/qa/seed', 'QaController@seedTestData');
-    $router->post('/qa/cleanup', 'QaController@cleanupTestData');
+    // E2E Test Console (all authenticated users)
+    $router->post('/e2e/run', 'E2ETestController@runTests');
+    $router->get('/e2e/health', 'E2ETestController@healthCheck');
     
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
