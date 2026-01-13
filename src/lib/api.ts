@@ -190,6 +190,41 @@ export const getProfile = () => api.get<any>('/settings/profile');
 export const updateProfile = (data: { name?: string; email?: string; phone?: string }) => api.put<any>('/settings/profile', data);
 export const uploadBranding = (formData: FormData) => api.upload<any>('/settings/branding', formData);
 
+// Contacts
+export const getContacts = (params?: { group?: string; search?: string; page?: number; limit?: number }) => 
+  api.get<{ contacts: any[]; total: number; page: number; limit: number }>('/contacts', params as any);
+export const getContact = (id: string) => api.get<any>(`/contacts/${id}`);
+export const createContact = (data: { name: string; phone?: string; email?: string; group_id?: string }) => 
+  api.post<any>('/contacts', data);
+export const updateContact = (id: string, data: { name?: string; phone?: string; email?: string; group_id?: string }) => 
+  api.put<any>(`/contacts/${id}`, data);
+
+// Campaigns
+export const getSmsCampaigns = (params?: { status?: string; search?: string; page?: number }) => 
+  api.get<{ campaigns: any[]; total: number; stats: any }>('/sms/campaigns', params as any);
+export const getEmailCampaigns = (params?: { status?: string; search?: string; page?: number }) => 
+  api.get<{ campaigns: any[]; total: number; stats: any }>('/email/campaigns', params as any);
+
+// Wallet
+export const getWalletStats = () => api.get<{ balance: number; used_this_month: number; total_spent: number }>('/wallet/stats');
+export const getTransactions = (params?: { page?: number; limit?: number }) => 
+  api.get<{ transactions: any[]; total: number }>('/wallet/transactions', params as any);
+export const getCreditPackages = () => api.get<{ packages: any[] }>('/wallet/packages');
+
+// Reports
+export const getReportStats = (dateRange?: string) => 
+  api.get<any>('/reports/stats', dateRange ? { range: dateRange } : undefined);
+export const getReportChartData = (dateRange?: string) => 
+  api.get<any>('/reports/chart', dateRange ? { range: dateRange } : undefined);
+export const getDeliveryBreakdown = (dateRange?: string) => 
+  api.get<any>('/reports/delivery', dateRange ? { range: dateRange } : undefined);
+
+// Settings
+export const getSettings = (section: string) => api.get<any>(`/settings/${section}`);
+export const getOrganization = () => api.get<any>('/settings/organization');
+export const getNotificationSettings = () => api.get<any>('/settings/notifications');
+export const updateNotificationSettings = (data: any) => api.put<any>('/settings/notifications', data);
+
 export const handleApiError = (error: unknown) => {
   toast({ title: "Error", description: error instanceof Error ? error.message : 'An error occurred', variant: "destructive" });
 };
