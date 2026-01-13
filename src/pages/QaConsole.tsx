@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAdminSession } from "@/hooks/useAdminSession";
-import { AdminLayout } from "@/components/layout/AdminLayout";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -128,12 +126,6 @@ const statusIcons: Record<string, { icon: React.ElementType; class: string }> = 
 };
 
 export default function QaConsole() {
-  const navigate = useNavigate();
-  const { user, isLoading: authLoading } = useAuth();
-  
-  // Admin session timeout handling
-  useAdminSession();
-  
   // State
   const [selectedSystem, setSelectedSystem] = useState("all");
   const [selectedUserMode, setSelectedUserMode] = useState("admin");
@@ -146,26 +138,11 @@ export default function QaConsole() {
   const [showCleanupDialog, setShowCleanupDialog] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [seeding, setSeeding] = useState(false);
-  const [accessDenied, setAccessDenied] = useState(false);
-
-  // Check admin access
-  useEffect(() => {
-    if (authLoading) return;
-    
-    const adminSession = sessionStorage.getItem("admin_session");
-    const isAdminUser = user?.account_type === "admin";
-    
-    if (!adminSession || !isAdminUser) {
-      setAccessDenied(true);
-    }
-  }, [authLoading, user]);
 
   // Load health overview on mount
   useEffect(() => {
-    if (!accessDenied && !authLoading) {
-      loadHealthOverview();
-    }
-  }, [accessDenied, authLoading]);
+    loadHealthOverview();
+  }, []);
 
   const loadHealthOverview = async () => {
     setHealthLoading(true);
@@ -313,37 +290,15 @@ export default function QaConsole() {
     setExpandedSections(newExpanded);
   };
 
-  if (accessDenied) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-md mx-auto p-8">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10 mx-auto mb-6">
-            <Shield className="h-10 w-10 text-destructive" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground mb-2">Access Denied</h1>
-          <p className="text-muted-foreground mb-6">
-            QA Console is admin-only. Please login with admin credentials.
-          </p>
-          <Button onClick={() => navigate("/login")} className="gap-2">
-            <Shield className="h-4 w-4" />
-            Go to Login
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <AdminLayout
+    <DashboardLayout
       title="System QA & Debug Console"
       subtitle="Universal testing and diagnostics for all platform systems"
       actions={
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={loadHealthOverview} disabled={healthLoading} className="gap-2">
-            <RefreshCw className={cn("h-4 w-4", healthLoading && "animate-spin")} />
-            Refresh Health
-          </Button>
-        </div>
+        <Button variant="outline" onClick={loadHealthOverview} disabled={healthLoading} className="gap-2">
+          <RefreshCw className={cn("h-4 w-4", healthLoading && "animate-spin")} />
+          Refresh Health
+        </Button>
       }
     >
       {/* QA Mode Banner */}
@@ -798,6 +753,6 @@ export default function QaConsole() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AdminLayout>
+    </DashboardLayout>
   );
 }
