@@ -1,5 +1,8 @@
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/layout/Logo";
+import { Footer } from "@/components/layout/Footer";
 import {
   MessageSquare,
   Mail,
@@ -13,6 +16,8 @@ import {
   MapPin,
   Clock,
   MessageCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +71,15 @@ const pricing = [
       "3 Basic templates",
       "Basic dashboard",
       "Email support",
+    ],
+    allFeatures: [
+      "Up to 30 SMS/month",
+      "3 Basic templates",
+      "Basic dashboard",
+      "Email support",
       "IEOSUIA watermark",
+      "Standard delivery",
+      "Basic contact management",
     ],
     cta: "Start Free",
     popular: false,
@@ -84,6 +97,18 @@ const pricing = [
       "SMS & Email sending",
       "Priority support",
     ],
+    allFeatures: [
+      "Unlimited SMS",
+      "Full template customization",
+      "Automated reminders",
+      "Advanced reports",
+      "SMS & Email sending",
+      "Priority support",
+      "No watermark",
+      "A/B Testing",
+      "Schedule recommendations",
+      "Campaign comparison",
+    ],
     cta: "Start Free Trial",
     popular: true,
   },
@@ -98,9 +123,18 @@ const pricing = [
       "Multi-business support",
       "Role-based permissions",
       "Advanced ledger",
-      "API access",
-      "White-labeling",
       "Dedicated support",
+    ],
+    allFeatures: [
+      "Everything in Pro",
+      "Multi-user access",
+      "Multi-business support",
+      "Role-based permissions",
+      "Advanced ledger",
+      "Dedicated support",
+      "White-labeling",
+      "Custom integrations",
+      "SLA guarantee",
     ],
     cta: "Contact Sales",
     popular: false,
@@ -108,17 +142,14 @@ const pricing = [
 ];
 
 export default function Landing() {
+  const [showAllFeatures, setShowAllFeatures] = useState(false);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Zap className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold text-foreground">IEOSUIA SMS PORTAL</span>
-          </div>
+          <Logo size="md" linkTo="/landing" />
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">How it Works</a>
@@ -141,7 +172,7 @@ export default function Landing() {
         <div className="container mx-auto text-center max-w-4xl">
           <div className="inline-flex items-center gap-2 bg-primary/10 rounded-full px-4 py-2 mb-6">
             <Zap className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">Trusted by 10,000+ businesses</span>
+            <span className="text-sm font-medium text-primary">Your Story, Beautifully Told</span>
           </div>
           <h1 className="text-4xl md:text-6xl font-bold text-foreground leading-tight mb-6">
             Professional Messaging
@@ -149,7 +180,7 @@ export default function Landing() {
             <span className="text-primary">Made Simple</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Send bulk SMS and email campaigns, track delivery reports, and grow your business with our powerful messaging platform.
+            Send bulk SMS and email campaigns, track delivery reports, and grow your business with our powerful messaging platform built for South African businesses.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/register">
@@ -165,7 +196,7 @@ export default function Landing() {
             </Link>
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
-            No credit card required • 5 free SMS credits
+            No credit card required • 5 free SMS credits • POPIA compliant
           </p>
         </div>
       </section>
@@ -259,7 +290,7 @@ export default function Landing() {
                   <p className="mt-2 text-sm text-muted-foreground">{plan.description}</p>
                 </div>
                 <ul className="space-y-3 mb-8">
-                  {plan.features.map((feature) => (
+                  {(showAllFeatures ? plan.allFeatures : plan.features).map((feature) => (
                     <li key={feature} className="flex items-start gap-3">
                       <Check className="h-5 w-5 text-success shrink-0 mt-0.5" />
                       <span className="text-sm text-muted-foreground">{feature}</span>
@@ -273,6 +304,26 @@ export default function Landing() {
                 </Link>
               </div>
             ))}
+          </div>
+          {/* Show More Features Button */}
+          <div className="text-center mt-8">
+            <Button
+              variant="ghost"
+              onClick={() => setShowAllFeatures(!showAllFeatures)}
+              className="gap-2"
+            >
+              {showAllFeatures ? (
+                <>
+                  <ChevronUp className="h-4 w-4" />
+                  Show Less Features
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-4 w-4" />
+                  Compare All Features
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </section>
@@ -296,7 +347,8 @@ export default function Landing() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-foreground">Email</h4>
-                  <p className="text-muted-foreground">support@ieosuia.com</p>
+                  <p className="text-muted-foreground">hello@ieosuia.com</p>
+                  <p className="text-sm text-muted-foreground">Support: support@ieosuia.com</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -304,8 +356,9 @@ export default function Landing() {
                   <Phone className="h-5 w-5" />
                 </div>
                 <div>
-                  <h4 className="font-semibold text-foreground">Phone</h4>
-                  <p className="text-muted-foreground">+27 11 123 4567</p>
+                  <h4 className="font-semibold text-foreground">Phone (Calls Only)</h4>
+                  <p className="text-muted-foreground">079 928 2775</p>
+                  <p className="text-muted-foreground">063 154 0696</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -314,7 +367,7 @@ export default function Landing() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-foreground">Address</h4>
-                  <p className="text-muted-foreground">106 Harry Street, Robertsham<br />Johannesburg, 2190</p>
+                  <p className="text-muted-foreground">26 Rock Alder, Extension 15<br />Naturena, Johannesburg, 2095</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -353,6 +406,7 @@ export default function Landing() {
                     placeholder="How can we help?"
                   />
                 </div>
+                <p className="text-xs text-muted-foreground">Enquiry from IEOSUIA SMS Portal</p>
                 <Button type="submit" className="w-full">Send Message</Button>
               </form>
             </div>
@@ -360,65 +414,18 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-sidebar py-12 px-4">
-        <div className="container mx-auto max-w-6xl">
-          <div className="grid gap-8 md:grid-cols-4">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                  <Zap className="h-5 w-5 text-primary-foreground" />
-                </div>
-                <span className="text-lg font-bold text-sidebar-primary-foreground">IEOSUIA SMS PORTAL</span>
-              </div>
-              <p className="text-sm text-sidebar-muted">
-                Professional bulk SMS and email messaging platform for businesses.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-sidebar-muted">
-                <li><a href="#features" className="hover:text-sidebar-primary-foreground">Features</a></li>
-                <li><a href="#pricing" className="hover:text-sidebar-primary-foreground">Pricing</a></li>
-                <li><Link to="/login" className="hover:text-sidebar-primary-foreground">Login</Link></li>
-                <li><Link to="/register" className="hover:text-sidebar-primary-foreground">Sign Up</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-sidebar-muted">
-                <li><a href="#contact" className="hover:text-sidebar-primary-foreground">Contact Us</a></li>
-                <li><Link to="/support" className="hover:text-sidebar-primary-foreground">Help Center</Link></li>
-                <li><a href="#" className="hover:text-sidebar-primary-foreground">API Documentation</a></li>
-                <li><a href="#" className="hover:text-sidebar-primary-foreground">Status</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm text-sidebar-muted">
-                <li><Link to="/privacy-policy" className="hover:text-sidebar-primary-foreground">Privacy Policy</Link></li>
-                <li><Link to="/terms-of-service" className="hover:text-sidebar-primary-foreground">Terms of Service</Link></li>
-                <li><Link to="/popia-compliance" className="hover:text-sidebar-primary-foreground">POPIA Compliance</Link></li>
-                <li><Link to="/cookie-policy" className="hover:text-sidebar-primary-foreground">Cookie Policy</Link></li>
-              </ul>
-            </div>
-          </div>
-          <div className="mt-8 pt-8 border-t border-sidebar-border text-center text-sm text-sidebar-muted">
-            © {new Date().getFullYear()} IEOSUIA SMS PORTAL. All rights reserved.
-          </div>
-        </div>
-      </footer>
-
       {/* WhatsApp Button */}
       <a
-        href="https://wa.me/27111234567"
+        href="https://wa.me/27799282775"
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg hover:bg-[#20BD5A] transition-colors"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg hover:bg-[#128C7E] transition-colors"
         aria-label="Chat on WhatsApp"
       >
         <MessageCircle className="h-7 w-7" />
       </a>
+
+      <Footer variant="full" />
     </div>
   );
 }
