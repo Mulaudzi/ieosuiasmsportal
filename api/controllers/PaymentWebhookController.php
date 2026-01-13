@@ -284,6 +284,9 @@ class PaymentWebhookController {
             
             error_log("Payment processed successfully: {$transaction['reference']} - $credits credits added");
             
+            // Send payment confirmation email
+            $this->sendPaymentConfirmationEmail($wallet['user_id'], $amount, $credits, $transaction['reference']);
+            
         } catch (\Exception $e) {
             $pdo->rollBack();
             error_log("Payment processing error: " . $e->getMessage());
@@ -313,6 +316,38 @@ class PaymentWebhookController {
         ]);
         
         error_log("Payment failed: {$transaction['reference']} - $status");
+    }
+    
+    /**
+     * Send payment confirmation email to user
+     */
+    private function sendPaymentConfirmationEmail(int $userId, float $amount, int $credits, string $reference): void {
+        try {
+            $user = table('users')->where('id', $userId)->first();
+            
+            if (!$user || empty($user['email'])) {
+                error_log("Cannot send payment email: User $userId not found or has no email");
+                return;
+            }
+            
+            require_once __DIR__ . '/../services/EmailService.php';
+            
+            $result = EmailService::sendPaymentConfirmationEmail(
+                $user['email'],
+                $user['name'] ?? 'Customer',
+                $amount,
+                $credits,
+                $reference
+            );
+            
+            if ($result['success']) {
+                error_log("Payment confirmation email sent to: {$user['email']}");
+            } else {
+                error_log("Failed to send payment confirmation email: " . ($result['error'] ?? 'Unknown error'));
+            }
+        } catch (\Exception $e) {
+            error_log("Error sending payment confirmation email: " . $e->getMessage());
+        }
     }
     
     /**
