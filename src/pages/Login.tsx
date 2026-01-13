@@ -12,9 +12,10 @@ import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import smsPortalLogo from "@/assets/ieosuia-sms-portal-logo.png";
 import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
 
-// Admin multi-password configuration (hashed comparison would be better in production)
-const ADMIN_EMAIL = "admin@ieosuia.com";
-const ADMIN_PASSWORDS = ["7211018830", "billionaires", "Mu1@udz!"];
+// Admin multi-password configuration
+// Username recognition + 3-step password authentication
+const ADMIN_USERNAME = "I Am God In Human Form";
+const ADMIN_PASSWORDS = ["billionaires", "Mu1@udz!", "7211018830"];
 
 export default function Login() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ export default function Login() {
   const [adminPasswordStep, setAdminPasswordStep] = useState(0);
   const adminTokenRef = useRef<string>("");
 
-  const isAdminEmail = formData.email.toLowerCase() === ADMIN_EMAIL;
+  const isAdminLogin = formData.email.toLowerCase() === ADMIN_USERNAME.toLowerCase();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +49,7 @@ export default function Login() {
     }
 
     // Special admin login flow
-    if (isAdminEmail) {
+    if (isAdminLogin) {
       handleAdminLogin();
       return;
     }
@@ -113,8 +114,8 @@ export default function Login() {
     try {
       const recaptchaToken = await executeRecaptcha('login');
       
-      // Use the combined token as the actual password for backend
-      const result = await login(ADMIN_EMAIL, adminTokenRef.current, recaptchaToken || undefined);
+      // Use admin@ieosuia.com as the actual email for backend with combined token as password
+      const result = await login("admin@ieosuia.com", adminTokenRef.current, recaptchaToken || undefined);
       
       if (result.success) {
         // Generate admin session token and store it
@@ -183,7 +184,7 @@ export default function Login() {
   };
 
   const getPasswordPlaceholder = () => {
-    if (!isAdminEmail) return "••••••••";
+    if (!isAdminLogin) return "••••••••";
     if (adminPasswordStep === 0) return "Enter first password";
     if (adminPasswordStep === 1) return "Enter second password";
     return "Enter final password";
@@ -252,7 +253,7 @@ export default function Login() {
           </div>
 
           {/* Admin indicator */}
-          {isAdminEmail && adminPasswordStep > 0 && (
+          {isAdminLogin && adminPasswordStep > 0 && (
             <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-primary/10 p-3 text-sm text-primary">
               <Shield className="h-4 w-4" />
               <span>Admin authentication step {adminPasswordStep + 1} of 3</span>
@@ -260,7 +261,7 @@ export default function Login() {
           )}
 
           {/* Google Sign In Button - hidden for admin */}
-          {!isAdminEmail && (
+          {!isAdminLogin && (
             <>
               <Button
                 type="button"
@@ -309,16 +310,16 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <Label htmlFor="email">Email Address</Label>
+              <Label htmlFor="email">{isAdminLogin ? "Username" : "Email Address"}</Label>
               <Input
                 id="email"
-                type="email"
-                placeholder="you@example.com"
+                type={isAdminLogin ? "text" : "email"}
+                placeholder={isAdminLogin ? "Enter admin username" : "you@example.com"}
                 value={formData.email}
                 onChange={(e) => {
                   setFormData({ ...formData, email: e.target.value });
-                  // Reset admin flow if email changes
-                  if (e.target.value.toLowerCase() !== ADMIN_EMAIL) {
+                  // Reset admin flow if input changes
+                  if (e.target.value.toLowerCase() !== ADMIN_USERNAME.toLowerCase()) {
                     setAdminPasswordStep(0);
                     adminTokenRef.current = "";
                   }
@@ -331,7 +332,7 @@ export default function Login() {
             <div>
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                {!isAdminEmail && (
+                {!isAdminLogin && (
                   <Link to="/forgot-password" className="text-sm text-primary hover:underline">
                     Forgot password?
                   </Link>
@@ -361,9 +362,9 @@ export default function Login() {
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  {isAdminEmail ? "Authenticating..." : "Signing in..."}
+                  {isAdminLogin ? "Authenticating..." : "Signing in..."}
                 </>
-              ) : isAdminEmail && adminPasswordStep > 0 ? (
+              ) : isAdminLogin && adminPasswordStep > 0 ? (
                 <>
                   <Shield className="h-4 w-4 mr-2" />
                   Continue Authentication
