@@ -13,6 +13,7 @@ import { Loader2, Mail, Phone, Calendar, Shield, CheckCircle2, AlertCircle, User
 import { format } from "date-fns";
 import { AvatarUploadModal } from "@/components/profile/AvatarUploadModal";
 import { resetOnboarding } from "@/components/onboarding/OnboardingTrigger";
+import { resetDashboardTutorial } from "@/components/dashboard/FeatureTooltip";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://sms.ieosuia.com/api";
 
@@ -439,15 +440,16 @@ export default function Profile() {
                     variant="outline" 
                     onClick={() => {
                       resetOnboarding();
+                      resetDashboardTutorial();
                       toast({
-                        title: "Onboarding reset",
-                        description: "The getting started guide will show on your next Dashboard visit.",
+                        title: "Guides reset",
+                        description: "The onboarding flow and dashboard tutorial will show on your next Dashboard visit.",
                       });
                     }}
                     className="shrink-0 ml-4"
                   >
                     <RotateCcw className="h-4 w-4 mr-2" />
-                    Restart Guide
+                    Restart Guides
                   </Button>
                 </div>
               </CardContent>
