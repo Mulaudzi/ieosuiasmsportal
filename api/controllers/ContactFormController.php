@@ -136,10 +136,114 @@ class ContactFormController
         // Send notification to admin about new contact form submission
         self::sendAdminNotification($name, $senderEmail, $purpose, $purposeLabels[$purpose], $logId);
         
+        // Push realtime notification for admin dashboard
+        self::pushRealtimeNotification($name, $senderEmail, $purpose, $purposeLabels[$purpose], $logId);
+        
+        // Send alerts to configured recipients
+        self::sendAlertEmails($name, $senderEmail, $purpose, $purposeLabels[$purpose], $data['message']);
+        
         Response::success([
             'message' => 'Your message has been sent successfully. We will get back to you soon.',
             'recipient' => $recipientEmail,
         ], 201);
+    }
+    
+    /**
+     * Push realtime notification for admin dashboard
+     */
+    private static function pushRealtimeNotification(string $senderName, string $senderEmail, string $purpose, string $purposeLabel, int $logId): void
+    {
+        try {
+            require_once __DIR__ . '/RealtimeController.php';
+            RealtimeController::push(
+                'admin',
+                'new_contact_submission',
+                "New Contact: {$purposeLabel}",
+                "New message from {$senderName} ({$senderEmail})",
+                [
+                    'log_id' => $logId,
+                    'sender_name' => $senderName,
+                    'sender_email' => $senderEmail,
+                    'purpose' => $purpose,
+                    'purpose_label' => $purposeLabel,
+                ]
+            );
+        } catch (\Exception $e) {
+            error_log("Failed to push realtime notification: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Send alert emails to configured recipients
+     */
+    private static function sendAlertEmails(string $senderName, string $senderEmail, string $purpose, string $purposeLabel, string $message): void
+    {
+        try {
+            require_once __DIR__ . '/ContactAlertController.php';
+            $recipients = ContactAlertController::getRecipientsForPurpose($purpose);
+            
+            if (empty($recipients)) {
+                return;
+            }
+            
+            $appName = env('SMTP_FROM_NAME', 'IEOSUIA SMS Portal');
+            $subject = "🔔 New {$purposeLabel} from {$senderName}";
+            $frontendUrl = env('FRONTEND_URL', 'https://sms.ieosuia.com');
+            
+            $messagePreview = strlen($message) > 200 ? substr($message, 0, 200) . '...' : $message;
+            $messagePreview = htmlspecialchars($messagePreview, ENT_QUOTES, 'UTF-8');
+            $date = date('F j, Y \a\t g:i A');
+            
+            $html = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 24px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 18px;">🔔 New Contact Form Alert</h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 24px;">
+                            <div style="background: #f4f4f5; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                                <p style="margin: 0; color: #71717a; font-size: 12px;">CATEGORY</p>
+                                <p style="margin: 4px 0 0; color: #18181b; font-size: 16px; font-weight: 600;">{$purposeLabel}</p>
+                            </div>
+                            <p style="margin: 0 0 8px; color: #71717a; font-size: 14px;">From: <strong style="color: #18181b;">{$senderName}</strong></p>
+                            <p style="margin: 0 0 16px; color: #3b82f6; font-size: 14px;"><a href="mailto:{$senderEmail}" style="color: #3b82f6;">{$senderEmail}</a></p>
+                            <div style="background: #fafafa; border-left: 3px solid #3b82f6; padding: 12px; margin-bottom: 16px;">
+                                <p style="margin: 0; color: #3f3f46; font-size: 14px; line-height: 1.5;">{$messagePreview}</p>
+                            </div>
+                            <p style="margin: 0 0 16px; color: #a1a1aa; font-size: 12px;">Received: {$date}</p>
+                            <a href="{$frontendUrl}/admin" style="display: inline-block; padding: 10px 20px; background: #3b82f6; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 500;">View in Dashboard</a>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+HTML;
+            
+            foreach ($recipients as $recipient) {
+                try {
+                    self::sendContactEmail($recipient['email'], $subject, $html, 'noreply@ieosuia.com', $appName);
+                } catch (\Exception $e) {
+                    error_log("Failed to send alert to {$recipient['email']}: " . $e->getMessage());
+                }
+            }
+        } catch (\Exception $e) {
+            error_log("Failed to send alert emails: " . $e->getMessage());
+        }
     }
     
     /**

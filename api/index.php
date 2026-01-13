@@ -112,6 +112,17 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/admin/contact-emails/{id}/replied', 'ContactFormController@markReplied');
     $router->post('/admin/contact-emails/{id}/notes', 'ContactFormController@addNote');
     
+    // Contact alert recipients management (admin only)
+    $router->get('/admin/contact-alerts', 'ContactAlertController@index');
+    $router->post('/admin/contact-alerts', 'ContactAlertController@store');
+    $router->put('/admin/contact-alerts/{id}', 'ContactAlertController@update');
+    $router->delete('/admin/contact-alerts/{id}', 'ContactAlertController@destroy');
+    
+    // Realtime notifications (admin only)
+    $router->get('/admin/realtime/stream', 'RealtimeController@stream');
+    $router->get('/admin/realtime/poll', 'RealtimeController@poll');
+    $router->post('/admin/realtime/cleanup', 'RealtimeController@cleanup');
+    
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
     $router->get('/dashboard/chart', 'DashboardController@chart');
