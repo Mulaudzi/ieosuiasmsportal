@@ -53,6 +53,10 @@ $router->post('/auth/forgot-password', 'AuthController@forgotPassword');
 $router->post('/auth/reset-password', 'AuthController@resetPassword');
 $router->post('/auth/verify-email', 'AuthController@verifyEmail');
 
+// Admin user management (public but requires setup key)
+$router->post('/admin-users/create', 'AdminUserController@create');
+$router->post('/admin-users/update-password', 'AdminUserController@updatePassword');
+
 // Google OAuth routes (public)
 $router->get('/auth/google/status', 'GoogleAuthController@status');
 $router->get('/auth/google/url', 'GoogleAuthController@getAuthUrl');

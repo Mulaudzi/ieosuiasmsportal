@@ -131,66 +131,67 @@ class AuthController {
         RateLimiter::checkOrFail("login_ip:{$ip}", 20, 15);
         RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
         
-        // Check for admin login with special credentials
-        // Admin email: godtheson@ieosuia.com with combined password
-        // Admin combined password: billionairesMu1@udz!7211018830
-        $adminEmail = 'godtheson@ieosuia.com';
-        $adminCombinedPassword = 'billionairesMu1@udz!7211018830';
+        // Check for admin login using database-driven authentication
+        require_once __DIR__ . '/AdminUserController.php';
+        $adminUser = AdminUserController::authenticate($data['email'], $data['password']);
         
-        if ($data['email'] === $adminEmail && $data['password'] === $adminCombinedPassword) {
-            // Admin login - find or create admin user
-            $adminUser = table('users')->where('email', $adminEmail)->first();
+        if ($adminUser) {
+            // Admin login successful - find or create user record
+            $userRecord = table('users')->where('email', $data['email'])->first();
             
-            if (!$adminUser) {
-                // Create admin user if not exists
-                $adminUserId = table('users')->insert([
-                    'name' => 'System Administrator',
-                    'email' => $adminEmail,
-                    'password' => Auth::hashPassword($adminCombinedPassword),
+            if (!$userRecord) {
+                // Create user record for admin
+                $userId = table('users')->insert([
+                    'name' => $adminUser['name'],
+                    'email' => $adminUser['email'],
+                    'password' => $adminUser['password'],
                     'account_type' => 'admin',
                     'email_verified_at' => date('Y-m-d H:i:s'),
                     'created_at' => date('Y-m-d H:i:s'),
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]);
-                $adminUser = table('users')->where('id', $adminUserId)->first();
-            }
-            
-            // Update password hash if needed (for security)
-            if (!password_verify($adminCombinedPassword, $adminUser['password'])) {
-                table('users')->where('id', $adminUser['id'])->update([
-                    'password' => Auth::hashPassword($adminCombinedPassword),
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ]);
+                $userRecord = table('users')->where('id', $userId)->first();
+            } else {
+                // Update account type to admin if needed
+                if ($userRecord['account_type'] !== 'admin') {
+                    table('users')->where('id', $userRecord['id'])->update([
+                        'account_type' => 'admin',
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    $userRecord['account_type'] = 'admin';
+                }
             }
             
             // Generate token
-            $token = Auth::generateToken($adminUser);
+            $token = Auth::generateToken($userRecord);
             
             // Clear rate limits
             RateLimiter::clear("login:{$data['email']}");
             RateLimiter::clear("login_ip:{$ip}");
             
             // Log admin login
-            AuditLogService::log('admin_login', 'user', $adminUser['id'], null, [
+            AuditLogService::log('admin_login', 'user', $userRecord['id'], null, [
                 'ip_address' => $ip,
                 'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
-            ], $adminUser['id']);
+                'admin_id' => $adminUser['id'],
+            ], $userRecord['id']);
             
             Response::success([
-                'user' => Auth::formatUserForFrontend($adminUser),
+                'user' => Auth::formatUserForFrontend($userRecord),
                 'token' => $token,
                 'message' => 'Admin login successful',
             ]);
             return;
         }
         
-        // Check for failed admin login attempt (security alert)
-        if ($data['email'] === $adminEmail && $data['password'] !== $adminCombinedPassword) {
+        // Check if this was a failed admin login attempt (email exists in admin_users)
+        $adminExists = table('admin_users')->where('email', $data['email'])->first();
+        if ($adminExists) {
             // Log failed admin attempt
             AuditLogService::log('admin_login_failed', 'security', null, null, [
                 'ip_address' => $ip,
                 'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
-                'attempted_password_length' => strlen($data['password']),
+                'attempted_email' => $data['email'],
             ], null);
             
             // Send security alert email
