@@ -18,7 +18,10 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { LogoSidebar } from "@/components/layout/Logo";
 
-const navigation = [
+// Email allowed to access QA Console
+const QA_ALLOWED_EMAIL = "vendaboy.lm@gmail.com";
+
+const baseNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "SMS Campaigns", href: "/sms-campaigns", icon: MessageSquare },
   { name: "Email Campaigns", href: "/email-campaigns", icon: Mail },
@@ -27,14 +30,12 @@ const navigation = [
   { name: "Sender IDs", href: "/sender-ids", icon: Key },
   { name: "Wallet", href: "/wallet", icon: Wallet },
   { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "QA Console", href: "/qa", icon: Bug },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 const adminNavigation = [
   { name: "Admin Dashboard", href: "/admin", icon: Shield },
   { name: "Admin Users", href: "/admin/users", icon: Users },
-  { name: "QA Console", href: "/admin/qa", icon: Bug },
 ];
 
 export function Sidebar() {
@@ -53,6 +54,11 @@ export function Sidebar() {
       .toUpperCase()
       .slice(0, 2);
   };
+
+  // Build navigation dynamically - include QA Console only for allowed email
+  const navigation = user?.email === QA_ALLOWED_EMAIL
+    ? [...baseNavigation.slice(0, -1), { name: "QA Console", href: "/qa", icon: Bug }, baseNavigation[baseNavigation.length - 1]]
+    : baseNavigation;
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar">

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, ProtectedRoute } from "@/hooks/useAuth";
 import { AdminRoute } from "@/components/auth/AdminRoute";
+import { QaRoute } from "@/components/auth/QaRoute";
 import { CookieConsent } from "@/components/CookieConsent";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -87,7 +88,7 @@ const App = () => (
             <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/sender-ids" element={<ProtectedRoute><SenderIds /></ProtectedRoute>} />
-            <Route path="/qa" element={<ProtectedRoute><QaConsole /></ProtectedRoute>} />
+            <Route path="/qa" element={<QaRoute><QaConsole /></QaRoute>} />
             
             {/* Admin Routes */}
             <Route path="/admin/login" element={<AdminLogin />} />
