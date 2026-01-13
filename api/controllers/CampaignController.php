@@ -15,6 +15,17 @@ class CampaignController {
         $userId = Auth::id();
         $page = (int) Request::query('page', 1);
         $perPage = (int) Request::query('per_page', 20);
+        $status = Request::query('status');
+        $search = Request::query('search');
+        
+        $query = table('campaigns')
+            ->where('user_id', $userId)
+            ->where('type', 'sms');
+        
+        // Apply status filter
+        if ($status && $status !== 'all') {
+            $query->where('status', ucfirst(strtolower($status)));
+        }
         
         $total = table('campaigns')
             ->where('user_id', $userId)
@@ -23,18 +34,60 @@ class CampaignController {
         
         $campaigns = table('campaigns')
             ->where('user_id', $userId)
-            ->where('type', 'sms')
-            ->orderBy('created_at', 'DESC')
+            ->where('type', 'sms');
+        
+        if ($status && $status !== 'all') {
+            $campaigns = $campaigns->where('status', ucfirst(strtolower($status)));
+        }
+        
+        $campaigns = $campaigns->orderBy('created_at', 'DESC')
             ->limit($perPage)
             ->offset(($page - 1) * $perPage)
             ->get();
         
-        // Add message counts
+        // Add message counts and transform field names
         foreach ($campaigns as &$campaign) {
             $this->addMessageCounts($campaign);
+            // Map database fields to frontend expected fields
+            $campaign['recipient_count'] = (int) ($campaign['total_recipients'] ?? 0);
+            $campaign['credits_used'] = (float) ($campaign['actual_cost'] ?? $campaign['estimated_cost'] ?? 0);
+            // Normalize status for frontend
+            $campaign['status'] = strtolower($campaign['status'] ?? 'draft');
         }
         
-        Response::paginate($campaigns, $total, $page, $perPage);
+        // Calculate stats
+        $sentCount = table('campaigns')
+            ->where('user_id', $userId)
+            ->where('type', 'sms')
+            ->whereIn('status', ['Sent', 'Delivered', 'Completed'])
+            ->count();
+        
+        $scheduledCount = table('campaigns')
+            ->where('user_id', $userId)
+            ->where('type', 'sms')
+            ->where('status', 'Scheduled')
+            ->count();
+        
+        // Sum of actual costs
+        $creditsUsed = 0;
+        $allCampaigns = table('campaigns')
+            ->where('user_id', $userId)
+            ->where('type', 'sms')
+            ->get();
+        foreach ($allCampaigns as $c) {
+            $creditsUsed += (float) ($c['actual_cost'] ?? 0);
+        }
+        
+        Response::success([
+            'campaigns' => $campaigns,
+            'total' => $total,
+            'stats' => [
+                'total' => $total,
+                'sent' => $sentCount,
+                'scheduled' => $scheduledCount,
+                'credits_used' => $creditsUsed,
+            ],
+        ]);
     }
     
     public function smsStore(): void {
@@ -343,6 +396,8 @@ class CampaignController {
         $userId = Auth::id();
         $page = (int) Request::query('page', 1);
         $perPage = (int) Request::query('per_page', 20);
+        $status = Request::query('status');
+        $search = Request::query('search');
         
         $total = table('campaigns')
             ->where('user_id', $userId)
@@ -351,17 +406,57 @@ class CampaignController {
         
         $campaigns = table('campaigns')
             ->where('user_id', $userId)
-            ->where('type', 'email')
-            ->orderBy('created_at', 'DESC')
+            ->where('type', 'email');
+        
+        if ($status && $status !== 'all') {
+            $campaigns = $campaigns->where('status', ucfirst(strtolower($status)));
+        }
+        
+        $campaigns = $campaigns->orderBy('created_at', 'DESC')
             ->limit($perPage)
             ->offset(($page - 1) * $perPage)
             ->get();
         
+        // Add message counts and transform field names
+        $totalOpened = 0;
+        $totalClicked = 0;
+        $totalDelivered = 0;
+        
         foreach ($campaigns as &$campaign) {
             $this->addMessageCounts($campaign);
+            // Map database fields to frontend expected fields
+            $campaign['recipient_count'] = (int) ($campaign['total_recipients'] ?? 0);
+            $campaign['opened_count'] = (int) ($campaign['opened_count'] ?? 0);
+            $campaign['clicked_count'] = (int) ($campaign['clicked_count'] ?? 0);
+            // Normalize status for frontend
+            $campaign['status'] = strtolower($campaign['status'] ?? 'draft');
+            
+            $totalOpened += (int) ($campaign['opened_count'] ?? 0);
+            $totalClicked += (int) ($campaign['clicked_count'] ?? 0);
+            $totalDelivered += (int) ($campaign['delivered_count'] ?? 0);
         }
         
-        Response::paginate($campaigns, $total, $page, $perPage);
+        // Calculate stats
+        $sentCount = table('campaigns')
+            ->where('user_id', $userId)
+            ->where('type', 'email')
+            ->whereIn('status', ['Sent', 'Delivered', 'Completed'])
+            ->count();
+        
+        $avgOpenRate = $totalDelivered > 0 ? ($totalOpened / $totalDelivered) * 100 : 0;
+        $avgClickRate = $totalDelivered > 0 ? ($totalClicked / $totalDelivered) * 100 : 0;
+        
+        Response::success([
+            'campaigns' => $campaigns,
+            'total' => $total,
+            'stats' => [
+                'total' => $total,
+                'sent' => $sentCount,
+                'avg_open_rate' => round($avgOpenRate, 1),
+                'avg_click_rate' => round($avgClickRate, 1),
+            ],
+        ]);
+    }
     }
     
     public function emailStore(): void {
