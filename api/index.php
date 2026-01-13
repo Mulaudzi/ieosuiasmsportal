@@ -200,6 +200,9 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/email/limits', 'CampaignController@emailLimits');
 });
 
+// Contact Form (public)
+$router->post('/contact', 'ContactFormController@submit');
+
 // DLR Webhook (public with secret validation) - Legacy
 $router->post('/dlr/webhook', 'DlrController@webhook');
 $router->get('/dlr/status/{messageId}', 'DlrController@status');
