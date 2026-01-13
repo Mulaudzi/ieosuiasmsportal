@@ -186,6 +186,8 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/reports/campaigns', 'ReportController@campaigns');
     $router->get('/reports/messages', 'ReportController@messages');
     $router->get('/reports/export', 'ReportController@export');
+    $router->get('/reports/compare', 'ReportController@compare');
+    $router->get('/reports/ab-test-results', 'ReportController@abTestResults');
     
     // Opt-outs
     $router->get('/opt-outs', 'OptOutController@index');

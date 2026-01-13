@@ -21,6 +21,7 @@ import Contacts from "./pages/Contacts";
 import Templates from "./pages/Templates";
 import Wallet from "./pages/Wallet";
 import Reports from "./pages/Reports";
+import CampaignComparison from "./pages/CampaignComparison";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
@@ -69,6 +70,7 @@ const App = () => (
             <Route path="/templates" element={<ProtectedRoute requireVerified><Templates /></ProtectedRoute>} />
             <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute requireVerified><Reports /></ProtectedRoute>} />
+            <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/sender-ids" element={<ProtectedRoute><SenderIds /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

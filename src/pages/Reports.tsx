@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +31,8 @@ import {
   XCircle,
   Clock,
   Loader2,
+  BarChart3,
+  Beaker,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { exportReport } from "@/lib/api";
@@ -82,6 +85,12 @@ export default function Reports() {
       subtitle="Analytics and delivery reports for all your campaigns"
       actions={
         <div className="flex gap-3">
+          <Link to="/reports/compare">
+            <Button variant="outline" className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Compare Campaigns
+            </Button>
+          </Link>
           <Select value={dateRange} onValueChange={setDateRange}>
             <SelectTrigger className="w-40">
               <Calendar className="mr-2 h-4 w-4" />
