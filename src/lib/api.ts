@@ -162,12 +162,7 @@ export const getWalletHistory = () => api.get<any[]>('/wallet/history');
 export const saveSettings = (section: string, data: any) => api.put<any>(`/settings/${section}`, data);
 export const exportReport = (type: string) => api.get<any>(`/reports/export/${type}`);
 
-// Sender IDs
-export const getSenderIds = (type?: 'sms' | 'email') => api.get<any>('/sender-ids', type ? { type } : undefined);
-export const createSenderId = (data: { type: string; sender_id?: string; sender_email?: string; sender_name?: string }) => 
-  api.post<any>('/sender-ids', data);
-export const deleteSenderId = (id: string) => api.delete(`/sender-ids/${id}`);
-export const setDefaultSenderId = (id: string) => api.post<any>(`/sender-ids/${id}/default`);
+// Sender IDs - REMOVED
 
 // Email limits
 export const getEmailLimits = () => api.get<any>('/email/limits');

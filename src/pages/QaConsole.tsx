@@ -147,7 +147,7 @@ export default function QaConsole() {
   const loadHealthOverview = async () => {
     setHealthLoading(true);
     try {
-      const res = await api.get<{ health: HealthOverview }>("/admin/qa/health");
+      const res = await api.get<{ health: HealthOverview }>("/qa/health");
       if (res.success) {
         setHealthOverview(res.data?.health || null);
       }
@@ -163,7 +163,7 @@ export default function QaConsole() {
     setResults(null);
     
     try {
-      const res = await api.post<{ results: TestResults }>("/admin/qa/run", {
+      const res = await api.post<{ results: TestResults }>("/qa/run", {
         system: selectedSystem,
         user_mode: selectedUserMode,
         test_type: selectedTestType,
@@ -201,7 +201,7 @@ export default function QaConsole() {
   const seedTestData = async () => {
     setSeeding(true);
     try {
-      const res = await api.post("/admin/qa/seed", { system: selectedSystem });
+      const res = await api.post("/qa/seed", { system: selectedSystem });
       if (res.success) {
         toast({ title: "Test data seeded", description: "QA test data has been created" });
       }
@@ -215,7 +215,7 @@ export default function QaConsole() {
   const cleanupTestData = async () => {
     setCleaningUp(true);
     try {
-      const res = await api.post("/admin/qa/cleanup", { prefix: "QA_TEST_" });
+      const res = await api.post("/qa/cleanup", { prefix: "QA_TEST_" });
       if (res.success) {
         toast({ title: "Cleanup complete", description: "Test data has been removed" });
         setShowCleanupDialog(false);

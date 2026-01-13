@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,12 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { createContact, getContactGroups, handleApiError } from "@/lib/api";
+
+interface Group {
+  id: string;
+  name: string;
+}
 
 interface AddContactModalProps {
   open: boolean;
@@ -26,20 +32,43 @@ interface AddContactModalProps {
   onSuccess?: () => void;
 }
 
-const groups = ["Customers", "Leads", "VIP", "Newsletter"];
-
 export function AddContactModal({ open, onOpenChange, onSuccess }: AddContactModalProps) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [group, setGroup] = useState("");
+  const [groupId, setGroupId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      loadGroups();
+    }
+  }, [open]);
+
+  const loadGroups = async () => {
+    setLoadingGroups(true);
+    try {
+      const res = await getContactGroups();
+      if (res.success && res.data) {
+        // Handle both formats: { groups: [...] } and direct array
+        const data = res.data as { groups?: Group[] } | Group[];
+        const groupsData = Array.isArray(data) ? data : (data.groups || []);
+        setGroups(groupsData);
+      }
+    } catch (error) {
+      console.error("Failed to load groups:", error);
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
 
   const resetForm = () => {
     setName("");
     setPhone("");
     setEmail("");
-    setGroup("");
+    setGroupId("");
   };
 
   const handleClose = () => {
@@ -58,17 +87,27 @@ export function AddContactModal({ open, onOpenChange, onSuccess }: AddContactMod
     }
 
     setSaving(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const response = await createContact({
+        name: name || "Esteemed",
+        phone: phone || undefined,
+        email: email || undefined,
+        group_id: groupId || undefined,
+      });
 
-    toast({
-      title: "Contact added",
-      description: `${name || phone || email} has been added to your contacts.`,
-    });
-
-    setSaving(false);
-    onSuccess?.();
-    handleClose();
+      if (response.success) {
+        toast({
+          title: "Contact added",
+          description: `${name || phone || email} has been added to your contacts.`,
+        });
+        onSuccess?.();
+        handleClose();
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -115,13 +154,13 @@ export function AddContactModal({ open, onOpenChange, onSuccess }: AddContactMod
 
           <div className="space-y-2">
             <Label htmlFor="group">Group</Label>
-            <Select value={group} onValueChange={setGroup}>
+            <Select value={groupId} onValueChange={setGroupId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a group" />
+                <SelectValue placeholder={loadingGroups ? "Loading..." : "Select a group"} />
               </SelectTrigger>
               <SelectContent>
                 {groups.map((g) => (
-                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                  <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

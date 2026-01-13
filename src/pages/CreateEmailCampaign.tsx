@@ -37,7 +37,6 @@ import {
   createEmailCampaign, 
   getTemplates, 
   getContactGroups, 
-  getSenderIds,
   uploadAttachment,
   deleteAttachment,
   checkCampaignCredits,
@@ -74,12 +73,7 @@ interface ContactGroup {
   contact_count: number;
 }
 
-interface SenderId {
-  id: string;
-  sender_email: string;
-  sender_name: string;
-  status: string;
-}
+// Sender ID interface - REMOVED (sender ID feature disabled)
 
 export default function CreateEmailCampaign() {
   const navigate = useNavigate();
@@ -89,7 +83,7 @@ export default function CreateEmailCampaign() {
   const [uploading, setUploading] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
-  const [senderIds, setSenderIds] = useState<SenderId[]>([]);
+  // Sender IDs removed
   const [contacts, setContacts] = useState<any[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [creditCheck, setCreditCheck] = useState<any>(null);
@@ -124,21 +118,13 @@ export default function CreateEmailCampaign() {
 
   const loadInitialData = async () => {
     try {
-      const [templatesRes, groupsRes, senderIdsRes] = await Promise.all([
+      const [templatesRes, groupsRes] = await Promise.all([
         getTemplates("email"),
         api.get<{ groups: ContactGroup[] }>("/contact-groups"),
-        api.get<{ sender_ids: SenderId[] }>("/sender-ids", { type: "email" }),
       ]);
 
       if (templatesRes.success) setTemplates(templatesRes.data || []);
       if (groupsRes.success && groupsRes.data) setContactGroups(groupsRes.data.groups || []);
-      if (senderIdsRes.success && senderIdsRes.data) {
-        const approved = (senderIdsRes.data.sender_ids || []).filter((s: SenderId) => s.status === "approved");
-        setSenderIds(approved);
-        if (approved.length > 0) {
-          setFormData(prev => ({ ...prev, senderEmail: approved[0].sender_email }));
-        }
-      }
     } catch (error) {
       console.error("Failed to load initial data:", error);
     }
@@ -404,26 +390,16 @@ export default function CreateEmailCampaign() {
 
               <div>
                 <Label>From Email</Label>
-                <Select
+                <Input
+                  type="email"
+                  placeholder="noreply@yourdomain.com"
                   value={formData.senderEmail}
-                  onValueChange={(value) => setFormData({ ...formData, senderEmail: value })}
-                >
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select sender email..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {senderIds.map((sender) => (
-                      <SelectItem key={sender.id} value={sender.sender_email}>
-                        {sender.sender_name} &lt;{sender.sender_email}&gt;
-                      </SelectItem>
-                    ))}
-                    {senderIds.length === 0 && (
-                      <SelectItem value="default" disabled>
-                        No approved sender emails
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => setFormData({ ...formData, senderEmail: e.target.value })}
+                  className="mt-1.5"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The email address that will appear as the sender
+                </p>
               </div>
 
               {templates.length > 0 && (
