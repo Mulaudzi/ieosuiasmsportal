@@ -498,8 +498,8 @@ class ReportController {
         $stmt = $pdo->prepare("
             SELECT 
                 COUNT(*) as total_messages,
-                SUM(CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END) as failed
+                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as failed
             FROM messages m
             JOIN campaigns c ON m.campaign_id = c.id
             WHERE c.user_id = ? AND m.created_at >= ?
@@ -511,10 +511,10 @@ class ReportController {
         $stmt = $pdo->prepare("
             SELECT 
                 COUNT(*) as total_sent,
-                SUM(CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END) as failed,
-                SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) as pending,
-                COALESCE(SUM(cost), 0) as credits_used
+                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as failed,
+                SUM(CASE WHEN m.status = 'Pending' THEN 1 ELSE 0 END) as pending,
+                COALESCE(SUM(m.cost), 0) as credits_used
             FROM messages m
             JOIN campaigns c ON m.campaign_id = c.id
             WHERE c.user_id = ? AND c.type = 'sms' AND m.created_at >= ?
@@ -526,8 +526,8 @@ class ReportController {
         $stmt = $pdo->prepare("
             SELECT 
                 COUNT(*) as total_sent,
-                SUM(CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN status = 'Failed' THEN 1 ELSE 0 END) as bounced
+                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as bounced
             FROM messages m
             JOIN campaigns c ON m.campaign_id = c.id
             WHERE c.user_id = ? AND c.type = 'email' AND m.created_at >= ?
