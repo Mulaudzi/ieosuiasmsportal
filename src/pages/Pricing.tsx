@@ -91,7 +91,7 @@ const smsPricing = [
 ];
 
 const emailPricing = [
-  { volume: "< 500", price: 0.28, priceDisplay: "R0.28" },
+  { volume: "< 500", price: 0.13, priceDisplay: "R0.13" },
   { volume: "500 – 1,000", price: 0.12, priceDisplay: "R0.12" },
   { volume: "1,001 – 5,000", price: 0.10, priceDisplay: "R0.10" },
   { volume: "5,001 – 10,000", price: 0.09, priceDisplay: "R0.09" },
@@ -180,7 +180,7 @@ export default function Pricing() {
 
   const calculateEmailPrice = (volume: number): { price: number; tier: string } => {
     if (volume <= 0) return { price: 0, tier: "Enter volume" };
-    if (volume < 500) return { price: volume * 0.28, tier: "R0.28/Email" };
+    if (volume < 500) return { price: volume * 0.13, tier: "R0.13/Email" };
     if (volume <= 1000) return { price: volume * 0.12, tier: "R0.12/Email" };
     if (volume <= 5000) return { price: volume * 0.10, tier: "R0.10/Email" };
     if (volume <= 10000) return { price: volume * 0.09, tier: "R0.09/Email" };

@@ -150,7 +150,7 @@ const smsPricing = [
 ];
 
 const emailPricing = [
-  { volume: "< 500", price: "R0.28" },
+  { volume: "< 500", price: "R0.13" },
   { volume: "500 – 1,000", price: "R0.12" },
   { volume: "1,001 – 5,000", price: "R0.10" },
   { volume: "5,001 – 10,000", price: "R0.09" },

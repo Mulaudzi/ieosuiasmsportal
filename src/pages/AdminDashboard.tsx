@@ -73,6 +73,10 @@ import {
   WifiOff,
   Thermometer,
   TrendingUp,
+  Inbox,
+  Reply,
+  MessageCircle as MessageIcon,
+  HelpCircle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -220,6 +224,27 @@ interface DeliveryRateDay {
   hours: (number | null)[];
 }
 
+interface ContactEmail {
+  id: string;
+  sender_name: string;
+  sender_email: string;
+  recipient_email: string;
+  purpose: "general" | "support" | "sales";
+  subject: string;
+  message: string;
+  status: "sent" | "failed" | "bounced";
+  error_message: string | null;
+  origin_url: string | null;
+  ip_address: string | null;
+  confirmation_sent: boolean;
+  read_by_admin: boolean;
+  read_at: string | null;
+  replied: boolean;
+  replied_at: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 const statusConfig = {
   pending: { label: "Pending", class: "status-pending", icon: Clock },
   approved: { label: "Approved", class: "status-delivered", icon: CheckCircle },
@@ -357,6 +382,13 @@ export default function AdminDashboard() {
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
+  
+  // Contact emails state
+  const [contactEmails, setContactEmails] = useState<ContactEmail[]>([]);
+  const [contactEmailsLoading, setContactEmailsLoading] = useState(false);
+  const [unreadContactCount, setUnreadContactCount] = useState(0);
+  const [selectedEmail, setSelectedEmail] = useState<ContactEmail | null>(null);
+  const [emailNotes, setEmailNotes] = useState("");
 
   // Admin access verification
   useEffect(() => {
@@ -411,7 +443,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
@@ -422,6 +454,7 @@ export default function AdminDashboard() {
         api.get<{ settings: NotificationSetting[] }>("/admin/notification-settings"),
         api.get<{ health: SystemHealth }>("/admin/system-health"),
         api.get<{ heatmap: HeatmapData }>("/admin/activity-heatmap"),
+        api.get<{ emails: ContactEmail[]; unread_count: number }>("/admin/contact-emails"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
@@ -434,6 +467,10 @@ export default function AdminDashboard() {
       if (notifRes.success) setNotificationSettings(notifRes.data?.settings || []);
       if (healthRes.success) setSystemHealth(healthRes.data?.health || null);
       if (heatmapRes.success) setHeatmapData(heatmapRes.data?.heatmap || null);
+      if (contactRes.success) {
+        setContactEmails(contactRes.data?.emails || []);
+        setUnreadContactCount(contactRes.data?.unread_count || 0);
+      }
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -1434,6 +1471,15 @@ export default function AdminDashboard() {
             <Activity className="h-4 w-4" />
             Activity Log
           </TabsTrigger>
+          <TabsTrigger value="contact-emails" className="gap-2">
+            <Inbox className="h-4 w-4" />
+            Contact Emails
+            {unreadContactCount > 0 && (
+              <span className="ml-1 rounded-full bg-warning px-2 py-0.5 text-xs text-warning-foreground">
+                {unreadContactCount}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="settings" className="gap-2">
             <Settings className="h-4 w-4" />
             Settings
@@ -2014,6 +2060,208 @@ export default function AdminDashboard() {
                   Load More
                 </Button>
               </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="contact-emails" className="mt-6">
+          <div className="space-y-4">
+            {/* Contact Emails Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Contact Form Submissions</h3>
+                <p className="text-sm text-muted-foreground">
+                  View and manage messages from the contact form. {unreadContactCount > 0 && `${unreadContactCount} unread`}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={loadData} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </Button>
+            </div>
+
+            {/* Email List */}
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              {contactEmails.length === 0 ? (
+                <div className="py-16 text-center">
+                  <Inbox className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                  <p className="mt-4 text-lg font-medium text-foreground">No contact submissions yet</p>
+                  <p className="text-sm text-muted-foreground">Messages from the contact form will appear here</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {contactEmails.map((email) => (
+                    <div
+                      key={email.id}
+                      className={cn(
+                        "p-4 cursor-pointer transition-colors hover:bg-muted/30",
+                        !email.read_by_admin && "bg-primary/5"
+                      )}
+                      onClick={async () => {
+                        setSelectedEmail(email);
+                        setEmailNotes(email.notes || "");
+                        // Mark as read if unread
+                        if (!email.read_by_admin) {
+                          try {
+                            await api.get(`/admin/contact-emails/${email.id}`);
+                            setContactEmails(prev => prev.map(e => 
+                              e.id === email.id ? {...e, read_by_admin: true, read_at: new Date().toISOString()} : e
+                            ));
+                            setUnreadContactCount(prev => Math.max(0, prev - 1));
+                          } catch (error) {
+                            console.error("Failed to mark as read:", error);
+                          }
+                        }
+                      }}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className={cn(
+                          "flex h-10 w-10 items-center justify-center rounded-lg flex-shrink-0",
+                          email.purpose === "support" ? "bg-warning/10" :
+                          email.purpose === "sales" ? "bg-success/10" : "bg-primary/10"
+                        )}>
+                          {email.purpose === "support" ? (
+                            <HelpCircle className={cn("h-5 w-5", email.purpose === "support" && "text-warning")} />
+                          ) : email.purpose === "sales" ? (
+                            <TrendingUp className="h-5 w-5 text-success" />
+                          ) : (
+                            <MessageIcon className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className={cn(
+                              "font-medium text-foreground truncate",
+                              !email.read_by_admin && "font-semibold"
+                            )}>
+                              {email.sender_name}
+                            </p>
+                            {!email.read_by_admin && (
+                              <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">New</span>
+                            )}
+                            {email.replied && (
+                              <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success flex items-center gap-1">
+                                <Reply className="h-3 w-3" />
+                                Replied
+                              </span>
+                            )}
+                            <span className={cn(
+                              "rounded-full px-2 py-0.5 text-xs capitalize",
+                              email.purpose === "support" ? "bg-warning/10 text-warning" :
+                              email.purpose === "sales" ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
+                            )}>
+                              {email.purpose}
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">{email.sender_email}</p>
+                          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{email.message}</p>
+                        </div>
+                        <div className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDistanceToNow(new Date(email.created_at), { addSuffix: true })}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Selected Email Detail Modal */}
+            {selectedEmail && (
+              <AlertDialog open={!!selectedEmail} onOpenChange={() => setSelectedEmail(null)}>
+                <AlertDialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                      <Mail className="h-5 w-5" />
+                      Message from {selectedEmail.sender_name}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription asChild>
+                      <div className="space-y-4 text-left">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">From:</span>
+                            <p className="font-medium text-foreground">{selectedEmail.sender_name}</p>
+                            <a href={`mailto:${selectedEmail.sender_email}`} className="text-primary hover:underline">
+                              {selectedEmail.sender_email}
+                            </a>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Category:</span>
+                            <p className="font-medium text-foreground capitalize">{selectedEmail.purpose}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Sent to:</span>
+                            <p className="font-medium text-foreground">{selectedEmail.recipient_email}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Received:</span>
+                            <p className="font-medium text-foreground">
+                              {format(new Date(selectedEmail.created_at), "PPp")}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="rounded-lg bg-muted p-4">
+                          <p className="text-sm text-muted-foreground mb-2">Message:</p>
+                          <p className="text-foreground whitespace-pre-wrap">{selectedEmail.message}</p>
+                        </div>
+
+                        {selectedEmail.origin_url && (
+                          <div className="text-xs text-muted-foreground">
+                            <span>Origin: </span>
+                            <a href={selectedEmail.origin_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                              {selectedEmail.origin_url}
+                            </a>
+                          </div>
+                        )}
+
+                        <div className="border-t pt-4">
+                          <Label htmlFor="notes" className="text-sm">Admin Notes</Label>
+                          <textarea
+                            id="notes"
+                            value={emailNotes}
+                            onChange={(e) => setEmailNotes(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none"
+                            rows={3}
+                            placeholder="Add internal notes about this inquiry..."
+                          />
+                        </div>
+                      </div>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => window.open(`mailto:${selectedEmail.sender_email}?subject=Re: ${selectedEmail.subject}`, '_blank')}
+                      className="gap-2"
+                    >
+                      <Mail className="h-4 w-4" />
+                      Reply via Email
+                    </Button>
+                    {!selectedEmail.replied && (
+                      <Button
+                        onClick={async () => {
+                          try {
+                            await api.post(`/admin/contact-emails/${selectedEmail.id}/replied`, { notes: emailNotes });
+                            setContactEmails(prev => prev.map(e =>
+                              e.id === selectedEmail.id ? {...e, replied: true, replied_at: new Date().toISOString(), notes: emailNotes} : e
+                            ));
+                            toast({ title: "Marked as replied" });
+                            setSelectedEmail(null);
+                          } catch (error) {
+                            handleApiError(error);
+                          }
+                        }}
+                        className="gap-2"
+                      >
+                        <Reply className="h-4 w-4" />
+                        Mark as Replied
+                      </Button>
+                    )}
+                    <AlertDialogCancel>Close</AlertDialogCancel>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
         </TabsContent>
