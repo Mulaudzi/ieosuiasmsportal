@@ -325,42 +325,54 @@ class AdminUserController {
             'email' => 'required|email|max:255',
         ]);
         
-        $admin = table('admin_users')
-            ->where('email', $data['email'])
-            ->first();
-        
-        if (!$admin) {
+        try {
+            $admin = table('admin_users')
+                ->where('email', $data['email'])
+                ->first();
+            
+            if (!$admin) {
+                Response::success([
+                    'is_admin' => false,
+                ]);
+                return;
+            }
+            
+            // Calculate remaining attempts
+            $remainingAttempts = max(0, 5 - ($admin['failed_attempts'] ?? 0));
+            
+            // Check if locked
+            $lockedUntil = null;
+            if ($admin['locked_until'] && strtotime($admin['locked_until']) > time()) {
+                $lockedUntil = $admin['locked_until'];
+            }
+            
+            Response::success([
+                'is_admin' => (bool) $admin['is_active'],
+                'remaining_attempts' => $remainingAttempts,
+                'locked_until' => $lockedUntil,
+            ]);
+        } catch (\Exception $e) {
+            // Table might not exist yet - return not admin
             Response::success([
                 'is_admin' => false,
             ]);
-            return;
         }
-        
-        // Calculate remaining attempts
-        $remainingAttempts = max(0, 5 - ($admin['failed_attempts'] ?? 0));
-        
-        // Check if locked
-        $lockedUntil = null;
-        if ($admin['locked_until'] && strtotime($admin['locked_until']) > time()) {
-            $lockedUntil = $admin['locked_until'];
-        }
-        
-        Response::success([
-            'is_admin' => (bool) $admin['is_active'],
-            'remaining_attempts' => $remainingAttempts,
-            'locked_until' => $lockedUntil,
-        ]);
     }
     
     /**
      * Check if email belongs to an admin user
      */
     public static function isAdminEmail(string $email): bool {
-        $admin = table('admin_users')
-            ->where('email', $email)
-            ->where('is_active', 1)
-            ->first();
-        return $admin !== null;
+        try {
+            $admin = table('admin_users')
+                ->where('email', $email)
+                ->where('is_active', 1)
+                ->first();
+            return $admin !== null;
+        } catch (\Exception $e) {
+            // Table might not exist yet
+            return false;
+        }
     }
     
     /**

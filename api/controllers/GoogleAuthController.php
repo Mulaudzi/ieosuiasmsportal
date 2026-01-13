@@ -7,18 +7,24 @@
 require_once __DIR__ . '/../services/GoogleOAuthService.php';
 
 class GoogleAuthController {
-    private GoogleOAuthService $googleOAuth;
+    private ?GoogleOAuthService $googleOAuth = null;
     
     public function __construct() {
-        $this->googleOAuth = new GoogleOAuthService();
+        try {
+            $this->googleOAuth = new GoogleOAuthService();
+        } catch (\Exception $e) {
+            // Google OAuth not configured
+            $this->googleOAuth = null;
+        }
     }
     
     /**
      * Get the Google OAuth authorization URL
      */
     public function getAuthUrl(): void {
-        if (!$this->googleOAuth->isConfigured()) {
-            Response::error('Google OAuth is not configured', 503);
+        if (!$this->googleOAuth || !$this->googleOAuth->isConfigured()) {
+            Response::json(['success' => false, 'message' => 'Google OAuth is not configured'], 503);
+            return;
         }
         
         // Generate a random state for CSRF protection
@@ -34,8 +40,9 @@ class GoogleAuthController {
      * Handle the OAuth callback - exchange code for tokens and create/login user
      */
     public function callback(): void {
-        if (!$this->googleOAuth->isConfigured()) {
-            Response::error('Google OAuth is not configured', 503);
+        if (!$this->googleOAuth || !$this->googleOAuth->isConfigured()) {
+            Response::json(['success' => false, 'message' => 'Google OAuth is not configured'], 503);
+            return;
         }
         
         $code = Request::input('code');
@@ -129,8 +136,9 @@ class GoogleAuthController {
      * Handle Google One-Tap / Sign-In with credential (ID token from frontend)
      */
     public function signInWithCredential(): void {
-        if (!$this->googleOAuth->isConfigured()) {
-            Response::error('Google OAuth is not configured', 503);
+        if (!$this->googleOAuth || !$this->googleOAuth->isConfigured()) {
+            Response::json(['success' => false, 'message' => 'Google OAuth is not configured'], 503);
+            return;
         }
         
         $credential = Request::input('credential');
@@ -212,9 +220,11 @@ class GoogleAuthController {
      * Check if Google OAuth is available
      */
     public function status(): void {
+        $isConfigured = $this->googleOAuth && $this->googleOAuth->isConfigured();
+        
         Response::success([
-            'available' => $this->googleOAuth->isConfigured(),
-            'message' => $this->googleOAuth->isConfigured() 
+            'available' => $isConfigured,
+            'message' => $isConfigured 
                 ? 'Google OAuth is available' 
                 : 'Google OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable.',
         ]);

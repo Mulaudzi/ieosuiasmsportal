@@ -153,30 +153,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       });
 
-      const data = await response.json();
+      // Handle non-JSON responses gracefully
+      const contentType = response.headers.get('content-type');
+      let data: Record<string, unknown> = {};
+      
+      if (contentType && contentType.includes('application/json')) {
+        const text = await response.text();
+        if (text.trim()) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            console.error("Failed to parse login response as JSON");
+            return { success: false, error: "Server returned an invalid response. Please try again." };
+          }
+        }
+      } else {
+        // Non-JSON response indicates server error
+        if (!response.ok) {
+          return { success: false, error: "Server error. Please try again later." };
+        }
+      }
 
       // Check if admin auth is required (3 passwords needed)
-      if (data.success && data.data?.requires_admin_auth) {
+      if (data.success && (data.data as Record<string, unknown>)?.requires_admin_auth) {
         return { success: false, requires_admin_auth: true };
       }
 
       // Handle different HTTP status codes with specific messages
       if (response.status === 404) {
-        return { success: false, error: data.message || "No account found with this email" };
+        return { success: false, error: (data.message as string) || "No account found with this email" };
       }
       
       if (response.status === 401) {
         // Include remaining attempts if provided
-        const remainingAttempts = data.data?.remaining_attempts;
+        const remainingAttempts = (data.data as Record<string, number>)?.remaining_attempts;
         return { 
           success: false, 
-          error: data.message || "Authentication failed",
+          error: (data.message as string) || "Authentication failed",
           remaining_attempts: remainingAttempts
         };
       }
       
       if (response.status === 400) {
-        return { success: false, error: data.message || "Invalid request" };
+        return { success: false, error: (data.message as string) || "Invalid request" };
       }
       
       if (response.status === 429) {
@@ -184,35 +203,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!response.ok) {
-        const remainingAttempts = data.data?.remaining_attempts;
+        const remainingAttempts = (data.data as Record<string, number>)?.remaining_attempts;
         return { 
           success: false, 
-          error: data.message || "Login failed",
+          error: (data.message as string) || "Login failed",
           remaining_attempts: remainingAttempts
         };
       }
 
       // Successful response - handle both nested (data.data) and flat response formats
-      const userData = data.data?.user || data.user;
-      const authToken = data.data?.token || data.token;
+      const responseData = data.data as Record<string, unknown> | undefined;
+      const userData = responseData?.user || data.user;
+      const authToken = responseData?.token || data.token;
       
       if (data.success && authToken && userData) {
+        const userObj = userData as Record<string, unknown>;
         const formattedUser: User = {
-          id: userData.id,
-          email: userData.email,
-          name: userData.name,
-          phone: userData.phone,
-          avatar_url: userData.avatar_url,
-          account_type: userData.account_type,
-          email_verified: userData.email_verified,
-          email_verified_at: userData.email_verified_at,
-          created_at: userData.created_at,
+          id: userObj.id as string,
+          email: userObj.email as string,
+          name: userObj.name as string,
+          phone: userObj.phone as string | undefined,
+          avatar_url: userObj.avatar_url as string | undefined,
+          account_type: userObj.account_type as string | undefined,
+          email_verified: userObj.email_verified as boolean | undefined,
+          email_verified_at: userObj.email_verified_at as string | undefined,
+          created_at: userObj.created_at as string | undefined,
         };
         
         const issuedAt = Date.now();
-        setToken(authToken);
+        setToken(authToken as string);
         setUser(formattedUser);
-        localStorage.setItem(TOKEN_KEY, authToken);
+        localStorage.setItem(TOKEN_KEY, authToken as string);
         localStorage.setItem(USER_KEY, JSON.stringify(formattedUser));
         localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
         scheduleTokenRefresh(issuedAt);
@@ -220,10 +241,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: true };
       }
       
-      return { success: false, error: data.message || "Login failed" };
+      return { success: false, error: (data.message as string) || "Login failed" };
     } catch (error) {
       console.error("Login error:", error);
-      return { success: false, error: "Network error. Please check your connection." };
+      return { success: false, error: "Unable to connect to the server. Please check your connection." };
     }
   };
 
