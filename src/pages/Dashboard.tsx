@@ -61,7 +61,12 @@ export default function Dashboard() {
   const loadDashboardData = async () => {
     try {
       setError(null);
+      setLoading(true);
+      console.log("Loading dashboard data...");
+      
       const response = await getDashboardStats();
+      console.log("Dashboard response:", response);
+      
       if (response.success && response.data) {
         const stats = response.data as any;
         setData({
@@ -84,10 +89,13 @@ export default function Dashboard() {
             ? `${stats.total_failed || 0} failed` 
             : "No delivery data",
         });
+      } else {
+        console.warn("Dashboard API returned no data:", response);
+        // Keep default values, don't show error for empty data
       }
     } catch (err) {
       console.error("Dashboard error:", err);
-      setError("Failed to load dashboard data");
+      setError("Failed to load dashboard data. Please refresh the page.");
     } finally {
       setLoading(false);
     }
