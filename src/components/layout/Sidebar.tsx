@@ -27,6 +27,7 @@ const navigation = [
   { name: "Sender IDs", href: "/sender-ids", icon: Key },
   { name: "Wallet", href: "/wallet", icon: Wallet },
   { name: "Reports", href: "/reports", icon: BarChart3 },
+  { name: "QA Console", href: "/qa", icon: Bug },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

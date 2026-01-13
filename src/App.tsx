@@ -87,12 +87,12 @@ const App = () => (
             <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/sender-ids" element={<ProtectedRoute><SenderIds /></ProtectedRoute>} />
+            <Route path="/qa" element={<ProtectedRoute><QaConsole /></ProtectedRoute>} />
             
             {/* Admin Routes */}
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             <Route path="/admin/users" element={<AdminRoute><AdminManagement /></AdminRoute>} />
-            <Route path="/admin/qa" element={<AdminRoute><QaConsole /></AdminRoute>} />
             
             <Route path="*" element={<NotFound />} />
           </Routes>
