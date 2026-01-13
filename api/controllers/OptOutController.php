@@ -23,8 +23,10 @@ class OptOutController {
     
     public function store(): void {
         $data = Request::validate([
-            'phone' => 'required|max:20',
+            'recipient' => 'required|max:50',
+            'channel' => 'max:20',
             'reason' => 'max:255',
+            'source' => 'max:50',
         ]);
         
         $userId = Auth::id();
@@ -32,17 +34,19 @@ class OptOutController {
         // Check if already opted out
         $existing = table('opt_outs')
             ->where('user_id', $userId)
-            ->where('phone', $data['phone'])
+            ->where('recipient', $data['recipient'])
             ->first();
         
         if ($existing) {
-            Response::error('Phone number already opted out', 400);
+            Response::error('Recipient already opted out', 400);
         }
         
         $optOutId = table('opt_outs')->insert([
             'user_id' => $userId,
-            'phone' => $data['phone'],
+            'recipient' => $data['recipient'],
+            'channel' => $data['channel'] ?? 'sms',
             'reason' => $data['reason'] ?? null,
+            'source' => $data['source'] ?? 'manual',
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);

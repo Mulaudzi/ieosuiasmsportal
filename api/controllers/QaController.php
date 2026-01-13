@@ -752,7 +752,8 @@ class QaController
             'ContactController' => 'Contact management',
             'TemplateController' => 'Template management',
             'WalletController' => 'Credit system',
-            'SenderIdController' => 'Sender IDs',
+            'SettingsController' => 'User settings',
+            'OptOutController' => 'Opt-out management',
             'AdminController' => 'Admin functions',
             'ReportController' => 'Reporting',
         ];
