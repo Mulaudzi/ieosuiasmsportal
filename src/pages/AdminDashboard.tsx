@@ -67,6 +67,12 @@ import {
   AlertCircle,
   Bell,
   BellOff,
+  Database,
+  HardDrive,
+  Wifi,
+  WifiOff,
+  Thermometer,
+  TrendingUp,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -175,6 +181,35 @@ interface NotificationSetting {
   is_enabled: boolean;
   notify_email: boolean;
   notify_inapp: boolean;
+}
+
+interface HealthStatus {
+  status: 'healthy' | 'warning' | 'error';
+  response_time_ms?: number | null;
+  message: string;
+  error?: string;
+  details?: Record<string, any>;
+  last_tested?: string | null;
+  host?: string | null;
+}
+
+interface SystemHealth {
+  database: HealthStatus;
+  smtp: HealthStatus;
+  api: HealthStatus;
+  storage: HealthStatus;
+  overall: 'healthy' | 'warning' | 'error';
+}
+
+interface HeatmapDay {
+  day: string;
+  hours: number[];
+}
+
+interface HeatmapData {
+  registrations: HeatmapDay[];
+  campaigns: HeatmapDay[];
+  messages: HeatmapDay[];
 }
 
 const statusConfig = {
@@ -309,6 +344,11 @@ export default function AdminDashboard() {
   
   // Notification settings state
   const [notificationSaving, setNotificationSaving] = useState<string | null>(null);
+  
+  // System health and heatmap state
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
 
   // Admin access verification
   useEffect(() => {
@@ -363,7 +403,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
@@ -372,6 +412,8 @@ export default function AdminDashboard() {
         api.get<{ campaigns: ScheduledCampaign[] }>("/admin/cron/pending-campaigns"),
         api.get<{ settings: SmtpSetting[] }>("/admin/smtp-settings"),
         api.get<{ settings: NotificationSetting[] }>("/admin/notification-settings"),
+        api.get<{ health: SystemHealth }>("/admin/system-health"),
+        api.get<{ heatmap: HeatmapData }>("/admin/activity-heatmap"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
@@ -382,10 +424,24 @@ export default function AdminDashboard() {
       if (scheduledRes.success) setScheduledCampaigns(scheduledRes.data?.campaigns || []);
       if (smtpRes.success) setSmtpSettings(smtpRes.data?.settings || []);
       if (notifRes.success) setNotificationSettings(notifRes.data?.settings || []);
+      if (healthRes.success) setSystemHealth(healthRes.data?.health || null);
+      if (heatmapRes.success) setHeatmapData(heatmapRes.data?.heatmap || null);
     } catch (error) {
       handleApiError(error);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const refreshHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const res = await api.get<{ health: SystemHealth }>("/admin/system-health");
+      if (res.success) setSystemHealth(res.data?.health || null);
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setHealthLoading(false);
     }
   };
 
@@ -854,6 +910,258 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* System Health & Activity Heatmap Widgets */}
+      <div className="mb-8 grid gap-6 lg:grid-cols-2">
+        {/* System Health Widget */}
+        <div className="rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-2">
+              <Thermometer className={cn(
+                "h-5 w-5",
+                systemHealth?.overall === 'healthy' ? "text-success" : 
+                systemHealth?.overall === 'warning' ? "text-warning" : "text-destructive"
+              )} />
+              <h3 className="font-semibold text-foreground">System Health</h3>
+              {systemHealth && (
+                <span className={cn(
+                  "rounded-full px-2 py-0.5 text-xs font-medium",
+                  systemHealth.overall === 'healthy' ? "bg-success/10 text-success" :
+                  systemHealth.overall === 'warning' ? "bg-warning/10 text-warning" :
+                  "bg-destructive/10 text-destructive"
+                )}>
+                  {systemHealth.overall.charAt(0).toUpperCase() + systemHealth.overall.slice(1)}
+                </span>
+              )}
+            </div>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={refreshHealth}
+              disabled={healthLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={cn("h-4 w-4", healthLoading && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
+          <div className="p-4">
+            {!systemHealth ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {/* Database Status */}
+                <div className={cn(
+                  "rounded-lg border p-3",
+                  systemHealth.database.status === 'healthy' ? "border-success/30 bg-success/5" :
+                  systemHealth.database.status === 'warning' ? "border-warning/30 bg-warning/5" :
+                  "border-destructive/30 bg-destructive/5"
+                )}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Database className={cn(
+                      "h-4 w-4",
+                      systemHealth.database.status === 'healthy' ? "text-success" :
+                      systemHealth.database.status === 'warning' ? "text-warning" : "text-destructive"
+                    )} />
+                    <span className="font-medium text-foreground">Database</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{systemHealth.database.message}</p>
+                  {systemHealth.database.response_time_ms && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Response: {systemHealth.database.response_time_ms}ms
+                    </p>
+                  )}
+                </div>
+
+                {/* SMTP Status */}
+                <div className={cn(
+                  "rounded-lg border p-3",
+                  systemHealth.smtp.status === 'healthy' ? "border-success/30 bg-success/5" :
+                  systemHealth.smtp.status === 'warning' ? "border-warning/30 bg-warning/5" :
+                  "border-destructive/30 bg-destructive/5"
+                )}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Mail className={cn(
+                      "h-4 w-4",
+                      systemHealth.smtp.status === 'healthy' ? "text-success" :
+                      systemHealth.smtp.status === 'warning' ? "text-warning" : "text-destructive"
+                    )} />
+                    <span className="font-medium text-foreground">SMTP</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{systemHealth.smtp.message}</p>
+                  {systemHealth.smtp.host && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Host: {systemHealth.smtp.host}
+                    </p>
+                  )}
+                </div>
+
+                {/* API Status */}
+                <div className={cn(
+                  "rounded-lg border p-3",
+                  systemHealth.api.status === 'healthy' ? "border-success/30 bg-success/5" :
+                  systemHealth.api.status === 'warning' ? "border-warning/30 bg-warning/5" :
+                  "border-destructive/30 bg-destructive/5"
+                )}>
+                  <div className="flex items-center gap-2 mb-2">
+                    {systemHealth.api.status === 'healthy' ? (
+                      <Wifi className="h-4 w-4 text-success" />
+                    ) : systemHealth.api.status === 'warning' ? (
+                      <Wifi className="h-4 w-4 text-warning" />
+                    ) : (
+                      <WifiOff className="h-4 w-4 text-destructive" />
+                    )}
+                    <span className="font-medium text-foreground">API</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{systemHealth.api.message}</p>
+                  {systemHealth.api.response_time_ms && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Response: {systemHealth.api.response_time_ms}ms
+                      {systemHealth.api.details?.error_rate && ` • Errors: ${systemHealth.api.details.error_rate}`}
+                    </p>
+                  )}
+                </div>
+
+                {/* Storage Status */}
+                <div className={cn(
+                  "rounded-lg border p-3",
+                  systemHealth.storage.status === 'healthy' ? "border-success/30 bg-success/5" :
+                  systemHealth.storage.status === 'warning' ? "border-warning/30 bg-warning/5" :
+                  "border-destructive/30 bg-destructive/5"
+                )}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <HardDrive className={cn(
+                      "h-4 w-4",
+                      systemHealth.storage.status === 'healthy' ? "text-success" :
+                      systemHealth.storage.status === 'warning' ? "text-warning" : "text-destructive"
+                    )} />
+                    <span className="font-medium text-foreground">Storage</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{systemHealth.storage.message}</p>
+                  {systemHealth.storage.details && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {systemHealth.storage.details.free_space_gb}GB free • {systemHealth.storage.details.used_percent} used
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Activity Heatmap Widget */}
+        <div className="rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold text-foreground">Activity Heatmap</h3>
+              <span className="text-xs text-muted-foreground">(Last 30 days)</span>
+            </div>
+          </div>
+          <div className="p-4">
+            {!heatmapData ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Registrations Heatmap */}
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    Registrations
+                  </p>
+                  <div className="flex gap-1">
+                    <div className="flex flex-col gap-1 text-[10px] text-muted-foreground pr-1">
+                      {heatmapData.registrations.map((day) => (
+                        <div key={day.day} className="h-3 flex items-center">{day.day}</div>
+                      ))}
+                    </div>
+                    <div className="flex-1 overflow-x-auto">
+                      <div className="flex flex-col gap-1 min-w-[384px]">
+                        {heatmapData.registrations.map((day) => {
+                          const maxVal = Math.max(...day.hours, 1);
+                          return (
+                            <div key={day.day} className="flex gap-[2px]">
+                              {day.hours.map((count, hour) => (
+                                <div
+                                  key={hour}
+                                  className={cn(
+                                    "w-4 h-3 rounded-[2px]",
+                                    count === 0 ? "bg-muted" :
+                                    count / maxVal < 0.25 ? "bg-primary/20" :
+                                    count / maxVal < 0.5 ? "bg-primary/40" :
+                                    count / maxVal < 0.75 ? "bg-primary/60" :
+                                    "bg-primary"
+                                  )}
+                                  title={`${day.day} ${hour}:00 - ${count} registrations`}
+                                />
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Campaigns Heatmap */}
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-success" />
+                    Campaigns Created
+                  </p>
+                  <div className="flex gap-1">
+                    <div className="flex flex-col gap-1 text-[10px] text-muted-foreground pr-1">
+                      {heatmapData.campaigns.map((day) => (
+                        <div key={day.day} className="h-3 flex items-center">{day.day}</div>
+                      ))}
+                    </div>
+                    <div className="flex-1 overflow-x-auto">
+                      <div className="flex flex-col gap-1 min-w-[384px]">
+                        {heatmapData.campaigns.map((day) => {
+                          const maxVal = Math.max(...day.hours, 1);
+                          return (
+                            <div key={day.day} className="flex gap-[2px]">
+                              {day.hours.map((count, hour) => (
+                                <div
+                                  key={hour}
+                                  className={cn(
+                                    "w-4 h-3 rounded-[2px]",
+                                    count === 0 ? "bg-muted" :
+                                    count / maxVal < 0.25 ? "bg-success/20" :
+                                    count / maxVal < 0.5 ? "bg-success/40" :
+                                    count / maxVal < 0.75 ? "bg-success/60" :
+                                    "bg-success"
+                                  )}
+                                  title={`${day.day} ${hour}:00 - ${count} campaigns`}
+                                />
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hour labels */}
+                <div className="flex gap-1 pl-7">
+                  <div className="flex gap-[2px] text-[8px] text-muted-foreground min-w-[384px]">
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <div key={i} className="w-4 text-center">
+                        {i % 4 === 0 ? `${i}` : ''}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       <Tabs defaultValue="sender-ids">
         <TabsList>

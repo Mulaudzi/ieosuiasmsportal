@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
 interface User {
@@ -454,19 +454,28 @@ export function ProtectedRoute({ children, requireVerified = false }: { children
   const { isAuthenticated, isEmailVerified, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    // Wait for loading to complete before making auth decisions
+    if (isLoading) {
+      return;
+    }
+
+    // Mark that we've done the auth check
+    setAuthChecked(true);
+
+    if (!isAuthenticated) {
       // Store the intended destination for redirect after login
       sessionStorage.setItem('redirectAfterLogin', location.pathname);
       navigate("/login", { replace: true });
-    } else if (!isLoading && isAuthenticated && requireVerified && !isEmailVerified) {
+    } else if (requireVerified && !isEmailVerified) {
       navigate("/verify-email-reminder", { replace: true, state: { from: location } });
     }
   }, [isAuthenticated, isEmailVerified, isLoading, navigate, requireVerified, location]);
 
-  // Show a more visible loading state during auth check
-  if (isLoading) {
+  // Show loading state while auth is being checked
+  if (isLoading || !authChecked) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
