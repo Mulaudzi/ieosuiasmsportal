@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { format, formatDistanceToNow, differenceInSeconds, differenceInMinutes, differenceInHours, differenceInDays } from "date-fns";
+import { format, formatDistanceToNow, differenceInSeconds, differenceInMinutes, differenceInHours, differenceInDays, subDays } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, Bar, BarChart, Legend } from "recharts";
 import {
   Users,
   Key,
@@ -81,6 +88,7 @@ import {
   Trash2,
   Zap,
   Radio,
+  Filter,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -293,6 +301,35 @@ interface RealtimeNotification {
   created_at: string;
 }
 
+interface SubmissionTrend {
+  date: string;
+  total: number;
+  general: number;
+  support: number;
+  sales: number;
+  replied: number;
+  bounced: number;
+}
+
+const submissionTrendsChartConfig: ChartConfig = {
+  total: {
+    label: "Total",
+    color: "hsl(var(--primary))",
+  },
+  general: {
+    label: "General",
+    color: "hsl(var(--primary))",
+  },
+  support: {
+    label: "Support",
+    color: "hsl(var(--warning))",
+  },
+  sales: {
+    label: "Sales",
+    color: "hsl(var(--success))",
+  },
+};
+
 const statusConfig = {
   pending: { label: "Pending", class: "status-pending", icon: Clock },
   approved: { label: "Approved", class: "status-delivered", icon: CheckCircle },
@@ -450,6 +487,17 @@ export default function AdminDashboard() {
   // Realtime notifications state
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [lastRealtimeId, setLastRealtimeId] = useState(0);
+  
+  // Submission trends state
+  const [submissionTrends, setSubmissionTrends] = useState<SubmissionTrend[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  
+  // Export state
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportDateFrom, setExportDateFrom] = useState<Date | undefined>(subDays(new Date(), 30));
+  const [exportDateTo, setExportDateTo] = useState<Date | undefined>(new Date());
+  const [exportPurpose, setExportPurpose] = useState<string>("all");
+  const [exportStatus, setExportStatus] = useState<string>("all");
 
   // Admin access verification
   useEffect(() => {
@@ -504,7 +552,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes, contactStatsRes, alertsRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes, contactStatsRes, alertsRes, trendsRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
@@ -518,6 +566,7 @@ export default function AdminDashboard() {
         api.get<{ emails: ContactEmail[]; unread_count: number }>("/admin/contact-emails"),
         api.get<{ stats: ContactEmailStats }>("/admin/contact-emails/stats"),
         api.get<{ recipients: ContactAlertRecipient[] }>("/admin/contact-alerts"),
+        api.get<{ trends: SubmissionTrend[] }>("/admin/contact-emails/trends?days=30"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
@@ -536,10 +585,114 @@ export default function AdminDashboard() {
       }
       if (contactStatsRes.success) setContactEmailStats(contactStatsRes.data?.stats || null);
       if (alertsRes.success) setAlertRecipients(alertsRes.data?.recipients || []);
+      if (trendsRes.success) setSubmissionTrends(trendsRes.data?.trends || []);
     } catch (error) {
       handleApiError(error);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Export contact emails as CSV
+  const handleExportCsv = async () => {
+    setExportLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (exportDateFrom) params.set("date_from", format(exportDateFrom, "yyyy-MM-dd"));
+      if (exportDateTo) params.set("date_to", format(exportDateTo, "yyyy-MM-dd"));
+      if (exportPurpose !== "all") params.set("purpose", exportPurpose);
+      if (exportStatus !== "all") params.set("status", exportStatus);
+      
+      // Create a download link
+      const baseUrl = import.meta.env.VITE_API_URL || "/api";
+      const token = localStorage.getItem("auth_token");
+      const url = `${baseUrl}/admin/contact-emails/export?${params.toString()}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) throw new Error("Export failed");
+      
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `contact_emails_${format(new Date(), "yyyy-MM-dd_HHmmss")}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      toast({ title: "Export complete", description: "CSV file downloaded successfully" });
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+  
+  // Export report as PDF (generates data for client-side PDF)
+  const handleExportReport = async () => {
+    setExportLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (exportDateFrom) params.set("date_from", format(exportDateFrom, "yyyy-MM-dd"));
+      if (exportDateTo) params.set("date_to", format(exportDateTo, "yyyy-MM-dd"));
+      
+      const res = await api.get<{ report: any }>(`/admin/contact-emails/report?${params.toString()}`);
+      
+      if (res.success && res.data?.report) {
+        const report = res.data.report;
+        
+        // Generate simple text report for now (could be enhanced with PDF library)
+        const reportText = `
+CONTACT FORM SUBMISSIONS REPORT
+===============================
+Period: ${report.period.from} to ${report.period.to}
+Generated: ${report.generated_at}
+
+SUMMARY
+-------
+Total Submissions: ${report.summary.total_submissions}
+Sent: ${report.summary.sent}
+Failed: ${report.summary.failed}
+Bounced: ${report.summary.bounced}
+Read: ${report.summary.read}
+Replied: ${report.summary.replied}
+Response Rate: ${report.summary.response_rate}%
+Avg Response Time: ${report.summary.avg_response_hours ? report.summary.avg_response_hours + ' hours' : 'N/A'}
+
+BY CATEGORY
+-----------
+General: ${report.by_category.general}
+Support: ${report.by_category.support}
+Sales: ${report.by_category.sales}
+
+DAILY TRENDS
+------------
+${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join('\n')}
+        `.trim();
+        
+        // Download as text file
+        const blob = new Blob([reportText], { type: "text/plain" });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = `contact_report_${format(new Date(), "yyyy-MM-dd")}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        toast({ title: "Report generated", description: "Report file downloaded successfully" });
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setExportLoading(false);
     }
   };
   
@@ -2308,6 +2461,208 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
+
+            {/* Submission Trends Chart */}
+            {submissionTrends.length > 0 && (
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-foreground">Submission Trends</h4>
+                    <p className="text-xs text-muted-foreground">Last 30 days by category</p>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                      <span className="text-muted-foreground">General</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-warning" />
+                      <span className="text-muted-foreground">Support</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-success" />
+                      <span className="text-muted-foreground">Sales</span>
+                    </div>
+                  </div>
+                </div>
+                <ChartContainer config={submissionTrendsChartConfig} className="h-[250px] w-full">
+                  <AreaChart data={submissionTrends} margin={{ left: 0, right: 12, top: 8, bottom: 8 }}>
+                    <defs>
+                      <linearGradient id="fillGeneral" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="fillSupport" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--warning))" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="hsl(var(--warning))" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="fillSales" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tickFormatter={(value) => format(new Date(value), "MMM d")}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      allowDecimals={false}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          labelFormatter={(value) => format(new Date(value), "MMMM d, yyyy")}
+                        />
+                      }
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="general"
+                      stackId="1"
+                      stroke="hsl(var(--primary))"
+                      fill="url(#fillGeneral)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="support"
+                      stackId="1"
+                      stroke="hsl(var(--warning))"
+                      fill="url(#fillSupport)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="sales"
+                      stackId="1"
+                      stroke="hsl(var(--success))"
+                      fill="url(#fillSales)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ChartContainer>
+              </div>
+            )}
+
+            {/* Export Section */}
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <Download className="h-4 w-4" />
+                    Export Data
+                  </h4>
+                  <p className="text-xs text-muted-foreground">Download contact submissions and reports</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="w-40">
+                  <Label htmlFor="exportDateFrom" className="text-xs text-muted-foreground">From</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="w-full mt-1 justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                        {exportDateFrom ? format(exportDateFrom, "MMM d, yyyy") : "Select"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={exportDateFrom}
+                        onSelect={setExportDateFrom}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="w-40">
+                  <Label htmlFor="exportDateTo" className="text-xs text-muted-foreground">To</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="w-full mt-1 justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                        {exportDateTo ? format(exportDateTo, "MMM d, yyyy") : "Select"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={exportDateTo}
+                        onSelect={setExportDateTo}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="w-32">
+                  <Label className="text-xs text-muted-foreground">Category</Label>
+                  <Select value={exportPurpose} onValueChange={setExportPurpose}>
+                    <SelectTrigger className="mt-1 h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="general">General</SelectItem>
+                      <SelectItem value="support">Support</SelectItem>
+                      <SelectItem value="sales">Sales</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-32">
+                  <Label className="text-xs text-muted-foreground">Status</Label>
+                  <Select value={exportStatus} onValueChange={setExportStatus}>
+                    <SelectTrigger className="mt-1 h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="sent">Sent</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                      <SelectItem value="bounced">Bounced</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportCsv}
+                    disabled={exportLoading}
+                    className="gap-2"
+                  >
+                    {exportLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                    )}
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportReport}
+                    disabled={exportLoading}
+                    className="gap-2"
+                  >
+                    {exportLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="h-3.5 w-3.5" />
+                    )}
+                    Export Report
+                  </Button>
+                </div>
+              </div>
+            </div>
 
             {/* Contact Emails Header */}
             <div className="flex items-center justify-between">

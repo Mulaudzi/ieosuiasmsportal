@@ -108,6 +108,9 @@ $router->group(['middleware' => 'auth'], function($router) {
     // Contact form emails management (admin only)
     $router->get('/admin/contact-emails', 'ContactFormController@index');
     $router->get('/admin/contact-emails/stats', 'ContactFormController@stats');
+    $router->get('/admin/contact-emails/trends', 'ContactFormController@trends');
+    $router->get('/admin/contact-emails/export', 'ContactFormController@exportCsv');
+    $router->get('/admin/contact-emails/report', 'ContactFormController@exportReport');
     $router->get('/admin/contact-emails/{id}', 'ContactFormController@show');
     $router->post('/admin/contact-emails/{id}/replied', 'ContactFormController@markReplied');
     $router->post('/admin/contact-emails/{id}/notes', 'ContactFormController@addNote');
