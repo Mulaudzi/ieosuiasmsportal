@@ -13,23 +13,16 @@ class QaController
     private static string $userMode = 'admin';
     
     /**
-     * Check if user is admin
-     */
-    private static function requireAdmin(): void
-    {
-        $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
-            Response::error('Unauthorized - Admin access required', 403);
-            exit;
-        }
-    }
-    
-    /**
      * Run all tests for specified system(s)
      */
     public static function runTests(): void
     {
-        self::requireAdmin();
+        // QA accessible to any authenticated user
+        $user = Auth::user();
+        if (!$user) {
+            Response::error('Unauthorized - Please log in', 401);
+            exit;
+        }
         
         $data = Request::all();
         self::$currentSystem = $data['system'] ?? 'all';
@@ -874,7 +867,12 @@ class QaController
      */
     public static function seedTestData(): void
     {
-        self::requireAdmin();
+        // QA accessible to any authenticated user
+        $user = Auth::user();
+        if (!$user) {
+            Response::error('Unauthorized - Please log in', 401);
+            exit;
+        }
         
         $data = Request::all();
         $system = $data['system'] ?? 'all';
@@ -914,7 +912,12 @@ class QaController
      */
     public static function cleanupTestData(): void
     {
-        self::requireAdmin();
+        // QA accessible to any authenticated user
+        $user = Auth::user();
+        if (!$user) {
+            Response::error('Unauthorized - Please log in', 401);
+            exit;
+        }
         
         $data = Request::all();
         $prefix = $data['prefix'] ?? 'QA_TEST_';
@@ -953,7 +956,12 @@ class QaController
      */
     public static function healthOverview(): void
     {
-        self::requireAdmin();
+        // QA accessible to any authenticated user
+        $user = Auth::user();
+        if (!$user) {
+            Response::error('Unauthorized - Please log in', 401);
+            exit;
+        }
         
         $pdo = db();
         $health = [
