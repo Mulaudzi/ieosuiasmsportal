@@ -11,6 +11,8 @@ import {
   LogOut,
   ChevronRight,
   Key,
+  Shield,
+  Bug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +28,11 @@ const navigation = [
   { name: "Wallet", href: "/wallet", icon: Wallet },
   { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },
+];
+
+const adminNavigation = [
+  { name: "Admin Dashboard", href: "/admin", icon: Shield },
+  { name: "QA Console", href: "/admin/qa", icon: Bug },
 ];
 
 export function Sidebar() {
@@ -56,7 +63,7 @@ export function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 px-3 py-4">
+        <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
           {navigation.map((item) => {
             const isActive =
               item.href === "/"
@@ -80,6 +87,37 @@ export function Sidebar() {
               </Link>
             );
           })}
+          
+          {/* Admin Section - Only show for admin users */}
+          {user?.email === "admin@ieosuia.com" && (
+            <>
+              <div className="mt-4 mb-2 px-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
+                  Admin
+                </p>
+              </div>
+              {adminNavigation.map((item) => {
+                const isActive = location.pathname.startsWith(item.href);
+
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={cn(
+                      "nav-item group",
+                      isActive && "active"
+                    )}
+                  >
+                    <item.icon className="h-5 w-5 flex-shrink-0" />
+                    <span className="flex-1">{item.name}</span>
+                    {isActive && (
+                      <ChevronRight className="h-4 w-4 opacity-60" />
+                    )}
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* Credit Balance Card */}
