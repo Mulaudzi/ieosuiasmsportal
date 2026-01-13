@@ -105,6 +105,12 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/admin/cron/run-scheduled', 'CronController@runScheduledCampaigns');
     $router->get('/admin/cron/pending-campaigns', 'CronController@pendingCampaigns');
     
+    // Contact form emails management (admin only)
+    $router->get('/admin/contact-emails', 'ContactFormController@index');
+    $router->get('/admin/contact-emails/{id}', 'ContactFormController@show');
+    $router->post('/admin/contact-emails/{id}/replied', 'ContactFormController@markReplied');
+    $router->post('/admin/contact-emails/{id}/notes', 'ContactFormController@addNote');
+    
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
     $router->get('/dashboard/chart', 'DashboardController@chart');

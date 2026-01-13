@@ -2,6 +2,7 @@
 /**
  * Contact Form Controller
  * Handles public contact form submissions and sends emails to appropriate departments
+ * Includes reCAPTCHA validation, rate limiting, and email delivery logging
  */
 
 require_once __DIR__ . '/../lib/PHPMailer/Exception.php';
@@ -15,9 +16,22 @@ use PHPMailer\PHPMailer\Exception;
 
 class ContactFormController
 {
+    /**
+     * Submit contact form - public endpoint with spam protection
+     */
     public static function submit(): void
     {
         $data = Request::all();
+        
+        // Get client info for logging
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+        
+        // Rate limiting - 5 submissions per 15 minutes per IP
+        RateLimiter::checkOrFail("contact_form:{$ip}", 5, 15);
+        
+        // Verify reCAPTCHA
+        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'contact_form');
         
         // Validate required fields
         $required = ['name', 'email', 'message', 'purpose'];
@@ -26,6 +40,20 @@ class ContactFormController
                 Response::error("Missing required field: $field", 400);
                 return;
             }
+        }
+        
+        // Validate input lengths
+        if (strlen($data['name']) > 100) {
+            Response::error('Name must be less than 100 characters', 400);
+            return;
+        }
+        if (strlen($data['email']) > 255) {
+            Response::error('Email must be less than 255 characters', 400);
+            return;
+        }
+        if (strlen($data['message']) > 5000) {
+            Response::error('Message must be less than 5000 characters', 400);
+            return;
         }
         
         // Validate email format
@@ -67,10 +95,29 @@ class ContactFormController
         // Build HTML email body
         $html = self::getContactEmailTemplate($name, $senderEmail, $message, $purpose, $purposeLabels[$purpose], $originUrl);
         
+        // Log the email before sending
+        $logId = self::logEmail([
+            'sender_name' => $name,
+            'sender_email' => $senderEmail,
+            'recipient_email' => $recipientEmail,
+            'purpose' => $purpose,
+            'subject' => $subject,
+            'message' => $data['message'], // Store original message without HTML encoding
+            'origin_url' => $originUrl,
+            'ip_address' => $ip,
+            'user_agent' => $userAgent,
+            'status' => 'sent', // Will be updated if failed
+        ]);
+        
         // Send email to department
         $result = self::sendContactEmail($recipientEmail, $subject, $html, $senderEmail, $name);
         
         if (!$result['success']) {
+            // Update log with failure
+            self::updateEmailLog($logId, [
+                'status' => 'failed',
+                'error_message' => $result['error'] ?? 'Unknown error',
+            ]);
             Response::error('Failed to send message. Please try again later.', 500);
             return;
         }
@@ -79,12 +126,214 @@ class ContactFormController
         self::sendContactEmail($ccEmail, "[CC] {$subject}", $html, $senderEmail, $name);
         
         // Send confirmation to sender
-        self::sendConfirmationEmail($senderEmail, $name, $purpose, $purposeLabels[$purpose]);
+        $confirmResult = self::sendConfirmationEmail($senderEmail, $name, $purpose, $purposeLabels[$purpose]);
+        
+        // Update log with confirmation status
+        self::updateEmailLog($logId, [
+            'confirmation_sent' => $confirmResult['success'] ? 1 : 0,
+        ]);
         
         Response::success([
             'message' => 'Your message has been sent successfully. We will get back to you soon.',
             'recipient' => $recipientEmail,
         ], 201);
+    }
+    
+    /**
+     * Get all contact form submissions (admin only)
+     */
+    public static function index(): void
+    {
+        // Check if user is admin
+        $user = Auth::user();
+        if (!$user || $user['account_type'] !== 'admin') {
+            Response::error('Unauthorized', 403);
+            return;
+        }
+        
+        $page = (int) ($_GET['page'] ?? 1);
+        $perPage = (int) ($_GET['per_page'] ?? 20);
+        $status = $_GET['status'] ?? null;
+        $purpose = $_GET['purpose'] ?? null;
+        $unreadOnly = isset($_GET['unread']) && $_GET['unread'] === 'true';
+        $search = $_GET['search'] ?? null;
+        
+        $query = table('contact_email_logs');
+        
+        if ($status) {
+            $query->where('status', $status);
+        }
+        if ($purpose) {
+            $query->where('purpose', $purpose);
+        }
+        if ($unreadOnly) {
+            $query->where('read_by_admin', 0);
+        }
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('sender_name', 'LIKE', "%{$search}%")
+                  ->orWhere('sender_email', 'LIKE', "%{$search}%")
+                  ->orWhere('message', 'LIKE', "%{$search}%");
+            });
+        }
+        
+        $total = $query->count();
+        $emails = $query->orderBy('created_at', 'DESC')
+                       ->limit($perPage)
+                       ->offset(($page - 1) * $perPage)
+                       ->get();
+        
+        // Get unread count
+        $unreadCount = table('contact_email_logs')
+            ->where('read_by_admin', 0)
+            ->count();
+        
+        Response::success([
+            'emails' => $emails,
+            'unread_count' => $unreadCount,
+            'pagination' => [
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => ceil($total / $perPage),
+            ],
+        ]);
+    }
+    
+    /**
+     * Get single contact form submission (admin only)
+     */
+    public static function show(array $params): void
+    {
+        $user = Auth::user();
+        if (!$user || $user['account_type'] !== 'admin') {
+            Response::error('Unauthorized', 403);
+            return;
+        }
+        
+        $id = $params['id'] ?? null;
+        if (!$id) {
+            Response::error('Missing email ID', 400);
+            return;
+        }
+        
+        $email = table('contact_email_logs')->where('id', $id)->first();
+        
+        if (!$email) {
+            Response::error('Email not found', 404);
+            return;
+        }
+        
+        // Mark as read
+        if (!$email['read_by_admin']) {
+            table('contact_email_logs')->where('id', $id)->update([
+                'read_by_admin' => 1,
+                'read_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            $email['read_by_admin'] = 1;
+            $email['read_at'] = date('Y-m-d H:i:s');
+        }
+        
+        Response::success(['email' => $email]);
+    }
+    
+    /**
+     * Mark email as replied (admin only)
+     */
+    public static function markReplied(array $params): void
+    {
+        $user = Auth::user();
+        if (!$user || $user['account_type'] !== 'admin') {
+            Response::error('Unauthorized', 403);
+            return;
+        }
+        
+        $id = $params['id'] ?? null;
+        if (!$id) {
+            Response::error('Missing email ID', 400);
+            return;
+        }
+        
+        $data = Request::all();
+        
+        table('contact_email_logs')->where('id', $id)->update([
+            'replied' => 1,
+            'replied_at' => date('Y-m-d H:i:s'),
+            'replied_by' => $user['id'],
+            'notes' => $data['notes'] ?? null,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        Response::success(['message' => 'Email marked as replied']);
+    }
+    
+    /**
+     * Add note to email (admin only)
+     */
+    public static function addNote(array $params): void
+    {
+        $user = Auth::user();
+        if (!$user || $user['account_type'] !== 'admin') {
+            Response::error('Unauthorized', 403);
+            return;
+        }
+        
+        $id = $params['id'] ?? null;
+        $data = Request::all();
+        
+        if (!$id || empty($data['notes'])) {
+            Response::error('Missing required fields', 400);
+            return;
+        }
+        
+        table('contact_email_logs')->where('id', $id)->update([
+            'notes' => $data['notes'],
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        
+        Response::success(['message' => 'Note added successfully']);
+    }
+    
+    /**
+     * Log email to database
+     */
+    private static function logEmail(array $data): int
+    {
+        try {
+            return table('contact_email_logs')->insert([
+                'sender_name' => $data['sender_name'],
+                'sender_email' => $data['sender_email'],
+                'recipient_email' => $data['recipient_email'],
+                'purpose' => $data['purpose'],
+                'subject' => $data['subject'],
+                'message' => $data['message'],
+                'status' => $data['status'],
+                'origin_url' => $data['origin_url'],
+                'ip_address' => $data['ip_address'],
+                'user_agent' => $data['user_agent'],
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Exception $e) {
+            error_log("Failed to log contact email: " . $e->getMessage());
+            return 0;
+        }
+    }
+    
+    /**
+     * Update email log
+     */
+    private static function updateEmailLog(int $id, array $data): void
+    {
+        if ($id === 0) return;
+        
+        try {
+            $data['updated_at'] = date('Y-m-d H:i:s');
+            table('contact_email_logs')->where('id', $id)->update($data);
+        } catch (\Exception $e) {
+            error_log("Failed to update contact email log: " . $e->getMessage());
+        }
     }
     
     /**
@@ -146,14 +395,14 @@ class ContactFormController
     /**
      * Send confirmation email to the sender
      */
-    private static function sendConfirmationEmail(string $email, string $name, string $purpose, string $purposeLabel): void
+    private static function sendConfirmationEmail(string $email, string $name, string $purpose, string $purposeLabel): array
     {
         $appName = env('SMTP_FROM_NAME', 'IEOSUIA SMS Portal');
         $subject = "We received your message - {$appName}";
         
         $html = self::getConfirmationEmailTemplate($name, $purposeLabel);
         
-        self::sendContactEmail($email, $subject, $html, 'noreply@ieosuia.com', $appName);
+        return self::sendContactEmail($email, $subject, $html, 'noreply@ieosuia.com', $appName);
     }
     
     /**

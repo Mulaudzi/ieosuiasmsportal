@@ -18,6 +18,7 @@ import {
 import { useState, useEffect } from "react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 type InquiryPurpose = "general" | "support" | "sales";
 
@@ -55,6 +56,7 @@ const purposeOptions: PurposeOption[] = [
 
 export default function Contact() {
   const [searchParams] = useSearchParams();
+  const { executeRecaptcha } = useRecaptcha();
   
   const [formData, setFormData] = useState({
     name: "",
@@ -81,6 +83,9 @@ export default function Contact() {
     setIsSubmitting(true);
     
     try {
+      // Get reCAPTCHA token
+      const recaptchaToken = await executeRecaptcha('contact_form');
+      
       const apiUrl = import.meta.env.VITE_API_URL || 'https://sms.ieosuia.com/api';
       
       const response = await fetch(`${apiUrl}/contact`, {
@@ -94,6 +99,7 @@ export default function Contact() {
           message: formData.message,
           purpose: purpose,
           originUrl: window.location.href,
+          recaptcha_token: recaptchaToken,
         }),
       });
       
