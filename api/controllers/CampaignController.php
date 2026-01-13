@@ -232,7 +232,7 @@ class CampaignController {
             // Check opt-out
             $optedOut = table('opt_outs')
                 ->where('user_id', $userId)
-                ->where('phone', $message['recipient'])
+                ->where('recipient', $message['recipient'])
                 ->first();
             
             if ($optedOut) {
