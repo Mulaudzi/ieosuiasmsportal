@@ -79,20 +79,6 @@ class QueryBuilder {
         return $this;
     }
     
-    public function whereNull(string $column): self {
-        $this->wheres[] = "$column IS NULL";
-        return $this;
-    }
-    
-    public function whereNotNull(string $column): self {
-        $this->wheres[] = "$column IS NOT NULL";
-        return $this;
-    }
-    
-    public function orderBy(string $column, string $direction = 'ASC'): self {
-        $this->orderBy[] = "$column $direction";
-        return $this;
-    }
     
     public function limit(int $limit): self {
         $this->limit = $limit;
