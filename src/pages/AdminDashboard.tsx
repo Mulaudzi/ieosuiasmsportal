@@ -1,9 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -48,7 +56,7 @@ import {
   Download,
   FileText,
   FileSpreadsheet,
-  Calendar,
+  Calendar as CalendarIcon,
   Play,
   Timer,
   Settings,
@@ -57,6 +65,8 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
+  Bell,
+  BellOff,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -157,6 +167,16 @@ interface SmtpSetting {
   has_password?: boolean;
 }
 
+interface NotificationSetting {
+  id: string;
+  event_type: string;
+  event_label: string;
+  event_description: string | null;
+  is_enabled: boolean;
+  notify_email: boolean;
+  notify_inapp: boolean;
+}
+
 const statusConfig = {
   pending: { label: "Pending", class: "status-pending", icon: Clock },
   approved: { label: "Approved", class: "status-delivered", icon: CheckCircle },
@@ -176,6 +196,7 @@ const actionConfig: Record<string, { label: string; icon: React.ElementType; col
   user_registered: { label: "User Registered", icon: UserCheck, color: "text-primary" },
   cron_executed: { label: "Cron Executed", icon: Timer, color: "text-muted-foreground" },
   smtp_settings_updated: { label: "SMTP Settings Updated", icon: Settings, color: "text-primary" },
+  notification_settings_updated: { label: "Notification Settings Updated", icon: Bell, color: "text-primary" },
 };
 
 export default function AdminDashboard() {
@@ -188,6 +209,7 @@ export default function AdminDashboard() {
   const [scheduledCampaigns, setScheduledCampaigns] = useState<ScheduledCampaign[]>([]);
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
   const [smtpSettings, setSmtpSettings] = useState<SmtpSetting[]>([]);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [logsLoading, setLogsLoading] = useState(false);
   const [runningCron, setRunningCron] = useState(false);
@@ -198,6 +220,10 @@ export default function AdminDashboard() {
   const [confirmAction, setConfirmAction] = useState<{ type: string; id: string; data?: any } | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
   
+  // Date range filter for audit logs
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  
   // SMTP Settings state
   const [editingSmtp, setEditingSmtp] = useState<"system" | "campaign" | null>(null);
   const [smtpForm, setSmtpForm] = useState<Partial<SmtpSetting>>({});
@@ -205,6 +231,9 @@ export default function AdminDashboard() {
   const [smtpTesting, setSmtpTesting] = useState<string | null>(null);
   const [testEmail, setTestEmail] = useState("");
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  
+  // Notification settings state
+  const [notificationSaving, setNotificationSaving] = useState<string | null>(null);
 
   // Admin access verification
   useEffect(() => {
@@ -259,7 +288,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
@@ -267,6 +296,7 @@ export default function AdminDashboard() {
         api.get<{ jobs: CronJob[] }>("/admin/cron/status"),
         api.get<{ campaigns: ScheduledCampaign[] }>("/admin/cron/pending-campaigns"),
         api.get<{ settings: SmtpSetting[] }>("/admin/smtp-settings"),
+        api.get<{ settings: NotificationSetting[] }>("/admin/notification-settings"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
@@ -276,12 +306,37 @@ export default function AdminDashboard() {
       if (cronRes.success) setCronJobs(cronRes.data?.jobs || []);
       if (scheduledRes.success) setScheduledCampaigns(scheduledRes.data?.campaigns || []);
       if (smtpRes.success) setSmtpSettings(smtpRes.data?.settings || []);
+      if (notifRes.success) setNotificationSettings(notifRes.data?.settings || []);
     } catch (error) {
       handleApiError(error);
     } finally {
       setLoading(false);
     }
   };
+
+  const loadLogsWithFilters = async () => {
+    setLogsLoading(true);
+    try {
+      const params = new URLSearchParams({ per_page: "100" });
+      if (actionFilter !== "all") params.set("action", actionFilter);
+      if (dateFrom) params.set("from_date", format(dateFrom, "yyyy-MM-dd"));
+      if (dateTo) params.set("to_date", format(dateTo, "yyyy-MM-dd"));
+      
+      const res = await api.get<{ logs: AuditLog[] }>(`/admin/audit-logs?${params.toString()}`);
+      if (res.success) setAuditLogs(res.data?.logs || []);
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  // Reload logs when filters change
+  useEffect(() => {
+    if (!loading && !accessDenied) {
+      loadLogsWithFilters();
+    }
+  }, [actionFilter, dateFrom, dateTo]);
 
   const handleRunScheduledCampaigns = async () => {
     setRunningCron(true);
@@ -305,7 +360,12 @@ export default function AdminDashboard() {
     setLogsLoading(true);
     try {
       const page = Math.floor(auditLogs.length / 100) + 1;
-      const res = await api.get<{ logs: AuditLog[] }>(`/admin/audit-logs?page=${page}&per_page=100`);
+      const params = new URLSearchParams({ page: String(page), per_page: "100" });
+      if (actionFilter !== "all") params.set("action", actionFilter);
+      if (dateFrom) params.set("from_date", format(dateFrom, "yyyy-MM-dd"));
+      if (dateTo) params.set("to_date", format(dateTo, "yyyy-MM-dd"));
+      
+      const res = await api.get<{ logs: AuditLog[] }>(`/admin/audit-logs?${params.toString()}`);
       if (res.success && res.data?.logs) {
         setAuditLogs(prev => [...prev, ...res.data!.logs]);
       }
@@ -434,6 +494,24 @@ export default function AdminDashboard() {
     }
   };
 
+  // Notification settings handlers
+  const handleToggleNotification = async (eventType: string, field: "is_enabled" | "notify_email" | "notify_inapp", value: boolean) => {
+    setNotificationSaving(eventType);
+    try {
+      const res = await api.put(`/admin/notification-settings/${eventType}`, { [field]: value });
+      if (res.success) {
+        setNotificationSettings(prev => 
+          prev.map(s => s.event_type === eventType ? { ...s, [field]: value } : s)
+        );
+        toast({ title: "Notification setting updated" });
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setNotificationSaving(null);
+    }
+  };
+
   const filteredSenderIds = senderIds.filter(s => {
     const matchesStatus = statusFilter === "all" || s.status === statusFilter;
     const matchesSearch = 
@@ -448,12 +526,12 @@ export default function AdminDashboard() {
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredLogs = auditLogs.filter(log => {
-    const matchesAction = actionFilter === "all" || log.action === actionFilter;
-    return matchesAction;
-  });
-
   const pendingCount = senderIds.filter(s => s.status === "pending").length;
+
+  const clearDateFilters = () => {
+    setDateFrom(undefined);
+    setDateTo(undefined);
+  };
 
   return (
     <DashboardLayout
@@ -530,7 +608,7 @@ export default function AdminDashboard() {
             Users
           </TabsTrigger>
           <TabsTrigger value="scheduled" className="gap-2">
-            <Calendar className="h-4 w-4" />
+            <CalendarIcon className="h-4 w-4" />
             Scheduled
             {scheduledCampaigns.length > 0 && (
               <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
@@ -854,10 +932,9 @@ export default function AdminDashboard() {
                       <tr key={campaign.id} className="transition-colors hover:bg-muted/30">
                         <td className="px-6 py-4">
                           <p className="font-medium text-foreground">{campaign.name}</p>
-                          <p className="text-sm text-muted-foreground">ID: {campaign.id}</p>
                         </td>
                         <td className="px-6 py-4">
-                          <p className="font-medium text-foreground">{campaign.user?.name || "Unknown"}</p>
+                          <p className="text-foreground">{campaign.user?.name || "Unknown"}</p>
                           <p className="text-sm text-muted-foreground">{campaign.user?.email}</p>
                         </td>
                         <td className="px-6 py-4">
@@ -869,26 +946,23 @@ export default function AdminDashboard() {
                             {campaign.type.toUpperCase()}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-foreground">{campaign.total_recipients}</td>
+                        <td className="px-6 py-4 text-foreground">
+                          {campaign.total_recipients}
+                        </td>
                         <td className="px-6 py-4">
-                          <p className={cn(
-                            "font-medium",
-                            isPast ? "text-warning" : "text-foreground"
-                          )}>
+                          <p className={cn("font-medium", isPast ? "text-warning" : "text-foreground")}>
                             {scheduledDate.toLocaleDateString()}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {scheduledDate.toLocaleTimeString()}
-                            {isPast && " (overdue)"}
                           </p>
                         </td>
                         <td className="px-6 py-4">
                           <span className={cn(
-                            "status-badge inline-flex items-center gap-1",
-                            isPast ? "status-pending" : "status-pending"
+                            "status-badge",
+                            isPast ? "status-pending" : "status-delivered"
                           )}>
-                            <Clock className="h-3 w-3" />
-                            {isPast ? "Ready to Send" : "Scheduled"}
+                            {isPast ? "Overdue" : "Scheduled"}
                           </span>
                         </td>
                       </tr>
@@ -897,9 +971,10 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+
             {scheduledCampaigns.length === 0 && (
               <div className="py-12 text-center">
-                <Calendar className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                <CalendarIcon className="mx-auto h-12 w-12 text-muted-foreground/50" />
                 <p className="mt-4 text-lg font-medium text-foreground">No scheduled campaigns</p>
                 <p className="text-sm text-muted-foreground">Campaigns scheduled for future sending will appear here</p>
               </div>
@@ -910,25 +985,72 @@ export default function AdminDashboard() {
         <TabsContent value="activity" className="mt-6">
           {/* Filters and Export */}
           <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <Select value={actionFilter} onValueChange={setActionFilter}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Filter by action" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Actions</SelectItem>
-                <SelectItem value="activate_user">Activate User</SelectItem>
-                <SelectItem value="deactivate_user">Deactivate User</SelectItem>
-                <SelectItem value="change_role">Change Role</SelectItem>
-                <SelectItem value="approve_sender_id">Approve Sender ID</SelectItem>
-                <SelectItem value="reject_sender_id">Reject Sender ID</SelectItem>
-                <SelectItem value="campaign_created">Campaign Created</SelectItem>
-                <SelectItem value="campaign_sent">Campaign Sent</SelectItem>
-                <SelectItem value="campaign_scheduled_sent">Scheduled Campaign Sent</SelectItem>
-                <SelectItem value="campaign_deleted">Campaign Deleted</SelectItem>
-                <SelectItem value="user_registered">User Registered</SelectItem>
-                <SelectItem value="cron_executed">Cron Executed</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-2">
+              <Select value={actionFilter} onValueChange={setActionFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Filter by action" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Actions</SelectItem>
+                  <SelectItem value="activate_user">Activate User</SelectItem>
+                  <SelectItem value="deactivate_user">Deactivate User</SelectItem>
+                  <SelectItem value="change_role">Change Role</SelectItem>
+                  <SelectItem value="approve_sender_id">Approve Sender ID</SelectItem>
+                  <SelectItem value="reject_sender_id">Reject Sender ID</SelectItem>
+                  <SelectItem value="campaign_created">Campaign Created</SelectItem>
+                  <SelectItem value="campaign_sent">Campaign Sent</SelectItem>
+                  <SelectItem value="campaign_scheduled_sent">Scheduled Campaign Sent</SelectItem>
+                  <SelectItem value="campaign_deleted">Campaign Deleted</SelectItem>
+                  <SelectItem value="user_registered">User Registered</SelectItem>
+                  <SelectItem value="cron_executed">Cron Executed</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {/* Date From */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-40 justify-start text-left font-normal", !dateFrom && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateFrom ? format(dateFrom, "MMM d, yyyy") : "From date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateFrom}
+                    onSelect={setDateFrom}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {/* Date To */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-40 justify-start text-left font-normal", !dateTo && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateTo ? format(dateTo, "MMM d, yyyy") : "To date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateTo}
+                    onSelect={setDateTo}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {(dateFrom || dateTo) && (
+                <Button variant="ghost" size="sm" onClick={clearDateFilters} className="gap-1 text-muted-foreground">
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
+              )}
+            </div>
             
             <div className="flex gap-2">
               <DropdownMenu>
@@ -944,6 +1066,8 @@ export default function AdminDashboard() {
                       const params = new URLSearchParams();
                       params.set('format', 'csv');
                       if (actionFilter !== 'all') params.set('action', actionFilter);
+                      if (dateFrom) params.set('from_date', format(dateFrom, 'yyyy-MM-dd'));
+                      if (dateTo) params.set('to_date', format(dateTo, 'yyyy-MM-dd'));
                       window.open(`${import.meta.env.VITE_API_URL || ''}/api/admin/audit-logs/export?${params.toString()}`, '_blank');
                     }}
                   >
@@ -955,6 +1079,8 @@ export default function AdminDashboard() {
                       const params = new URLSearchParams();
                       params.set('format', 'pdf');
                       if (actionFilter !== 'all') params.set('action', actionFilter);
+                      if (dateFrom) params.set('from_date', format(dateFrom, 'yyyy-MM-dd'));
+                      if (dateTo) params.set('to_date', format(dateTo, 'yyyy-MM-dd'));
                       window.open(`${import.meta.env.VITE_API_URL || ''}/api/admin/audit-logs/export?${params.toString()}`, '_blank');
                     }}
                   >
@@ -968,83 +1094,89 @@ export default function AdminDashboard() {
 
           {/* Activity Log */}
           <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-muted/50">
-                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Action</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Admin</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Details</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">IP Address</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Time</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredLogs.map((log) => {
-                    const config = actionConfig[log.action] || { 
-                      label: log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), 
-                      icon: Activity, 
-                      color: "text-muted-foreground" 
-                    };
-                    const ActionIcon = config.icon;
-                    
-                    let oldVals: Record<string, any> | null = null;
-                    let newVals: Record<string, any> | null = null;
-                    try {
-                      if (log.old_values) oldVals = JSON.parse(log.old_values);
-                      if (log.new_values) newVals = JSON.parse(log.new_values);
-                    } catch {}
-                    
-                    return (
-                      <tr key={log.id} className="transition-colors hover:bg-muted/30">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <ActionIcon className={cn("h-4 w-4", config.color)} />
-                            <span className="font-medium text-foreground">{config.label}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <p className="text-foreground">{log.user_name || "System"}</p>
-                          <p className="text-sm text-muted-foreground">{log.user_email}</p>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm">
-                            <span className="text-muted-foreground capitalize">{log.entity_type}</span>
-                            {log.entity_id && (
-                              <span className="text-muted-foreground"> #{log.entity_id}</span>
-                            )}
-                            {oldVals && newVals && (
-                              <div className="mt-1 text-xs">
-                                {Object.keys(newVals).map(key => (
-                                  <span key={key} className="inline-flex items-center gap-1">
-                                    <span className="text-destructive line-through">{String(oldVals?.[key])}</span>
-                                    <span className="text-muted-foreground">→</span>
-                                    <span className="text-success">{String(newVals?.[key])}</span>
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground font-mono text-sm">
-                          {log.ip_address || "—"}
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground">
-                          <div className="text-sm">
-                            {new Date(log.created_at).toLocaleDateString()}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(log.created_at).toLocaleTimeString()}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {logsLoading && auditLogs.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Action</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Admin</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Details</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">IP Address</th>
+                      <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {auditLogs.map((log) => {
+                      const config = actionConfig[log.action] || { 
+                        label: log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), 
+                        icon: Activity, 
+                        color: "text-muted-foreground" 
+                      };
+                      const ActionIcon = config.icon;
+                      
+                      let oldVals: Record<string, any> | null = null;
+                      let newVals: Record<string, any> | null = null;
+                      try {
+                        if (log.old_values) oldVals = JSON.parse(log.old_values);
+                        if (log.new_values) newVals = JSON.parse(log.new_values);
+                      } catch {}
+                      
+                      return (
+                        <tr key={log.id} className="transition-colors hover:bg-muted/30">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <ActionIcon className={cn("h-4 w-4", config.color)} />
+                              <span className="font-medium text-foreground">{config.label}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-foreground">{log.user_name || "System"}</p>
+                            <p className="text-sm text-muted-foreground">{log.user_email}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm">
+                              <span className="text-muted-foreground capitalize">{log.entity_type}</span>
+                              {log.entity_id && (
+                                <span className="text-muted-foreground"> #{log.entity_id}</span>
+                              )}
+                              {oldVals && newVals && (
+                                <div className="mt-1 text-xs">
+                                  {Object.keys(newVals).map(key => (
+                                    <span key={key} className="inline-flex items-center gap-1">
+                                      <span className="text-destructive line-through">{String(oldVals?.[key])}</span>
+                                      <span className="text-muted-foreground">→</span>
+                                      <span className="text-success">{String(newVals?.[key])}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-muted-foreground font-mono text-sm">
+                            {log.ip_address || "—"}
+                          </td>
+                          <td className="px-6 py-4 text-muted-foreground">
+                            <div className="text-sm">
+                              {new Date(log.created_at).toLocaleDateString()}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {new Date(log.created_at).toLocaleTimeString()}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-            {filteredLogs.length === 0 && (
+            {!logsLoading && auditLogs.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12">
                 <Activity className="h-12 w-12 text-muted-foreground/50" />
                 <p className="mt-4 text-lg font-medium text-foreground">No activity logs found</p>
@@ -1052,7 +1184,7 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {filteredLogs.length > 0 && filteredLogs.length % 100 === 0 && (
+            {auditLogs.length > 0 && auditLogs.length % 100 === 0 && (
               <div className="p-4 border-t border-border">
                 <Button 
                   variant="outline" 
@@ -1073,398 +1205,478 @@ export default function AdminDashboard() {
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
-          <div className="space-y-6">
-            {/* SMTP Settings Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">Email Configuration</h3>
+          <div className="space-y-8">
+            {/* Notification Settings */}
+            <div>
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Bell className="h-5 w-5" />
+                  Admin Notifications
+                </h3>
                 <p className="text-sm text-muted-foreground">
-                  Configure SMTP settings for system emails and campaign emails separately
+                  Configure which events trigger notifications for administrators
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="testEmail" className="text-sm text-muted-foreground">Test Email:</Label>
-                <Input
-                  id="testEmail"
-                  type="email"
-                  placeholder={user?.email || "Enter email"}
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  className="w-64"
-                />
+
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="px-6 py-3 text-left text-sm font-medium text-muted-foreground">Event</th>
+                      <th className="px-6 py-3 text-center text-sm font-medium text-muted-foreground w-24">Enabled</th>
+                      <th className="px-6 py-3 text-center text-sm font-medium text-muted-foreground w-24">Email</th>
+                      <th className="px-6 py-3 text-center text-sm font-medium text-muted-foreground w-24">In-App</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {notificationSettings.map((setting) => (
+                      <tr key={setting.event_type} className="transition-colors hover:bg-muted/30">
+                        <td className="px-6 py-4">
+                          <div>
+                            <p className="font-medium text-foreground">{setting.event_label}</p>
+                            {setting.event_description && (
+                              <p className="text-sm text-muted-foreground">{setting.event_description}</p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex justify-center">
+                            <Switch
+                              checked={setting.is_enabled}
+                              onCheckedChange={(checked) => handleToggleNotification(setting.event_type, "is_enabled", checked)}
+                              disabled={notificationSaving === setting.event_type}
+                            />
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex justify-center">
+                            <Switch
+                              checked={setting.notify_email}
+                              onCheckedChange={(checked) => handleToggleNotification(setting.event_type, "notify_email", checked)}
+                              disabled={!setting.is_enabled || notificationSaving === setting.event_type}
+                            />
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex justify-center">
+                            <Switch
+                              checked={setting.notify_inapp}
+                              onCheckedChange={(checked) => handleToggleNotification(setting.event_type, "notify_inapp", checked)}
+                              disabled={!setting.is_enabled || notificationSaving === setting.event_type}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {notificationSettings.length === 0 && (
+                  <div className="py-12 text-center">
+                    <BellOff className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                    <p className="mt-4 text-lg font-medium text-foreground">No notification settings</p>
+                    <p className="text-sm text-muted-foreground">Run migration 020 to add notification settings</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* SMTP Settings Cards */}
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* System Email Settings */}
-              {(() => {
-                const systemSetting = smtpSettings.find(s => s.setting_type === "system");
-                return (
-                  <div className="rounded-xl border border-border bg-card p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                          <Mail className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-foreground">System Emails</h4>
-                          <p className="text-xs text-muted-foreground">Verification, Password Reset</p>
-                        </div>
-                      </div>
-                      {systemSetting?.last_test_result && (
-                        <span className={cn(
-                          "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
-                          systemSetting.last_test_result === "success" 
-                            ? "bg-success/10 text-success" 
-                            : "bg-destructive/10 text-destructive"
-                        )}>
-                          {systemSetting.last_test_result === "success" ? (
-                            <CheckCircle className="h-3 w-3" />
-                          ) : (
-                            <XCircle className="h-3 w-3" />
-                          )}
-                          {systemSetting.last_test_result === "success" ? "Working" : "Failed"}
-                        </span>
-                      )}
-                    </div>
-                    
-                    {editingSmtp === "system" ? (
-                      <div className="space-y-4">
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <Label htmlFor="system-host">SMTP Host</Label>
-                            <Input
-                              id="system-host"
-                              value={smtpForm.host || ""}
-                              onChange={(e) => setSmtpForm({...smtpForm, host: e.target.value})}
-                              placeholder="smtp.example.com"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="system-port">Port</Label>
-                            <Input
-                              id="system-port"
-                              type="number"
-                              value={smtpForm.port || 465}
-                              onChange={(e) => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <Label htmlFor="system-encryption">Encryption</Label>
-                          <Select 
-                            value={smtpForm.encryption || "ssl"} 
-                            onValueChange={(v) => setSmtpForm({...smtpForm, encryption: v as "none" | "ssl" | "tls"})}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ssl">SSL/TLS (Port 465)</SelectItem>
-                              <SelectItem value="tls">STARTTLS (Port 587)</SelectItem>
-                              <SelectItem value="none">None</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label htmlFor="system-username">Username</Label>
-                          <Input
-                            id="system-username"
-                            value={smtpForm.username || ""}
-                            onChange={(e) => setSmtpForm({...smtpForm, username: e.target.value})}
-                            placeholder="noreply@sms.ieosuia.com"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="system-password">Password</Label>
-                          <div className="relative">
-                            <Input
-                              id="system-password"
-                              type={showPasswords.system ? "text" : "password"}
-                              value={smtpForm.password || ""}
-                              onChange={(e) => setSmtpForm({...smtpForm, password: e.target.value})}
-                              placeholder="Enter password"
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
-                              onClick={() => setShowPasswords({...showPasswords, system: !showPasswords.system})}
-                            >
-                              {showPasswords.system ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <Label htmlFor="system-from-email">From Email</Label>
-                            <Input
-                              id="system-from-email"
-                              type="email"
-                              value={smtpForm.from_email || ""}
-                              onChange={(e) => setSmtpForm({...smtpForm, from_email: e.target.value})}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="system-from-name">From Name</Label>
-                            <Input
-                              id="system-from-name"
-                              value={smtpForm.from_name || ""}
-                              onChange={(e) => setSmtpForm({...smtpForm, from_name: e.target.value})}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex gap-2 pt-2">
-                          <Button onClick={handleSaveSmtp} disabled={smtpSaving} className="gap-2">
-                            {smtpSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                            Save
-                          </Button>
-                          <Button variant="outline" onClick={() => setEditingSmtp(null)}>Cancel</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div className="text-muted-foreground">Host:</div>
-                          <div className="font-medium text-foreground">{systemSetting?.host || "Not configured"}</div>
-                          <div className="text-muted-foreground">Port:</div>
-                          <div className="font-medium text-foreground">{systemSetting?.port || 465}</div>
-                          <div className="text-muted-foreground">Username:</div>
-                          <div className="font-medium text-foreground truncate">{systemSetting?.username || "—"}</div>
-                          <div className="text-muted-foreground">From:</div>
-                          <div className="font-medium text-foreground truncate">{systemSetting?.from_email || "—"}</div>
-                        </div>
-                        {systemSetting?.last_tested_at && (
-                          <p className="text-xs text-muted-foreground">
-                            Last tested: {new Date(systemSetting.last_tested_at).toLocaleString()}
-                          </p>
-                        )}
-                        {systemSetting?.last_test_error && (
-                          <div className="flex items-start gap-2 p-2 rounded bg-destructive/10 text-xs text-destructive">
-                            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                            <span className="line-clamp-2">{systemSetting.last_test_error}</span>
-                          </div>
-                        )}
-                        <div className="flex gap-2 pt-2">
-                          <Button variant="outline" size="sm" onClick={() => handleEditSmtp("system")} className="gap-1">
-                            <Settings className="h-3 w-3" />
-                            Configure
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => handleTestSmtp("system")}
-                            disabled={smtpTesting === "system"}
-                            className="gap-1"
-                          >
-                            {smtpTesting === "system" ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Send className="h-3 w-3" />
-                            )}
-                            Test
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Campaign Email Settings */}
-              {(() => {
-                const campaignSetting = smtpSettings.find(s => s.setting_type === "campaign");
-                return (
-                  <div className="rounded-xl border border-border bg-card p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
-                          <MessageSquare className="h-5 w-5 text-accent" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-foreground">Campaign Emails</h4>
-                          <p className="text-xs text-muted-foreground">Marketing, Newsletters</p>
-                        </div>
-                      </div>
-                      {campaignSetting?.last_test_result && (
-                        <span className={cn(
-                          "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
-                          campaignSetting.last_test_result === "success" 
-                            ? "bg-success/10 text-success" 
-                            : "bg-destructive/10 text-destructive"
-                        )}>
-                          {campaignSetting.last_test_result === "success" ? (
-                            <CheckCircle className="h-3 w-3" />
-                          ) : (
-                            <XCircle className="h-3 w-3" />
-                          )}
-                          {campaignSetting.last_test_result === "success" ? "Working" : "Failed"}
-                        </span>
-                      )}
-                    </div>
-                    
-                    {editingSmtp === "campaign" ? (
-                      <div className="space-y-4">
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <Label htmlFor="campaign-host">SMTP Host</Label>
-                            <Input
-                              id="campaign-host"
-                              value={smtpForm.host || ""}
-                              onChange={(e) => setSmtpForm({...smtpForm, host: e.target.value})}
-                              placeholder="smtp.example.com"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="campaign-port">Port</Label>
-                            <Input
-                              id="campaign-port"
-                              type="number"
-                              value={smtpForm.port || 465}
-                              onChange={(e) => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <Label htmlFor="campaign-encryption">Encryption</Label>
-                          <Select 
-                            value={smtpForm.encryption || "ssl"} 
-                            onValueChange={(v) => setSmtpForm({...smtpForm, encryption: v as "none" | "ssl" | "tls"})}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ssl">SSL/TLS (Port 465)</SelectItem>
-                              <SelectItem value="tls">STARTTLS (Port 587)</SelectItem>
-                              <SelectItem value="none">None</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label htmlFor="campaign-username">Username</Label>
-                          <Input
-                            id="campaign-username"
-                            value={smtpForm.username || ""}
-                            onChange={(e) => setSmtpForm({...smtpForm, username: e.target.value})}
-                            placeholder="email@sms.ieosuia.com"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="campaign-password">Password</Label>
-                          <div className="relative">
-                            <Input
-                              id="campaign-password"
-                              type={showPasswords.campaign ? "text" : "password"}
-                              value={smtpForm.password || ""}
-                              onChange={(e) => setSmtpForm({...smtpForm, password: e.target.value})}
-                              placeholder="Enter password"
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
-                              onClick={() => setShowPasswords({...showPasswords, campaign: !showPasswords.campaign})}
-                            >
-                              {showPasswords.campaign ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <Label htmlFor="campaign-from-email">From Email</Label>
-                            <Input
-                              id="campaign-from-email"
-                              type="email"
-                              value={smtpForm.from_email || ""}
-                              onChange={(e) => setSmtpForm({...smtpForm, from_email: e.target.value})}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="campaign-from-name">From Name</Label>
-                            <Input
-                              id="campaign-from-name"
-                              value={smtpForm.from_name || ""}
-                              onChange={(e) => setSmtpForm({...smtpForm, from_name: e.target.value})}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex gap-2 pt-2">
-                          <Button onClick={handleSaveSmtp} disabled={smtpSaving} className="gap-2">
-                            {smtpSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                            Save
-                          </Button>
-                          <Button variant="outline" onClick={() => setEditingSmtp(null)}>Cancel</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div className="text-muted-foreground">Host:</div>
-                          <div className="font-medium text-foreground">{campaignSetting?.host || "Not configured"}</div>
-                          <div className="text-muted-foreground">Port:</div>
-                          <div className="font-medium text-foreground">{campaignSetting?.port || 465}</div>
-                          <div className="text-muted-foreground">Username:</div>
-                          <div className="font-medium text-foreground truncate">{campaignSetting?.username || "—"}</div>
-                          <div className="text-muted-foreground">From:</div>
-                          <div className="font-medium text-foreground truncate">{campaignSetting?.from_email || "—"}</div>
-                        </div>
-                        {campaignSetting?.last_tested_at && (
-                          <p className="text-xs text-muted-foreground">
-                            Last tested: {new Date(campaignSetting.last_tested_at).toLocaleString()}
-                          </p>
-                        )}
-                        {campaignSetting?.last_test_error && (
-                          <div className="flex items-start gap-2 p-2 rounded bg-destructive/10 text-xs text-destructive">
-                            <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                            <span className="line-clamp-2">{campaignSetting.last_test_error}</span>
-                          </div>
-                        )}
-                        <div className="flex gap-2 pt-2">
-                          <Button variant="outline" size="sm" onClick={() => handleEditSmtp("campaign")} className="gap-1">
-                            <Settings className="h-3 w-3" />
-                            Configure
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => handleTestSmtp("campaign")}
-                            disabled={smtpTesting === "campaign"}
-                            className="gap-1"
-                          >
-                            {smtpTesting === "campaign" ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Send className="h-3 w-3" />
-                            )}
-                            Test
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Info Box */}
-            <div className="rounded-lg bg-muted/50 p-4 border border-border">
-              <div className="flex items-start gap-3">
-                <Server className="h-5 w-5 text-muted-foreground mt-0.5" />
+            {/* SMTP Settings Header */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h4 className="font-medium text-foreground">About Email Configuration</h4>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    <strong>System Emails</strong> (noreply@...): Used for email verification, password resets, and account notifications. These are sent from the portal system.
+                  <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Email Configuration
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Configure SMTP settings for system emails and campaign emails separately
                   </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    <strong>Campaign Emails</strong> (email@...): Used for email campaigns and marketing messages. Configure this for bulk email sending.
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Settings are stored securely in the database and override the default .env configuration.
-                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="testEmail" className="text-sm text-muted-foreground">Test Email:</Label>
+                  <Input
+                    id="testEmail"
+                    type="email"
+                    placeholder={user?.email || "Enter email"}
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    className="w-64"
+                  />
+                </div>
+              </div>
+
+              {/* SMTP Settings Cards */}
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* System Email Settings */}
+                {(() => {
+                  const systemSetting = smtpSettings.find(s => s.setting_type === "system");
+                  return (
+                    <div className="rounded-xl border border-border bg-card p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                            <Mail className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-foreground">System Emails</h4>
+                            <p className="text-xs text-muted-foreground">Verification, Password Reset</p>
+                          </div>
+                        </div>
+                        {systemSetting?.last_test_result && (
+                          <span className={cn(
+                            "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
+                            systemSetting.last_test_result === "success" 
+                              ? "bg-success/10 text-success" 
+                              : "bg-destructive/10 text-destructive"
+                          )}>
+                            {systemSetting.last_test_result === "success" ? (
+                              <CheckCircle className="h-3 w-3" />
+                            ) : (
+                              <XCircle className="h-3 w-3" />
+                            )}
+                            {systemSetting.last_test_result === "success" ? "Working" : "Failed"}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {editingSmtp === "system" ? (
+                        <div className="space-y-4">
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <Label htmlFor="system-host">SMTP Host</Label>
+                              <Input
+                                id="system-host"
+                                value={smtpForm.host || ""}
+                                onChange={(e) => setSmtpForm({...smtpForm, host: e.target.value})}
+                                placeholder="smtp.example.com"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="system-port">Port</Label>
+                              <Input
+                                id="system-port"
+                                type="number"
+                                value={smtpForm.port || 465}
+                                onChange={(e) => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label htmlFor="system-encryption">Encryption</Label>
+                            <Select 
+                              value={smtpForm.encryption || "ssl"} 
+                              onValueChange={(v) => setSmtpForm({...smtpForm, encryption: v as "none" | "ssl" | "tls"})}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ssl">SSL/TLS (Port 465)</SelectItem>
+                                <SelectItem value="tls">STARTTLS (Port 587)</SelectItem>
+                                <SelectItem value="none">None</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="system-username">Username</Label>
+                            <Input
+                              id="system-username"
+                              value={smtpForm.username || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, username: e.target.value})}
+                              placeholder="noreply@sms.ieosuia.com"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="system-password">Password</Label>
+                            <div className="relative">
+                              <Input
+                                id="system-password"
+                                type={showPasswords.system ? "text" : "password"}
+                                value={smtpForm.password || ""}
+                                onChange={(e) => setSmtpForm({...smtpForm, password: e.target.value})}
+                                placeholder="Enter password"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
+                                onClick={() => setShowPasswords({...showPasswords, system: !showPasswords.system})}
+                              >
+                                {showPasswords.system ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <Label htmlFor="system-from-email">From Email</Label>
+                              <Input
+                                id="system-from-email"
+                                type="email"
+                                value={smtpForm.from_email || ""}
+                                onChange={(e) => setSmtpForm({...smtpForm, from_email: e.target.value})}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="system-from-name">From Name</Label>
+                              <Input
+                                id="system-from-name"
+                                value={smtpForm.from_name || ""}
+                                onChange={(e) => setSmtpForm({...smtpForm, from_name: e.target.value})}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <Button onClick={handleSaveSmtp} disabled={smtpSaving} className="gap-2">
+                              {smtpSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                              Save
+                            </Button>
+                            <Button variant="outline" onClick={() => setEditingSmtp(null)}>Cancel</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div className="text-muted-foreground">Host:</div>
+                            <div className="font-medium text-foreground">{systemSetting?.host || "Not configured"}</div>
+                            <div className="text-muted-foreground">Port:</div>
+                            <div className="font-medium text-foreground">{systemSetting?.port || 465}</div>
+                            <div className="text-muted-foreground">Username:</div>
+                            <div className="font-medium text-foreground truncate">{systemSetting?.username || "—"}</div>
+                            <div className="text-muted-foreground">From:</div>
+                            <div className="font-medium text-foreground truncate">{systemSetting?.from_email || "—"}</div>
+                          </div>
+                          {systemSetting?.last_tested_at && (
+                            <p className="text-xs text-muted-foreground">
+                              Last tested: {new Date(systemSetting.last_tested_at).toLocaleString()}
+                            </p>
+                          )}
+                          {systemSetting?.last_test_error && (
+                            <div className="flex items-start gap-2 p-2 rounded bg-destructive/10 text-xs text-destructive">
+                              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                              <span className="line-clamp-2">{systemSetting.last_test_error}</span>
+                            </div>
+                          )}
+                          <div className="flex gap-2 pt-2">
+                            <Button variant="outline" size="sm" onClick={() => handleEditSmtp("system")} className="gap-1">
+                              <Settings className="h-3 w-3" />
+                              Configure
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handleTestSmtp("system")}
+                              disabled={smtpTesting === "system"}
+                              className="gap-1"
+                            >
+                              {smtpTesting === "system" ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Send className="h-3 w-3" />
+                              )}
+                              Test
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Campaign Email Settings */}
+                {(() => {
+                  const campaignSetting = smtpSettings.find(s => s.setting_type === "campaign");
+                  return (
+                    <div className="rounded-xl border border-border bg-card p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
+                            <MessageSquare className="h-5 w-5 text-accent" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-foreground">Campaign Emails</h4>
+                            <p className="text-xs text-muted-foreground">Marketing, Newsletters</p>
+                          </div>
+                        </div>
+                        {campaignSetting?.last_test_result && (
+                          <span className={cn(
+                            "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
+                            campaignSetting.last_test_result === "success" 
+                              ? "bg-success/10 text-success" 
+                              : "bg-destructive/10 text-destructive"
+                          )}>
+                            {campaignSetting.last_test_result === "success" ? (
+                              <CheckCircle className="h-3 w-3" />
+                            ) : (
+                              <XCircle className="h-3 w-3" />
+                            )}
+                            {campaignSetting.last_test_result === "success" ? "Working" : "Failed"}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {editingSmtp === "campaign" ? (
+                        <div className="space-y-4">
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <Label htmlFor="campaign-host">SMTP Host</Label>
+                              <Input
+                                id="campaign-host"
+                                value={smtpForm.host || ""}
+                                onChange={(e) => setSmtpForm({...smtpForm, host: e.target.value})}
+                                placeholder="smtp.example.com"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="campaign-port">Port</Label>
+                              <Input
+                                id="campaign-port"
+                                type="number"
+                                value={smtpForm.port || 465}
+                                onChange={(e) => setSmtpForm({...smtpForm, port: parseInt(e.target.value)})}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label htmlFor="campaign-encryption">Encryption</Label>
+                            <Select 
+                              value={smtpForm.encryption || "ssl"} 
+                              onValueChange={(v) => setSmtpForm({...smtpForm, encryption: v as "none" | "ssl" | "tls"})}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ssl">SSL/TLS (Port 465)</SelectItem>
+                                <SelectItem value="tls">STARTTLS (Port 587)</SelectItem>
+                                <SelectItem value="none">None</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="campaign-username">Username</Label>
+                            <Input
+                              id="campaign-username"
+                              value={smtpForm.username || ""}
+                              onChange={(e) => setSmtpForm({...smtpForm, username: e.target.value})}
+                              placeholder="email@sms.ieosuia.com"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="campaign-password">Password</Label>
+                            <div className="relative">
+                              <Input
+                                id="campaign-password"
+                                type={showPasswords.campaign ? "text" : "password"}
+                                value={smtpForm.password || ""}
+                                onChange={(e) => setSmtpForm({...smtpForm, password: e.target.value})}
+                                placeholder="Enter password"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
+                                onClick={() => setShowPasswords({...showPasswords, campaign: !showPasswords.campaign})}
+                              >
+                                {showPasswords.campaign ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <Label htmlFor="campaign-from-email">From Email</Label>
+                              <Input
+                                id="campaign-from-email"
+                                type="email"
+                                value={smtpForm.from_email || ""}
+                                onChange={(e) => setSmtpForm({...smtpForm, from_email: e.target.value})}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="campaign-from-name">From Name</Label>
+                              <Input
+                                id="campaign-from-name"
+                                value={smtpForm.from_name || ""}
+                                onChange={(e) => setSmtpForm({...smtpForm, from_name: e.target.value})}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <Button onClick={handleSaveSmtp} disabled={smtpSaving} className="gap-2">
+                              {smtpSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                              Save
+                            </Button>
+                            <Button variant="outline" onClick={() => setEditingSmtp(null)}>Cancel</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div className="text-muted-foreground">Host:</div>
+                            <div className="font-medium text-foreground">{campaignSetting?.host || "Not configured"}</div>
+                            <div className="text-muted-foreground">Port:</div>
+                            <div className="font-medium text-foreground">{campaignSetting?.port || 465}</div>
+                            <div className="text-muted-foreground">Username:</div>
+                            <div className="font-medium text-foreground truncate">{campaignSetting?.username || "—"}</div>
+                            <div className="text-muted-foreground">From:</div>
+                            <div className="font-medium text-foreground truncate">{campaignSetting?.from_email || "—"}</div>
+                          </div>
+                          {campaignSetting?.last_tested_at && (
+                            <p className="text-xs text-muted-foreground">
+                              Last tested: {new Date(campaignSetting.last_tested_at).toLocaleString()}
+                            </p>
+                          )}
+                          {campaignSetting?.last_test_error && (
+                            <div className="flex items-start gap-2 p-2 rounded bg-destructive/10 text-xs text-destructive">
+                              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                              <span className="line-clamp-2">{campaignSetting.last_test_error}</span>
+                            </div>
+                          )}
+                          <div className="flex gap-2 pt-2">
+                            <Button variant="outline" size="sm" onClick={() => handleEditSmtp("campaign")} className="gap-1">
+                              <Settings className="h-3 w-3" />
+                              Configure
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handleTestSmtp("campaign")}
+                              disabled={smtpTesting === "campaign"}
+                              className="gap-1"
+                            >
+                              {smtpTesting === "campaign" ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Send className="h-3 w-3" />
+                              )}
+                              Test
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Info Box */}
+              <div className="mt-6 rounded-lg bg-muted/50 p-4 border border-border">
+                <div className="flex items-start gap-3">
+                  <Server className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-foreground">About Email Configuration</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      <strong>System Emails</strong> (noreply@...): Used for email verification, password resets, and account notifications. These are sent from the portal system.
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      <strong>Campaign Emails</strong> (email@...): Used for email campaigns and marketing messages. Configure this for bulk email sending.
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Settings are stored securely in the database and override the default .env configuration.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
