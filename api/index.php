@@ -188,6 +188,8 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/reports/export', 'ReportController@export');
     $router->get('/reports/compare', 'ReportController@compare');
     $router->get('/reports/ab-test-results', 'ReportController@abTestResults');
+    $router->post('/reports/ab-test-winner', 'ReportController@selectAbTestWinner');
+    $router->get('/reports/best-performing-variant', 'ReportController@getBestPerformingVariant');
     
     // Opt-outs
     $router->get('/opt-outs', 'OptOutController@index');

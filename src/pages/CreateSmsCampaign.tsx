@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ScheduleRecommendations } from "@/components/campaigns/ScheduleRecommendations";
+import { ABTestSetup } from "@/components/campaigns/ABTesting";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +55,12 @@ export default function CreateSmsCampaign() {
     scheduleDate: "",
     scheduleTime: "",
   });
+  
+  // A/B Testing state
+  const [abTestEnabled, setAbTestEnabled] = useState(false);
+  const [abMessageA, setAbMessageA] = useState("");
+  const [abMessageB, setAbMessageB] = useState("");
+  const [abSplitPercent, setAbSplitPercent] = useState(50);
 
   const messageLength = formData.message.length;
   const smsCount = Math.ceil(messageLength / 160) || 0;
@@ -83,7 +90,16 @@ export default function CreateSmsCampaign() {
 
     setIsSubmitting(true);
     try {
-      const response = await createSmsCampaign(formData);
+      const campaignData = {
+        ...formData,
+        is_ab_test: abTestEnabled,
+        ab_test_split_percent: abSplitPercent,
+        ab_variants: abTestEnabled ? [
+          { variant_name: 'A', message_content: abMessageA },
+          { variant_name: 'B', message_content: abMessageB },
+        ] : undefined,
+      };
+      const response = await createSmsCampaign(campaignData);
       if (response.success) {
         toast({
           title: "Campaign created successfully!",
@@ -358,39 +374,62 @@ export default function CreateSmsCampaign() {
                 </Select>
               </div>
 
-              <div>
-                <Label htmlFor="message">Message *</Label>
-                <Textarea
-                  id="message"
-                  placeholder="Type your message here..."
-                  value={formData.message}
-                  onChange={(e) =>
-                    setFormData({ ...formData, message: e.target.value })
+              {/* A/B Testing Setup */}
+              <ABTestSetup
+                enabled={abTestEnabled}
+                onEnabledChange={(enabled) => {
+                  setAbTestEnabled(enabled);
+                  if (enabled && formData.message) {
+                    setAbMessageA(formData.message);
                   }
-                  className="mt-1.5 min-h-[150px]"
-                />
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    {messageLength} / 160 characters
-                    {smsCount > 1 && ` (${smsCount} SMS)`}
-                  </span>
-                  <span className="font-medium text-primary">
-                    ~{estimatedCredits.toLocaleString()} credits
-                  </span>
-                </div>
-              </div>
+                }}
+                messageA={abMessageA}
+                messageB={abMessageB}
+                splitPercent={abSplitPercent}
+                onMessageAChange={setAbMessageA}
+                onMessageBChange={setAbMessageB}
+                onSplitChange={setAbSplitPercent}
+                campaignType="sms"
+                totalRecipients={1250}
+              />
 
-              <div className="rounded-lg bg-muted/50 p-4">
-                <p className="text-sm font-medium text-foreground">Preview</p>
-                <div className="mt-2 rounded-lg bg-card p-4 shadow-sm">
-                  <p className="text-xs text-muted-foreground">
-                    From: {formData.senderId}
-                  </p>
-                  <p className="mt-2 text-sm text-foreground">
-                    {formData.message || "Your message will appear here..."}
-                  </p>
-                </div>
-              </div>
+              {!abTestEnabled && (
+                <>
+                  <div>
+                    <Label htmlFor="message">Message *</Label>
+                    <Textarea
+                      id="message"
+                      placeholder="Type your message here..."
+                      value={formData.message}
+                      onChange={(e) =>
+                        setFormData({ ...formData, message: e.target.value })
+                      }
+                      className="mt-1.5 min-h-[150px]"
+                    />
+                    <div className="mt-2 flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {messageLength} / 160 characters
+                        {smsCount > 1 && ` (${smsCount} SMS)`}
+                      </span>
+                      <span className="font-medium text-primary">
+                        ~{estimatedCredits.toLocaleString()} credits
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-muted/50 p-4">
+                    <p className="text-sm font-medium text-foreground">Preview</p>
+                    <div className="mt-2 rounded-lg bg-card p-4 shadow-sm">
+                      <p className="text-xs text-muted-foreground">
+                        From: {formData.senderId}
+                      </p>
+                      <p className="mt-2 text-sm text-foreground">
+                        {formData.message || "Your message will appear here..."}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -538,9 +577,28 @@ export default function CreateSmsCampaign() {
 
             <div className="rounded-lg bg-muted/50 p-4">
               <p className="text-sm font-medium text-foreground">Message</p>
-              <p className="mt-2 text-sm text-foreground">
-                {formData.message || "No message entered"}
-              </p>
+              {abTestEnabled ? (
+                <div className="mt-2 space-y-3">
+                  <div className="rounded-lg border border-primary/30 bg-card p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">A</div>
+                      <span className="text-xs text-muted-foreground">Variant A ({abSplitPercent}%)</span>
+                    </div>
+                    <p className="text-sm text-foreground">{abMessageA || "No message"}</p>
+                  </div>
+                  <div className="rounded-lg border border-accent/30 bg-card p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">B</div>
+                      <span className="text-xs text-muted-foreground">Variant B ({100 - abSplitPercent}%)</span>
+                    </div>
+                    <p className="text-sm text-foreground">{abMessageB || "No message"}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-foreground">
+                  {formData.message || "No message entered"}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center justify-between rounded-xl border-2 border-primary bg-primary/5 p-4">

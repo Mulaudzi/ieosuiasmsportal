@@ -40,15 +40,19 @@ class CampaignController {
     public function smsStore(): void {
         $data = Request::validate([
             'name' => 'required|max:100',
-            'message' => 'required|max:918', // 6 SMS parts max
+            'message' => 'max:918', // 6 SMS parts max
             'sender_id' => 'max:11',
             'recipients' => 'required|array',
             'scheduled_at' => '',
+            'is_ab_test' => '',
+            'ab_test_split_percent' => '',
+            'ab_variants' => '',
         ]);
         
         $userId = Auth::id();
         $recipients = $data['recipients'];
         $cost = count($recipients) * (float) env('SMS_PRICE_PER_CREDIT', 0.38);
+        $isAbTest = !empty($data['is_ab_test']);
         
         // Check wallet balance
         $wallet = table('wallets')->where('user_id', $userId)->first();
@@ -61,26 +65,64 @@ class CampaignController {
             'user_id' => $userId,
             'type' => 'sms',
             'name' => $data['name'],
-            'message' => $data['message'],
+            'message' => $isAbTest ? '' : ($data['message'] ?? ''),
             'sender_id' => $data['sender_id'] ?? env('LOGICSMS_DEFAULT_SENDER', 'IEOSUIA'),
             'status' => isset($data['scheduled_at']) ? 'Scheduled' : 'Draft',
             'scheduled_at' => $data['scheduled_at'] ?? null,
             'total_recipients' => count($recipients),
             'estimated_cost' => $cost,
+            'is_ab_test' => $isAbTest ? 1 : 0,
+            'ab_test_split_percent' => $data['ab_test_split_percent'] ?? 50,
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
+        // Create variants if A/B test
+        if ($isAbTest && !empty($data['ab_variants'])) {
+            $variants = is_string($data['ab_variants']) 
+                ? json_decode($data['ab_variants'], true) 
+                : $data['ab_variants'];
+            
+            foreach ($variants as $variant) {
+                table('campaign_variants')->insert([
+                    'campaign_id' => $campaignId,
+                    'variant_name' => $variant['variant_name'],
+                    'message_content' => $variant['message_content'],
+                    'subject' => $variant['subject'] ?? null,
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+            }
+        }
+        
+        // Split recipients for A/B test
+        $splitPercent = (int) ($data['ab_test_split_percent'] ?? 50);
+        $splitIndex = $isAbTest ? (int) (count($recipients) * $splitPercent / 100) : count($recipients);
+        
         // Create messages
-        foreach ($recipients as $recipient) {
+        foreach ($recipients as $i => $recipient) {
             $phone = is_array($recipient) ? $recipient['phone'] : $recipient;
             $name = is_array($recipient) ? ($recipient['name'] ?? '') : '';
+            
+            // Determine variant and content for A/B test
+            $variantName = null;
+            $content = $data['message'] ?? '';
+            
+            if ($isAbTest && !empty($data['ab_variants'])) {
+                $variants = is_string($data['ab_variants']) 
+                    ? json_decode($data['ab_variants'], true) 
+                    : $data['ab_variants'];
+                $variantName = $i < $splitIndex ? 'A' : 'B';
+                $variant = array_filter($variants, fn($v) => $v['variant_name'] === $variantName);
+                $variant = reset($variant);
+                $content = $variant['message_content'] ?? '';
+            }
             
             // Replace placeholders
             $content = str_replace(
                 ['{name}', '{phone}'],
                 [$name, $phone],
-                $data['message']
+                $content
             );
             
             table('messages')->insert([
@@ -90,9 +132,22 @@ class CampaignController {
                 'status' => 'Pending',
                 'cost' => (float) env('SMS_PRICE_PER_CREDIT', 0.38),
                 'parts' => ceil(strlen($content) / 160),
+                'variant_name' => $variantName,
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
+        }
+        
+        // Update variant recipient counts
+        if ($isAbTest) {
+            table('campaign_variants')
+                ->where('campaign_id', $campaignId)
+                ->where('variant_name', 'A')
+                ->update(['recipient_count' => $splitIndex]);
+            table('campaign_variants')
+                ->where('campaign_id', $campaignId)
+                ->where('variant_name', 'B')
+                ->update(['recipient_count' => count($recipients) - $splitIndex]);
         }
         
         // Reserve funds
@@ -109,6 +164,7 @@ class CampaignController {
             'name' => $data['name'],
             'type' => 'sms',
             'recipients' => count($recipients),
+            'is_ab_test' => $isAbTest,
         ]);
         
         Response::created(['campaign' => $campaign]);
@@ -312,14 +368,18 @@ class CampaignController {
         $data = Request::validate([
             'name' => 'required|max:100',
             'subject' => 'required|max:255',
-            'message' => 'required',
+            'message' => '',
             'recipients' => 'required|array',
             'scheduled_at' => '',
+            'is_ab_test' => '',
+            'ab_test_split_percent' => '',
+            'ab_variants' => '',
         ]);
         
         $userId = Auth::id();
         $recipients = $data['recipients'];
         $cost = count($recipients) * (float) env('EMAIL_PRICE_PER_CREDIT', 0.05);
+        $isAbTest = !empty($data['is_ab_test']);
         
         $wallet = table('wallets')->where('user_id', $userId)->first();
         if (!$wallet || (float) $wallet['balance'] < $cost) {
@@ -331,31 +391,84 @@ class CampaignController {
             'type' => 'email',
             'name' => $data['name'],
             'subject' => $data['subject'],
-            'message' => $data['message'],
+            'message' => $isAbTest ? '' : ($data['message'] ?? ''),
             'status' => isset($data['scheduled_at']) ? 'Scheduled' : 'Draft',
             'scheduled_at' => $data['scheduled_at'] ?? null,
             'total_recipients' => count($recipients),
             'estimated_cost' => $cost,
+            'is_ab_test' => $isAbTest ? 1 : 0,
+            'ab_test_split_percent' => $data['ab_test_split_percent'] ?? 50,
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        foreach ($recipients as $recipient) {
+        // Create variants if A/B test
+        if ($isAbTest && !empty($data['ab_variants'])) {
+            $variants = is_string($data['ab_variants']) 
+                ? json_decode($data['ab_variants'], true) 
+                : $data['ab_variants'];
+            
+            foreach ($variants as $variant) {
+                table('campaign_variants')->insert([
+                    'campaign_id' => $campaignId,
+                    'variant_name' => $variant['variant_name'],
+                    'message_content' => $variant['message_content'],
+                    'subject' => $variant['subject'] ?? null,
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+            }
+        }
+        
+        // Split recipients for A/B test
+        $splitPercent = (int) ($data['ab_test_split_percent'] ?? 50);
+        $splitIndex = $isAbTest ? (int) (count($recipients) * $splitPercent / 100) : count($recipients);
+        
+        foreach ($recipients as $i => $recipient) {
             $email = is_array($recipient) ? $recipient['email'] : $recipient;
             $name = is_array($recipient) ? ($recipient['name'] ?? '') : '';
             
-            $content = str_replace(['{name}', '{email}'], [$name, $email], $data['message']);
+            // Determine variant and content for A/B test
+            $variantName = null;
+            $content = $data['message'] ?? '';
+            $subject = $data['subject'];
+            
+            if ($isAbTest && !empty($data['ab_variants'])) {
+                $variants = is_string($data['ab_variants']) 
+                    ? json_decode($data['ab_variants'], true) 
+                    : $data['ab_variants'];
+                $variantName = $i < $splitIndex ? 'A' : 'B';
+                $variant = array_filter($variants, fn($v) => $v['variant_name'] === $variantName);
+                $variant = reset($variant);
+                $content = $variant['message_content'] ?? '';
+                $subject = $variant['subject'] ?? $data['subject'];
+            }
+            
+            $content = str_replace(['{name}', '{email}'], [$name, $email], $content);
             
             table('messages')->insert([
                 'campaign_id' => $campaignId,
                 'recipient' => $email,
-                'subject' => $data['subject'],
+                'subject' => $subject,
                 'content' => $content,
                 'status' => 'Pending',
                 'cost' => (float) env('EMAIL_PRICE_PER_CREDIT', 0.05),
+                'variant_name' => $variantName,
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
+        }
+        
+        // Update variant recipient counts
+        if ($isAbTest) {
+            table('campaign_variants')
+                ->where('campaign_id', $campaignId)
+                ->where('variant_name', 'A')
+                ->update(['recipient_count' => $splitIndex]);
+            table('campaign_variants')
+                ->where('campaign_id', $campaignId)
+                ->where('variant_name', 'B')
+                ->update(['recipient_count' => count($recipients) - $splitIndex]);
         }
         
         table('wallets')->where('id', $wallet['id'])->update([
@@ -371,6 +484,7 @@ class CampaignController {
             'name' => $data['name'],
             'type' => 'email',
             'recipients' => count($recipients),
+            'is_ab_test' => $isAbTest,
         ]);
         
         Response::created(['campaign' => $campaign]);
