@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAdminSession } from "@/hooks/useAdminSession";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -334,7 +334,7 @@ export default function QaConsole() {
   }
 
   return (
-    <DashboardLayout
+    <AdminLayout
       title="System QA & Debug Console"
       subtitle="Universal testing and diagnostics for all platform systems"
       actions={
@@ -798,6 +798,6 @@ export default function QaConsole() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </DashboardLayout>
+    </AdminLayout>
   );
 }

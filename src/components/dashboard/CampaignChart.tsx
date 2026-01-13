@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   AreaChart,
   Area,
@@ -7,28 +8,83 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { api } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
-const data = [
-  { name: "Mon", sms: 4000, email: 2400 },
-  { name: "Tue", sms: 3000, email: 1398 },
-  { name: "Wed", sms: 5000, email: 3800 },
-  { name: "Thu", sms: 2780, email: 3908 },
-  { name: "Fri", sms: 6890, email: 4800 },
-  { name: "Sat", sms: 2390, email: 3800 },
-  { name: "Sun", sms: 3490, email: 4300 },
-];
+interface ChartDataPoint {
+  name: string;
+  date: string;
+  sms: number;
+  email: number;
+}
 
 export function CampaignChart() {
+  const [data, setData] = useState<ChartDataPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadChartData();
+  }, []);
+
+  const loadChartData = async () => {
+    try {
+      const response = await api.get<{ chart: any[] }>("/dashboard/chart", { days: "7" });
+      if (response.success && response.data?.chart) {
+        // Transform API data to chart format
+        const chartData = response.data.chart.map((item: any) => {
+          const date = new Date(item.date);
+          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          return {
+            name: dayNames[date.getDay()],
+            date: item.date,
+            sms: parseInt(item.sent) || 0,
+            email: 0, // Email data if available
+          };
+        });
+        setData(chartData);
+      } else {
+        // Fallback to empty state
+        setData([]);
+      }
+    } catch (error) {
+      console.error("Failed to load chart data:", error);
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="metric-card h-[400px] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="metric-card h-[400px]">
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-foreground">Message Volume</h3>
+          <p className="text-sm text-muted-foreground">SMS and Email sends over the past week</p>
+        </div>
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          <div className="text-center">
+            <p>No message data available yet</p>
+            <p className="text-sm">Send your first campaign to see stats here</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="metric-card h-[400px]">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">
-            Message Volume
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            SMS and Email sends over the past week
-          </p>
+          <h3 className="text-lg font-semibold text-foreground">Message Volume</h3>
+          <p className="text-sm text-muted-foreground">SMS and Email sends over the past week</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -67,7 +123,7 @@ export function CampaignChart() {
             fontSize={12}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(value) => `${value / 1000}k`}
+            tickFormatter={(value) => value >= 1000 ? `${value / 1000}k` : `${value}`}
           />
           <Tooltip
             contentStyle={{

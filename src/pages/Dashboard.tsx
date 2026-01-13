@@ -40,15 +40,16 @@ interface DashboardData {
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData>({
-    smsSent: 284650,
-    emailsSent: 156890,
-    contacts: 45280,
-    deliveryRate: "94.8%",
-    smsChange: "+12.5% from last month",
-    emailChange: "+8.2% from last month",
-    contactsChange: "+2,340 new this month",
-    deliveryChange: "+1.2% improvement",
+    smsSent: 0,
+    emailsSent: 0,
+    contacts: 0,
+    deliveryRate: "0%",
+    smsChange: "No data yet",
+    emailChange: "No data yet",
+    contactsChange: "Add contacts to get started",
+    deliveryChange: "Send messages to see stats",
   });
   
   const { showTutorial, completeTutorial } = useDashboardTutorial();
@@ -59,24 +60,34 @@ export default function Dashboard() {
 
   const loadDashboardData = async () => {
     try {
+      setError(null);
       const response = await getDashboardStats();
       if (response.success && response.data) {
+        const stats = response.data as any;
         setData({
-          smsSent: response.data.sms_sent || response.data.smsSent || 284650,
-          emailsSent: response.data.emails_sent || response.data.emailsSent || 156890,
-          contacts: response.data.contacts || 45280,
-          deliveryRate: response.data.delivery_rate 
-            ? `${response.data.delivery_rate}%` 
-            : "94.8%",
-          smsChange: response.data.sms_change || "+12.5% from last month",
-          emailChange: response.data.email_change || "+8.2% from last month",
-          contactsChange: response.data.contacts_change || "+2,340 new this month",
-          deliveryChange: response.data.delivery_change || "+1.2% improvement",
+          smsSent: stats.total_sent || 0,
+          emailsSent: stats.emails_sent || 0,
+          contacts: stats.total_contacts || 0,
+          deliveryRate: stats.delivery_rate 
+            ? `${stats.delivery_rate}%` 
+            : "0%",
+          smsChange: stats.total_sent > 0 
+            ? `${stats.total_delivered || 0} delivered` 
+            : "No messages sent yet",
+          emailChange: stats.emails_sent > 0 
+            ? `${stats.emails_delivered || 0} delivered` 
+            : "No emails sent yet",
+          contactsChange: stats.total_contacts > 0 
+            ? `${stats.active_campaigns || 0} active campaigns` 
+            : "Import contacts to start",
+          deliveryChange: stats.total_sent > 0 
+            ? `${stats.total_failed || 0} failed` 
+            : "No delivery data",
         });
       }
-    } catch (error) {
-      // Use default mock data on error - don't show error toast for demo
-      console.log("Using default dashboard data");
+    } catch (err) {
+      console.error("Dashboard error:", err);
+      setError("Failed to load dashboard data");
     } finally {
       setLoading(false);
     }

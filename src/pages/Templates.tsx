@@ -38,50 +38,6 @@ interface Template {
   updated_at?: string;
 }
 
-// Fallback mock data for demo
-const mockTemplates: Template[] = [
-  {
-    id: "1",
-    name: "Welcome Message",
-    type: "sms",
-    content: "Welcome to IEOSUIA! We're excited to have you on board. Reply HELP for assistance.",
-    usage_count: 1250,
-    updated_at: "2026-01-07T08:00:00Z",
-  },
-  {
-    id: "2",
-    name: "Order Confirmation",
-    type: "sms",
-    content: "Your order #{{order_id}} has been confirmed. Track it at {{tracking_url}}",
-    usage_count: 890,
-    updated_at: "2026-01-07T05:00:00Z",
-  },
-  {
-    id: "3",
-    name: "Flash Sale Alert",
-    type: "sms",
-    content: "🔥 Flash Sale! Get 50% off all items for the next 24 hours. Shop now: {{link}}",
-    usage_count: 450,
-    updated_at: "2026-01-06T10:00:00Z",
-  },
-  {
-    id: "4",
-    name: "Weekly Newsletter",
-    type: "email",
-    content: "<!DOCTYPE html><html><body><h1>Weekly Update</h1><p>Hello {{name}},</p></body></html>",
-    usage_count: 320,
-    updated_at: "2026-01-04T10:00:00Z",
-  },
-  {
-    id: "5",
-    name: "Password Reset",
-    type: "email",
-    content: "<!DOCTYPE html><html><body><p>Click here to reset: {{link}}</p></body></html>",
-    usage_count: 1500,
-    updated_at: "2026-01-07T09:00:00Z",
-  },
-];
-
 export default function Templates() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,12 +60,16 @@ export default function Templates() {
         const responseData = response.data as any;
         setTemplates(Array.isArray(responseData) ? responseData : responseData.data || []);
       } else {
-        // Use mock data as fallback
-        setTemplates(mockTemplates);
+        setTemplates([]);
       }
     } catch (error) {
-      // Use mock data on error
-      setTemplates(mockTemplates);
+      console.error("Failed to load templates:", error);
+      setTemplates([]);
+      toast({
+        title: "Error",
+        description: "Failed to load templates",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }

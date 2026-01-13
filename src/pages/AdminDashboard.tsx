@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow, differenceInSeconds, differenceInMinutes, differenceInHours, differenceInDays, subDays } from "date-fns";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1035,7 +1035,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
   };
 
   return (
-    <DashboardLayout
+    <AdminLayout
       title="Admin Dashboard"
       subtitle="Central hub for system administration and user management"
       actions={
@@ -3614,6 +3614,6 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </DashboardLayout>
+    </AdminLayout>
   );
 }
