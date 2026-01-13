@@ -167,6 +167,22 @@ class AuthController {
             return;
         }
         
+        // Check for failed admin login attempt (security alert)
+        if ($data['email'] === $adminEmail && $data['password'] !== $adminCombinedPassword) {
+            // Log failed admin attempt
+            AuditLogService::log('admin_login_failed', 'security', null, null, [
+                'ip_address' => $ip,
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+                'attempted_password_length' => strlen($data['password']),
+            ], null);
+            
+            // Send security alert email
+            $this->sendAdminLoginAlert($ip, $_SERVER['HTTP_USER_AGENT'] ?? 'unknown');
+            
+            Response::error('Invalid credentials', 401);
+            return;
+        }
+        
         // Find regular user
         $user = table('users')->where('email', $data['email'])->first();
         
@@ -600,6 +616,44 @@ class AuthController {
             Response::success(['message' => 'Verification email sent']);
         } else {
             Response::error('Failed to send verification email', 500);
+        }
+    }
+    
+    /**
+     * Send security alert for failed admin login attempts
+     */
+    private function sendAdminLoginAlert(string $ip, string $userAgent): void {
+        try {
+            $adminEmail = 'godtheson@ieosuia.com';
+            $timestamp = date('Y-m-d H:i:s');
+            
+            $subject = '⚠️ Security Alert: Failed Admin Login Attempt';
+            $body = "
+                <h2 style='color: #dc2626;'>Security Alert</h2>
+                <p>A failed admin login attempt was detected on your IEOSUIA SMS Portal.</p>
+                <table style='border-collapse: collapse; margin: 20px 0;'>
+                    <tr>
+                        <td style='padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;'>Time:</td>
+                        <td style='padding: 8px; border: 1px solid #e5e7eb;'>{$timestamp}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;'>IP Address:</td>
+                        <td style='padding: 8px; border: 1px solid #e5e7eb;'>{$ip}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;'>User Agent:</td>
+                        <td style='padding: 8px; border: 1px solid #e5e7eb;'>{$userAgent}</td>
+                    </tr>
+                </table>
+                <p style='color: #6b7280;'>If this was you, you can ignore this message. Otherwise, please review your security settings.</p>
+                <p style='color: #6b7280; font-size: 12px;'>This is an automated security notification from IEOSUIA SMS Portal.</p>
+            ";
+            
+            EmailService::sendRawEmail($adminEmail, $subject, $body);
+            
+            error_log("Admin login security alert sent for IP: {$ip}");
+        } catch (\Exception $e) {
+            error_log("Failed to send admin login security alert: " . $e->getMessage());
         }
     }
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAdminSession } from "@/hooks/useAdminSession";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -130,6 +131,9 @@ export default function QaConsole() {
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
   
+  // Admin session timeout handling
+  useAdminSession();
+  
   // State
   const [selectedSystem, setSelectedSystem] = useState("all");
   const [selectedUserMode, setSelectedUserMode] = useState("admin");
@@ -149,7 +153,7 @@ export default function QaConsole() {
     if (authLoading) return;
     
     const adminSession = sessionStorage.getItem("admin_session");
-    const isAdminUser = user?.email === "admin@ieosuia.com";
+    const isAdminUser = user?.email === "godtheson@ieosuia.com";
     
     if (!adminSession || !isAdminUser) {
       setAccessDenied(true);
