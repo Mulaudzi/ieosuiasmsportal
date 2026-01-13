@@ -34,8 +34,10 @@ export function useGoogleAuth() {
       try {
         const response = await fetch(`${API_URL}/auth/google/status`);
         
-        if (!response.ok) {
-          console.error('Google OAuth status check failed:', response.status);
+        // Handle non-JSON responses gracefully
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          console.warn('Google OAuth status check returned non-JSON response');
           setState(prev => ({
             ...prev,
             isAvailable: false,
@@ -45,7 +47,32 @@ export function useGoogleAuth() {
           return;
         }
         
-        const data = await response.json();
+        if (!response.ok) {
+          // Don't log 500/503 as errors since Google OAuth may just not be configured
+          if (response.status !== 503 && response.status !== 500) {
+            console.warn('Google OAuth status check failed:', response.status);
+          }
+          setState(prev => ({
+            ...prev,
+            isAvailable: false,
+            isLoading: false,
+            isInitialized: true,
+          }));
+          return;
+        }
+        
+        const text = await response.text();
+        if (!text.trim()) {
+          setState(prev => ({
+            ...prev,
+            isAvailable: false,
+            isLoading: false,
+            isInitialized: true,
+          }));
+          return;
+        }
+        
+        const data = JSON.parse(text);
         
         // Handle both response formats
         const available = data.data?.available ?? data.available ?? false;
@@ -57,7 +84,8 @@ export function useGoogleAuth() {
           isInitialized: true,
         }));
       } catch (error) {
-        console.error('Failed to check Google OAuth status:', error);
+        // Silently handle network errors - Google OAuth just won't be available
+        console.debug('Google OAuth not available:', error);
         setState(prev => ({
           ...prev,
           isAvailable: false,
