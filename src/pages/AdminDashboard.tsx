@@ -210,6 +210,14 @@ interface HeatmapData {
   registrations: HeatmapDay[];
   campaigns: HeatmapDay[];
   messages: HeatmapDay[];
+  delivered: HeatmapDay[];
+  failed: HeatmapDay[];
+  delivery_rates: DeliveryRateDay[];
+}
+
+interface DeliveryRateDay {
+  day: string;
+  hours: (number | null)[];
 }
 
 const statusConfig = {
@@ -1160,6 +1168,208 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Message Delivery Heatmap Widget - Full Width */}
+      <div className="mb-8 rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Send className="h-5 w-5 text-success" />
+            <h3 className="font-semibold text-foreground">Message Delivery Success</h3>
+            <span className="text-xs text-muted-foreground">(Last 30 days)</span>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm bg-muted" />
+              <span>No data</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm bg-destructive/40" />
+              <span>&lt;50%</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm bg-warning/60" />
+              <span>50-80%</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm bg-success" />
+              <span>&gt;90%</span>
+            </div>
+          </div>
+        </div>
+        <div className="p-4">
+          {!heatmapData ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Delivered Messages Heatmap */}
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-success" />
+                    Delivered Messages
+                  </p>
+                  <div className="flex gap-1">
+                    <div className="flex flex-col gap-1 text-[10px] text-muted-foreground pr-1">
+                      {heatmapData.delivered.map((day) => (
+                        <div key={day.day} className="h-3 flex items-center">{day.day}</div>
+                      ))}
+                    </div>
+                    <div className="flex-1 overflow-x-auto">
+                      <div className="flex flex-col gap-1 min-w-[384px]">
+                        {heatmapData.delivered.map((day) => {
+                          const maxVal = Math.max(...day.hours, 1);
+                          return (
+                            <div key={day.day} className="flex gap-[2px]">
+                              {day.hours.map((count, hour) => (
+                                <div
+                                  key={hour}
+                                  className={cn(
+                                    "w-4 h-3 rounded-[2px]",
+                                    count === 0 ? "bg-muted" :
+                                    count / maxVal < 0.25 ? "bg-success/20" :
+                                    count / maxVal < 0.5 ? "bg-success/40" :
+                                    count / maxVal < 0.75 ? "bg-success/60" :
+                                    "bg-success"
+                                  )}
+                                  title={`${day.day} ${hour}:00 - ${count} delivered`}
+                                />
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Delivery Rate Heatmap */}
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                    Delivery Success Rate (%)
+                  </p>
+                  <div className="flex gap-1">
+                    <div className="flex flex-col gap-1 text-[10px] text-muted-foreground pr-1">
+                      {heatmapData.delivery_rates.map((day) => (
+                        <div key={day.day} className="h-3 flex items-center">{day.day}</div>
+                      ))}
+                    </div>
+                    <div className="flex-1 overflow-x-auto">
+                      <div className="flex flex-col gap-1 min-w-[384px]">
+                        {heatmapData.delivery_rates.map((day) => (
+                          <div key={day.day} className="flex gap-[2px]">
+                            {day.hours.map((rate, hour) => (
+                              <div
+                                key={hour}
+                                className={cn(
+                                  "w-4 h-3 rounded-[2px]",
+                                  rate === null ? "bg-muted" :
+                                  rate < 50 ? "bg-destructive/60" :
+                                  rate < 70 ? "bg-warning/40" :
+                                  rate < 80 ? "bg-warning/60" :
+                                  rate < 90 ? "bg-success/40" :
+                                  "bg-success"
+                                )}
+                                title={rate === null ? `${day.day} ${hour}:00 - No data` : `${day.day} ${hour}:00 - ${rate}% success rate`}
+                              />
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Failed Messages Heatmap */}
+              <div>
+                <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  Failed Messages
+                </p>
+                <div className="flex gap-1">
+                  <div className="flex flex-col gap-1 text-[10px] text-muted-foreground pr-1">
+                    {heatmapData.failed.map((day) => (
+                      <div key={day.day} className="h-3 flex items-center">{day.day}</div>
+                    ))}
+                  </div>
+                  <div className="flex-1 overflow-x-auto">
+                    <div className="flex flex-col gap-1 min-w-[384px]">
+                      {heatmapData.failed.map((day) => {
+                        const maxVal = Math.max(...day.hours, 1);
+                        return (
+                          <div key={day.day} className="flex gap-[2px]">
+                            {day.hours.map((count, hour) => (
+                              <div
+                                key={hour}
+                                className={cn(
+                                  "w-4 h-3 rounded-[2px]",
+                                  count === 0 ? "bg-muted" :
+                                  count / maxVal < 0.25 ? "bg-destructive/20" :
+                                  count / maxVal < 0.5 ? "bg-destructive/40" :
+                                  count / maxVal < 0.75 ? "bg-destructive/60" :
+                                  "bg-destructive"
+                                )}
+                                title={`${day.day} ${hour}:00 - ${count} failed`}
+                              />
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hour labels */}
+              <div className="flex gap-1 pl-7">
+                <div className="flex gap-[2px] text-[8px] text-muted-foreground min-w-[384px]">
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <div key={i} className="w-4 text-center">
+                      {i % 4 === 0 ? `${i}h` : ''}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Best times insight */}
+              {heatmapData.delivery_rates && (
+                <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4">
+                  <p className="text-sm font-medium text-foreground mb-2">📈 Delivery Insights</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(() => {
+                      // Find best delivery times
+                      let bestRate = 0;
+                      let bestTimes: string[] = [];
+                      
+                      heatmapData.delivery_rates.forEach((day) => {
+                        day.hours.forEach((rate, hour) => {
+                          if (rate !== null && rate >= 90) {
+                            if (rate > bestRate) {
+                              bestRate = rate;
+                              bestTimes = [`${day.day} at ${hour}:00`];
+                            } else if (rate === bestRate) {
+                              bestTimes.push(`${day.day} at ${hour}:00`);
+                            }
+                          }
+                        });
+                      });
+                      
+                      if (bestTimes.length === 0) {
+                        return "Not enough data to determine optimal sending times. Send more campaigns to see insights.";
+                      }
+                      
+                      return `Best delivery times (${bestRate}% success): ${bestTimes.slice(0, 3).join(", ")}${bestTimes.length > 3 ? ` and ${bestTimes.length - 3} more` : ""}`;
+                    })()}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -638,16 +638,50 @@ class AdminController
         $stmt->execute([$thirtyDaysAgo]);
         $messages = $stmt->fetchAll();
         
+        // Delivered messages by hour and day of week (for delivery success heatmap)
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(sent_at) as hour,
+                DAYOFWEEK(sent_at) as day_of_week,
+                COUNT(*) as count
+            FROM messages
+            WHERE sent_at >= ? AND sent_at IS NOT NULL AND status = 'Delivered'
+            GROUP BY HOUR(sent_at), DAYOFWEEK(sent_at)
+        ");
+        $stmt->execute([$thirtyDaysAgo]);
+        $delivered = $stmt->fetchAll();
+        
+        // Failed messages by hour and day of week
+        $stmt = $pdo->prepare("
+            SELECT 
+                HOUR(sent_at) as hour,
+                DAYOFWEEK(sent_at) as day_of_week,
+                COUNT(*) as count
+            FROM messages
+            WHERE sent_at >= ? AND sent_at IS NOT NULL AND status = 'Failed'
+            GROUP BY HOUR(sent_at), DAYOFWEEK(sent_at)
+        ");
+        $stmt->execute([$thirtyDaysAgo]);
+        $failed = $stmt->fetchAll();
+        
+        // Calculate delivery rate by hour and day
+        $deliveryRates = $this->buildDeliveryRateGrid($messages, $delivered);
+        
         // Format into heatmap grid (7 days x 24 hours)
         $registrationGrid = $this->buildHeatmapGrid($registrations);
         $campaignGrid = $this->buildHeatmapGrid($campaigns);
         $messageGrid = $this->buildHeatmapGrid($messages);
+        $deliveredGrid = $this->buildHeatmapGrid($delivered);
+        $failedGrid = $this->buildHeatmapGrid($failed);
         
         Response::success([
             'heatmap' => [
                 'registrations' => $registrationGrid,
                 'campaigns' => $campaignGrid,
                 'messages' => $messageGrid,
+                'delivered' => $deliveredGrid,
+                'failed' => $failedGrid,
+                'delivery_rates' => $deliveryRates,
             ],
             'period' => '30 days',
         ]);
@@ -675,6 +709,48 @@ class AdminController
             $result[] = [
                 'day' => $dayNames[$day - 1],
                 'hours' => $grid[$day],
+            ];
+        }
+        
+        return $result;
+    }
+    
+    private function buildDeliveryRateGrid(array $totalMessages, array $deliveredMessages): array
+    {
+        // Build lookup for delivered counts
+        $deliveredLookup = [];
+        foreach ($deliveredMessages as $row) {
+            $key = $row['day_of_week'] . '-' . $row['hour'];
+            $deliveredLookup[$key] = (int) $row['count'];
+        }
+        
+        // Build total lookup
+        $totalLookup = [];
+        foreach ($totalMessages as $row) {
+            $key = $row['day_of_week'] . '-' . $row['hour'];
+            $totalLookup[$key] = (int) $row['count'];
+        }
+        
+        // Calculate rates
+        $dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        $result = [];
+        
+        for ($day = 1; $day <= 7; $day++) {
+            $hours = [];
+            for ($hour = 0; $hour < 24; $hour++) {
+                $key = $day . '-' . $hour;
+                $total = $totalLookup[$key] ?? 0;
+                $delivered = $deliveredLookup[$key] ?? 0;
+                
+                if ($total > 0) {
+                    $hours[$hour] = round(($delivered / $total) * 100, 1);
+                } else {
+                    $hours[$hour] = null; // No data
+                }
+            }
+            $result[] = [
+                'day' => $dayNames[$day - 1],
+                'hours' => $hours,
             ];
         }
         
