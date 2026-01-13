@@ -1,7 +1,8 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Logo } from "@/components/layout/Logo";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { 
   Mail, 
   Phone, 
@@ -9,35 +10,107 @@ import {
   Clock, 
   MessageCircle,
   ArrowLeft,
-  Send
+  Send,
+  HelpCircle,
+  ShoppingBag,
+  Smile,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+
+type InquiryPurpose = "general" | "support" | "sales";
+
+interface PurposeOption {
+  id: InquiryPurpose;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  email: string;
+}
+
+const purposeOptions: PurposeOption[] = [
+  {
+    id: "general",
+    label: "General / Friendly Inquiry",
+    description: "Say hello, ask a question, or provide feedback",
+    icon: Smile,
+    email: "hello@ieosuia.com",
+  },
+  {
+    id: "support",
+    label: "Support / Technical Help",
+    description: "Get help with your account or technical issues",
+    icon: HelpCircle,
+    email: "support@ieosuia.com",
+  },
+  {
+    id: "sales",
+    label: "Sales / Quotes / Partnerships",
+    description: "Discuss pricing, volume discounts, or partnerships",
+    icon: ShoppingBag,
+    email: "sales@ieosuia.com",
+  },
+];
 
 export default function Contact() {
+  const [searchParams] = useSearchParams();
+  
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    subject: "",
     message: "",
   });
+  const [purpose, setPurpose] = useState<InquiryPurpose>("general");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Set purpose from URL params (for preselection from other pages)
+  useEffect(() => {
+    const purposeParam = searchParams.get("purpose") as InquiryPurpose;
+    if (purposeParam && ["general", "support", "sales"].includes(purposeParam)) {
+      setPurpose(purposeParam);
+    }
+  }, [searchParams]);
+
+  const getEmailRecipient = () => {
+    return purposeOptions.find(p => p.id === purpose)?.email || "hello@ieosuia.com";
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Simulate form submission
+    // Get origin URL for tracking
+    const originUrl = window.location.href;
+    
+    // Prepare email data
+    const emailData = {
+      name: formData.name,
+      email: formData.email,
+      message: formData.message,
+      purpose: purpose,
+      recipient: getEmailRecipient(),
+      cc: "info@ieosuia.com",
+      originUrl: originUrl,
+      subject: `[${purpose.toUpperCase()}] Contact Form - ${formData.name}`,
+    };
+    
+    console.log("Contact form submission:", emailData);
+    
+    // Simulate form submission (replace with actual API call when backend is ready)
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     toast({
       title: "Message Sent",
-      description: "Thank you for your message. We'll get back to you soon!",
+      description: `Thank you for your message. Our ${purpose === "sales" ? "sales" : purpose === "support" ? "support" : ""} team will get back to you soon!`,
     });
     
-    setFormData({ name: "", email: "", subject: "", message: "" });
+    setFormData({ name: "", email: "", message: "" });
+    setPurpose("general");
     setIsSubmitting(false);
   };
+
+  const selectedPurpose = purposeOptions.find(p => p.id === purpose);
 
   return (
     <div className="min-h-screen bg-background">
@@ -82,12 +155,16 @@ export default function Contact() {
                   <div>
                     <h3 className="font-semibold text-foreground text-lg">Email</h3>
                     <p className="text-muted-foreground mt-1">
-                      <strong>General Enquiries:</strong><br />
-                      <a href="mailto:hello@ieosuia.com" className="text-primary hover:underline">hello@ieosuia.com</a>
+                      <strong>General:</strong> hello@ieosuia.com
                     </p>
-                    <p className="text-muted-foreground mt-2">
-                      <strong>Support:</strong><br />
-                      <a href="mailto:support@ieosuia.com" className="text-primary hover:underline">support@ieosuia.com</a>
+                    <p className="text-muted-foreground">
+                      <strong>Support:</strong> support@ieosuia.com
+                    </p>
+                    <p className="text-muted-foreground">
+                      <strong>Sales:</strong> sales@ieosuia.com
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      Use the form to ensure your message reaches the right team
                     </p>
                   </div>
                 </div>
@@ -166,58 +243,96 @@ export default function Contact() {
             <div>
               <h2 className="text-2xl font-bold text-foreground mb-8">Send Us a Message</h2>
               
-              <form onSubmit={handleSubmit} className="bg-card rounded-xl p-6 border border-border space-y-4">
+              <form onSubmit={handleSubmit} className="bg-card rounded-xl p-6 border border-border space-y-5">
+                {/* Purpose Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Name</label>
+                  <Label className="mb-3 block">What can we help you with?</Label>
+                  <div className="grid gap-3">
+                    {purposeOptions.map((option) => {
+                      const Icon = option.icon;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setPurpose(option.id)}
+                          className={cn(
+                            "flex items-start gap-3 p-4 rounded-lg border text-left transition-all",
+                            purpose === option.id
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-primary/50"
+                          )}
+                        >
+                          <div className={cn(
+                            "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
+                            purpose === option.id ? "bg-primary/10" : "bg-muted"
+                          )}>
+                            <Icon className={cn(
+                              "h-5 w-5",
+                              purpose === option.id ? "text-primary" : "text-muted-foreground"
+                            )} />
+                          </div>
+                          <div>
+                            <p className={cn(
+                              "font-medium",
+                              purpose === option.id ? "text-primary" : "text-foreground"
+                            )}>
+                              {option.label}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {option.description}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="name">Name</Label>
                   <input
+                    id="name"
                     type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="mt-1.5 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="Your name"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
+                  <Label htmlFor="email">Email</Label>
                   <input
+                    id="email"
                     type="email"
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="mt-1.5 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="you@example.com"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Subject</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.subject}
-                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="What is this about?"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Message</label>
+                  <Label htmlFor="message">Message</Label>
                   <textarea
+                    id="message"
                     rows={5}
                     required
                     value={formData.message}
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                    className="mt-1.5 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-none"
                     placeholder="How can we help you?"
                   />
                 </div>
 
-                <p className="text-xs text-muted-foreground">
-                  Enquiry from IEOSUIA SMS Portal
-                </p>
+                <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                  <p className="text-muted-foreground">
+                    Your message will be sent to <strong className="text-foreground">{selectedPurpose?.email}</strong>
+                    {" "}with a copy to <strong className="text-foreground">info@ieosuia.com</strong>
+                  </p>
+                </div>
 
                 <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting ? (

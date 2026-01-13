@@ -157,7 +157,7 @@ const faqs = [
   },
   {
     question: "What happens if I need more than 500,000 messages?",
-    answer: "For volumes exceeding 500,000 messages, please contact our sales team at sales@ieosuia.com for custom Enterprise pricing tailored to your needs.",
+    answer: "For volumes exceeding 500,000 messages, please contact our sales team for custom Enterprise pricing tailored to your needs.",
   },
 ];
 
@@ -449,7 +449,7 @@ export default function Pricing() {
                   </tbody>
                 </table>
                 <div className="p-4 bg-muted/30 text-sm text-muted-foreground">
-                  * For 500,000+ emails, contact <a href="mailto:sales@ieosuia.com" className="text-primary hover:underline">sales@ieosuia.com</a>
+                  * For 500,000+ emails, <Link to="/contact?purpose=sales" className="text-primary hover:underline">contact our sales team</Link>
                 </div>
               </div>
             </TabsContent>
