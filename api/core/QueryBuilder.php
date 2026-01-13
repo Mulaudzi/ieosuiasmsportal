@@ -34,9 +34,18 @@ class QueryBuilder {
             $operator = '=';
         }
         
-        $this->wheres[] = "$column $operator ?";
+        $escapedColumn = $this->escapeColumn($column);
+        $this->wheres[] = "$escapedColumn $operator ?";
         $this->bindings[] = $value;
         return $this;
+    }
+    
+    private function escapeColumn(string $column): string {
+        // Don't escape if already escaped or contains functions/expressions
+        if (strpos($column, '`') !== false || strpos($column, '(') !== false || strpos($column, '.') !== false) {
+            return $column;
+        }
+        return "`$column`";
     }
     
     public function whereIn(string $column, array $values): self {
@@ -45,9 +54,28 @@ class QueryBuilder {
             return $this;
         }
         
+        $escapedColumn = $this->escapeColumn($column);
         $placeholders = implode(', ', array_fill(0, count($values), '?'));
-        $this->wheres[] = "$column IN ($placeholders)";
+        $this->wheres[] = "$escapedColumn IN ($placeholders)";
         $this->bindings = array_merge($this->bindings, $values);
+        return $this;
+    }
+    
+    public function whereNull(string $column): self {
+        $escapedColumn = $this->escapeColumn($column);
+        $this->wheres[] = "$escapedColumn IS NULL";
+        return $this;
+    }
+    
+    public function whereNotNull(string $column): self {
+        $escapedColumn = $this->escapeColumn($column);
+        $this->wheres[] = "$escapedColumn IS NOT NULL";
+        return $this;
+    }
+    
+    public function orderBy(string $column, string $direction = 'ASC'): self {
+        $escapedColumn = $this->escapeColumn($column);
+        $this->orderBy[] = "$escapedColumn $direction";
         return $this;
     }
     
@@ -120,7 +148,7 @@ class QueryBuilder {
     }
     
     public function insert(array $data): int {
-        $columns = implode(', ', array_keys($data));
+        $columns = implode(', ', array_map(fn($col) => $this->escapeColumn($col), array_keys($data)));
         $placeholders = implode(', ', array_fill(0, count($data), '?'));
         
         $sql = "INSERT INTO {$this->table} ($columns) VALUES ($placeholders)";
@@ -135,7 +163,8 @@ class QueryBuilder {
         $values = [];
         
         foreach ($data as $column => $value) {
-            $sets[] = "$column = ?";
+            $escapedColumn = $this->escapeColumn($column);
+            $sets[] = "$escapedColumn = ?";
             $values[] = $value;
         }
         
