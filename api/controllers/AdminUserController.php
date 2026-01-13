@@ -318,6 +318,41 @@ class AdminUserController {
     }
     
     /**
+     * Check if email belongs to an admin user (public endpoint for login form)
+     */
+    public function checkEmail(): void {
+        $data = Request::validate([
+            'email' => 'required|email|max:255',
+        ]);
+        
+        $admin = table('admin_users')
+            ->where('email', $data['email'])
+            ->first();
+        
+        if (!$admin) {
+            Response::success([
+                'is_admin' => false,
+            ]);
+            return;
+        }
+        
+        // Calculate remaining attempts
+        $remainingAttempts = max(0, 5 - ($admin['failed_attempts'] ?? 0));
+        
+        // Check if locked
+        $lockedUntil = null;
+        if ($admin['locked_until'] && strtotime($admin['locked_until']) > time()) {
+            $lockedUntil = $admin['locked_until'];
+        }
+        
+        Response::success([
+            'is_admin' => (bool) $admin['is_active'],
+            'remaining_attempts' => $remainingAttempts,
+            'locked_until' => $lockedUntil,
+        ]);
+    }
+    
+    /**
      * Check if email belongs to an admin user
      */
     public static function isAdminEmail(string $email): bool {
@@ -330,23 +365,28 @@ class AdminUserController {
     
     /**
      * Authenticate admin user with 3 passwords (used by login endpoint)
+     * Returns array with admin data on success, or array with error info on failure
      */
-    public static function authenticate(string $email, string $password1, string $password2, string $password3): ?array {
+    public static function authenticate(string $email, string $password1, string $password2, string $password3): array {
         $admin = table('admin_users')
             ->where('email', $email)
             ->where('is_active', 1)
             ->first();
         
         if (!$admin) {
-            return null;
+            return ['success' => false, 'error' => 'Admin not found'];
         }
         
         // Check if account is locked
         if ($admin['locked_until'] && strtotime($admin['locked_until']) > time()) {
-            return null;
+            return [
+                'success' => false, 
+                'error' => 'Account locked',
+                'locked_until' => $admin['locked_until'],
+            ];
         }
         
-        // Verify all 3 passwords
+        // Verify all 3 passwords together - don't reveal which one failed
         $allPasswordsValid = 
             password_verify($password1, $admin['password_1']) &&
             password_verify($password2, $admin['password_2']) &&
@@ -368,7 +408,14 @@ class AdminUserController {
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
             
-            return null;
+            $remainingAttempts = max(0, 5 - $failedAttempts);
+            
+            return [
+                'success' => false,
+                'error' => 'Authentication failed',
+                'remaining_attempts' => $remainingAttempts,
+                'locked_until' => $lockUntil,
+            ];
         }
         
         // Successful authentication - reset failed attempts and update login info
@@ -380,6 +427,9 @@ class AdminUserController {
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
-        return $admin;
+        return [
+            'success' => true,
+            'admin' => $admin,
+        ];
     }
 }

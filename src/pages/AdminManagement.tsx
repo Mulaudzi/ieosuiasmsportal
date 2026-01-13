@@ -105,6 +105,18 @@ export default function AdminManagement() {
   // Toggle status state
   const [isTogglingStatus, setIsTogglingStatus] = useState<number | null>(null);
 
+  // Create admin modal state
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    email: "",
+    password_1: "",
+    password_2: "",
+    password_3: "",
+    setup_key: "",
+  });
+
   // Check admin access
   useEffect(() => {
     if (user && user.account_type !== "admin") {
@@ -288,6 +300,56 @@ export default function AdminManagement() {
     }
   };
 
+  const handleCreateAdmin = async () => {
+    if (!createForm.name || !createForm.email || !createForm.password_1 || 
+        !createForm.password_2 || !createForm.password_3 || !createForm.setup_key) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (createForm.password_1.length < 12 || createForm.password_2.length < 12 || createForm.password_3.length < 12) {
+      toast({
+        title: "Weak passwords",
+        description: "Each password must be at least 12 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      await api.post("/admin-users/create", createForm);
+
+      toast({
+        title: "Success",
+        description: "Admin user created successfully",
+      });
+
+      setCreateModalOpen(false);
+      setCreateForm({
+        name: "",
+        email: "",
+        password_1: "",
+        password_2: "",
+        password_3: "",
+        setup_key: "",
+      });
+      fetchAdmins(true);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create admin user",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   if (user?.account_type !== "admin") {
     return null;
   }
@@ -315,7 +377,7 @@ export default function AdminManagement() {
             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button size="sm" onClick={() => navigate("/admin/setup")}>
+          <Button size="sm" onClick={() => setCreateModalOpen(true)}>
             <UserPlus className="h-4 w-4 mr-2" />
             Add Admin
           </Button>
@@ -342,7 +404,7 @@ export default function AdminManagement() {
                 <Button
                   variant="outline"
                   className="mt-4"
-                  onClick={() => navigate("/admin/setup")}
+                  onClick={() => setCreateModalOpen(true)}
                 >
                   <UserPlus className="h-4 w-4 mr-2" />
                   Create First Admin
@@ -563,6 +625,87 @@ export default function AdminManagement() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Admin Modal */}
+      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Admin User</DialogTitle>
+            <DialogDescription>
+              Admin users require 3 separate passwords for enhanced security
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Full Name</Label>
+                <Input
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                  placeholder="Administrator"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                  placeholder="admin@example.com"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Password 1 (min 12 chars)</Label>
+              <Input
+                type="password"
+                value={createForm.password_1}
+                onChange={(e) => setCreateForm({ ...createForm, password_1: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Password 2 (min 12 chars)</Label>
+              <Input
+                type="password"
+                value={createForm.password_2}
+                onChange={(e) => setCreateForm({ ...createForm, password_2: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Password 3 (min 12 chars)</Label>
+              <Input
+                type="password"
+                value={createForm.password_3}
+                onChange={(e) => setCreateForm({ ...createForm, password_3: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2 border-t pt-4">
+              <Label>Setup Key</Label>
+              <Input
+                type="password"
+                value={createForm.setup_key}
+                onChange={(e) => setCreateForm({ ...createForm, setup_key: e.target.value })}
+                placeholder="Required for admin creation"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateAdmin} disabled={isCreating}>
+              {isCreating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Admin"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
