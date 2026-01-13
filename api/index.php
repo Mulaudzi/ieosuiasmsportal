@@ -107,6 +107,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     
     // Contact form emails management (admin only)
     $router->get('/admin/contact-emails', 'ContactFormController@index');
+    $router->get('/admin/contact-emails/stats', 'ContactFormController@stats');
     $router->get('/admin/contact-emails/{id}', 'ContactFormController@show');
     $router->post('/admin/contact-emails/{id}/replied', 'ContactFormController@markReplied');
     $router->post('/admin/contact-emails/{id}/notes', 'ContactFormController@addNote');
@@ -208,6 +209,9 @@ $router->group(['middleware' => 'auth'], function($router) {
 
 // Contact Form (public)
 $router->post('/contact', 'ContactFormController@submit');
+
+// Email Bounce Webhook (public with secret validation)
+$router->post('/webhooks/email/bounce', 'ContactFormController@bounceWebhook');
 
 // DLR Webhook (public with secret validation) - Legacy
 $router->post('/dlr/webhook', 'DlrController@webhook');

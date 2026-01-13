@@ -245,6 +245,32 @@ interface ContactEmail {
   created_at: string;
 }
 
+interface ContactEmailStats {
+  total: number;
+  today: number;
+  this_week: number;
+  status: {
+    sent: number;
+    failed: number;
+    bounced: number;
+  };
+  read_status: {
+    read: number;
+    unread: number;
+  };
+  reply_status: {
+    replied: number;
+    pending: number;
+    response_rate: number;
+    avg_response_time: string | null;
+  };
+  purpose: {
+    general: number;
+    support: number;
+    sales: number;
+  };
+}
+
 const statusConfig = {
   pending: { label: "Pending", class: "status-pending", icon: Clock },
   approved: { label: "Approved", class: "status-delivered", icon: CheckCircle },
@@ -389,6 +415,7 @@ export default function AdminDashboard() {
   const [unreadContactCount, setUnreadContactCount] = useState(0);
   const [selectedEmail, setSelectedEmail] = useState<ContactEmail | null>(null);
   const [emailNotes, setEmailNotes] = useState("");
+  const [contactEmailStats, setContactEmailStats] = useState<ContactEmailStats | null>(null);
 
   // Admin access verification
   useEffect(() => {
@@ -443,7 +470,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes, contactStatsRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
@@ -455,6 +482,7 @@ export default function AdminDashboard() {
         api.get<{ health: SystemHealth }>("/admin/system-health"),
         api.get<{ heatmap: HeatmapData }>("/admin/activity-heatmap"),
         api.get<{ emails: ContactEmail[]; unread_count: number }>("/admin/contact-emails"),
+        api.get<{ stats: ContactEmailStats }>("/admin/contact-emails/stats"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
@@ -471,6 +499,7 @@ export default function AdminDashboard() {
         setContactEmails(contactRes.data?.emails || []);
         setUnreadContactCount(contactRes.data?.unread_count || 0);
       }
+      if (contactStatsRes.success) setContactEmailStats(contactStatsRes.data?.stats || null);
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -2065,7 +2094,101 @@ export default function AdminDashboard() {
         </TabsContent>
 
         <TabsContent value="contact-emails" className="mt-6">
-          <div className="space-y-4">
+          <div className="space-y-6">
+            {/* Contact Emails Stats */}
+            {contactEmailStats && (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {/* Total Submissions */}
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                      <Inbox className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-foreground">{contactEmailStats.total}</p>
+                      <p className="text-sm text-muted-foreground">Total Submissions</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-4 text-xs">
+                    <span className="text-muted-foreground">Today: <span className="font-medium text-foreground">{contactEmailStats.today}</span></span>
+                    <span className="text-muted-foreground">This Week: <span className="font-medium text-foreground">{contactEmailStats.this_week}</span></span>
+                  </div>
+                </div>
+
+                {/* Response Rate */}
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                      <Reply className="h-5 w-5 text-success" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-foreground">{contactEmailStats.reply_status.response_rate}%</p>
+                      <p className="text-sm text-muted-foreground">Response Rate</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-4 text-xs">
+                    <span className="text-muted-foreground">Replied: <span className="font-medium text-success">{contactEmailStats.reply_status.replied}</span></span>
+                    <span className="text-muted-foreground">Pending: <span className="font-medium text-warning">{contactEmailStats.reply_status.pending}</span></span>
+                  </div>
+                </div>
+
+                {/* Average Response Time */}
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
+                      <Clock className="h-5 w-5 text-accent" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-foreground">{contactEmailStats.reply_status.avg_response_time || '—'}</p>
+                      <p className="text-sm text-muted-foreground">Avg Response Time</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-4 text-xs">
+                    <span className="text-muted-foreground">Read: <span className="font-medium text-foreground">{contactEmailStats.read_status.read}</span></span>
+                    <span className="text-muted-foreground">Unread: <span className="font-medium text-primary">{contactEmailStats.read_status.unread}</span></span>
+                  </div>
+                </div>
+
+                {/* Delivery Status */}
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+                      <Mail className="h-5 w-5 text-warning" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-foreground">{contactEmailStats.status.sent}</p>
+                      <p className="text-sm text-muted-foreground">Delivered</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-4 text-xs">
+                    <span className="text-muted-foreground">Failed: <span className="font-medium text-destructive">{contactEmailStats.status.failed}</span></span>
+                    <span className="text-muted-foreground">Bounced: <span className="font-medium text-destructive">{contactEmailStats.status.bounced}</span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Purpose Breakdown */}
+            {contactEmailStats && (
+              <div className="rounded-xl border border-border bg-card p-4">
+                <h4 className="text-sm font-medium text-foreground mb-3">Submissions by Category</h4>
+                <div className="flex gap-6">
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-primary" />
+                    <span className="text-sm text-muted-foreground">General: <span className="font-medium text-foreground">{contactEmailStats.purpose.general}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-warning" />
+                    <span className="text-sm text-muted-foreground">Support: <span className="font-medium text-foreground">{contactEmailStats.purpose.support}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-success" />
+                    <span className="text-sm text-muted-foreground">Sales: <span className="font-medium text-foreground">{contactEmailStats.purpose.sales}</span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Contact Emails Header */}
             <div className="flex items-center justify-between">
               <div>
