@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Mail, Phone, Calendar, Shield, CheckCircle2, AlertCircle, User, Key, Save, Camera } from "lucide-react";
+import { Loader2, Mail, Phone, Calendar, Shield, CheckCircle2, AlertCircle, User, Key, Save, Camera, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import { AvatarUploadModal } from "@/components/profile/AvatarUploadModal";
+import { resetOnboarding } from "@/components/onboarding/OnboardingTrigger";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://sms.ieosuia.com/api";
 
@@ -415,6 +416,40 @@ export default function Profile() {
                     )}
                   </Button>
                 </form>
+              </CardContent>
+            </Card>
+
+            {/* Onboarding Settings Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <RotateCcw className="h-5 w-5" />
+                  Getting Started Guide
+                </CardTitle>
+                <CardDescription>Restart the onboarding walkthrough to learn about features</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Need a refresher? Restart the onboarding flow to walk through setting up campaigns step by step.
+                    </p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      resetOnboarding();
+                      toast({
+                        title: "Onboarding reset",
+                        description: "The getting started guide will show on your next Dashboard visit.",
+                      });
+                    }}
+                    className="shrink-0 ml-4"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Restart Guide
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
