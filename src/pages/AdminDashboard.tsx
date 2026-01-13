@@ -77,6 +77,10 @@ import {
   Reply,
   MessageCircle as MessageIcon,
   HelpCircle,
+  Plus,
+  Trash2,
+  Zap,
+  Radio,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -271,6 +275,24 @@ interface ContactEmailStats {
   };
 }
 
+interface ContactAlertRecipient {
+  id: string;
+  email: string;
+  name: string | null;
+  purpose: "all" | "general" | "support" | "sales";
+  is_active: boolean;
+  created_at: string;
+}
+
+interface RealtimeNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string | null;
+  data: Record<string, any> | null;
+  created_at: string;
+}
+
 const statusConfig = {
   pending: { label: "Pending", class: "status-pending", icon: Clock },
   approved: { label: "Approved", class: "status-delivered", icon: CheckCircle },
@@ -416,6 +438,18 @@ export default function AdminDashboard() {
   const [selectedEmail, setSelectedEmail] = useState<ContactEmail | null>(null);
   const [emailNotes, setEmailNotes] = useState("");
   const [contactEmailStats, setContactEmailStats] = useState<ContactEmailStats | null>(null);
+  
+  // Contact alert recipients state
+  const [alertRecipients, setAlertRecipients] = useState<ContactAlertRecipient[]>([]);
+  const [newAlertEmail, setNewAlertEmail] = useState("");
+  const [newAlertName, setNewAlertName] = useState("");
+  const [newAlertPurpose, setNewAlertPurpose] = useState<"all" | "general" | "support" | "sales">("all");
+  const [addingAlert, setAddingAlert] = useState(false);
+  const [deletingAlertId, setDeletingAlertId] = useState<string | null>(null);
+  
+  // Realtime notifications state
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [lastRealtimeId, setLastRealtimeId] = useState(0);
 
   // Admin access verification
   useEffect(() => {
@@ -470,7 +504,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes, contactStatsRes] = await Promise.all([
+      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes, contactStatsRes, alertsRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
         api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
         api.get<Stats>("/admin/stats"),
@@ -483,6 +517,7 @@ export default function AdminDashboard() {
         api.get<{ heatmap: HeatmapData }>("/admin/activity-heatmap"),
         api.get<{ emails: ContactEmail[]; unread_count: number }>("/admin/contact-emails"),
         api.get<{ stats: ContactEmailStats }>("/admin/contact-emails/stats"),
+        api.get<{ recipients: ContactAlertRecipient[] }>("/admin/contact-alerts"),
       ]);
 
       if (usersRes.success) setUsers(usersRes.data?.users || []);
@@ -500,10 +535,95 @@ export default function AdminDashboard() {
         setUnreadContactCount(contactRes.data?.unread_count || 0);
       }
       if (contactStatsRes.success) setContactEmailStats(contactStatsRes.data?.stats || null);
+      if (alertsRes.success) setAlertRecipients(alertsRes.data?.recipients || []);
     } catch (error) {
       handleApiError(error);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Realtime notification polling
+  useEffect(() => {
+    if (accessDenied || authLoading) return;
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await api.get<{ notifications: RealtimeNotification[]; last_id: number }>(`/admin/realtime/poll?last_id=${lastRealtimeId}`);
+        if (res.success && res.data?.notifications?.length) {
+          setLastRealtimeId(res.data.last_id);
+          setRealtimeConnected(true);
+          
+          // Show toast for each new notification
+          res.data.notifications.forEach((notif) => {
+            if (notif.type === 'new_contact_submission') {
+              toast({
+                title: notif.title,
+                description: notif.message,
+              });
+              // Increment unread count and refresh contact emails
+              setUnreadContactCount(prev => prev + 1);
+            }
+          });
+        }
+      } catch (error) {
+        setRealtimeConnected(false);
+      }
+    }, 5000); // Poll every 5 seconds
+    
+    return () => clearInterval(pollInterval);
+  }, [accessDenied, authLoading, lastRealtimeId]);
+  
+  // Add alert recipient
+  const handleAddAlertRecipient = async () => {
+    if (!newAlertEmail) {
+      toast({ title: "Email is required", variant: "destructive" });
+      return;
+    }
+    
+    setAddingAlert(true);
+    try {
+      const res = await api.post<{ recipient: ContactAlertRecipient }>("/admin/contact-alerts", {
+        email: newAlertEmail,
+        name: newAlertName || null,
+        purpose: newAlertPurpose,
+      });
+      
+      if (res.success && res.data?.recipient) {
+        setAlertRecipients(prev => [...prev, res.data!.recipient]);
+        setNewAlertEmail("");
+        setNewAlertName("");
+        setNewAlertPurpose("all");
+        toast({ title: "Alert recipient added" });
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setAddingAlert(false);
+    }
+  };
+  
+  // Delete alert recipient
+  const handleDeleteAlertRecipient = async (id: string) => {
+    setDeletingAlertId(id);
+    try {
+      await api.delete(`/admin/contact-alerts/${id}`);
+      setAlertRecipients(prev => prev.filter(r => r.id !== id));
+      toast({ title: "Alert recipient removed" });
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setDeletingAlertId(null);
+    }
+  };
+  
+  // Toggle alert recipient active status
+  const handleToggleAlertActive = async (id: string, isActive: boolean) => {
+    try {
+      await api.put(`/admin/contact-alerts/${id}`, { is_active: isActive });
+      setAlertRecipients(prev => prev.map(r => r.id === id ? { ...r, is_active: isActive } : r));
+    } catch (error) {
+      handleApiError(error);
     }
   };
   
@@ -2466,7 +2586,130 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* SMTP Settings Header */}
+            {/* Contact Alert Recipients */}
+            <div>
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  Contact Form Alert Recipients
+                  {realtimeConnected && (
+                    <span className="flex items-center gap-1 text-xs font-normal text-success bg-success/10 px-2 py-0.5 rounded-full">
+                      <Radio className="h-3 w-3 animate-pulse" />
+                      Live
+                    </span>
+                  )}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Configure additional email addresses that receive instant alerts when new contact form submissions arrive
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                {/* Add New Recipient Form */}
+                <div className="p-4 border-b border-border bg-muted/30">
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                      <Label htmlFor="alertEmail" className="text-xs text-muted-foreground">Email Address</Label>
+                      <Input
+                        id="alertEmail"
+                        type="email"
+                        placeholder="alert@example.com"
+                        value={newAlertEmail}
+                        onChange={(e) => setNewAlertEmail(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div className="w-40">
+                      <Label htmlFor="alertName" className="text-xs text-muted-foreground">Name (optional)</Label>
+                      <Input
+                        id="alertName"
+                        type="text"
+                        placeholder="John Doe"
+                        value={newAlertName}
+                        onChange={(e) => setNewAlertName(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div className="w-36">
+                      <Label htmlFor="alertPurpose" className="text-xs text-muted-foreground">Category</Label>
+                      <Select value={newAlertPurpose} onValueChange={(v: "all" | "general" | "support" | "sales") => setNewAlertPurpose(v)}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Categories</SelectItem>
+                          <SelectItem value="general">General Only</SelectItem>
+                          <SelectItem value="support">Support Only</SelectItem>
+                          <SelectItem value="sales">Sales Only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button onClick={handleAddAlertRecipient} disabled={addingAlert || !newAlertEmail} className="gap-2">
+                      {addingAlert ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Add Recipient
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Recipients List */}
+                {alertRecipients.length > 0 ? (
+                  <div className="divide-y divide-border">
+                    {alertRecipients.map((recipient) => (
+                      <div key={recipient.id} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-lg",
+                            recipient.is_active ? "bg-primary/10" : "bg-muted"
+                          )}>
+                            <Mail className={cn("h-4 w-4", recipient.is_active ? "text-primary" : "text-muted-foreground")} />
+                          </div>
+                          <div>
+                            <p className={cn("font-medium", !recipient.is_active && "text-muted-foreground")}>
+                              {recipient.name || recipient.email}
+                            </p>
+                            {recipient.name && <p className="text-sm text-muted-foreground">{recipient.email}</p>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className={cn(
+                            "rounded-full px-2 py-0.5 text-xs capitalize",
+                            recipient.purpose === "all" ? "bg-primary/10 text-primary" :
+                            recipient.purpose === "support" ? "bg-warning/10 text-warning" :
+                            recipient.purpose === "sales" ? "bg-success/10 text-success" :
+                            "bg-muted text-muted-foreground"
+                          )}>
+                            {recipient.purpose === "all" ? "All Categories" : recipient.purpose}
+                          </span>
+                          <Switch
+                            checked={recipient.is_active}
+                            onCheckedChange={(checked) => handleToggleAlertActive(recipient.id, checked)}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteAlertRecipient(recipient.id)}
+                            disabled={deletingAlertId === recipient.id}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            {deletingAlertId === recipient.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-12 text-center">
+                    <Zap className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                    <p className="mt-4 text-lg font-medium text-foreground">No alert recipients configured</p>
+                    <p className="text-sm text-muted-foreground">Add email addresses above to receive instant notifications for new contact form submissions</p>
+                  </div>
+                )}
+              </div>
+            </div>
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
