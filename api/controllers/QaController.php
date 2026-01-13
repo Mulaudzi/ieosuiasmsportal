@@ -24,7 +24,7 @@ class QaController
             exit;
         }
         
-        $data = Request::all();
+        $data = Request::input();
         self::$currentSystem = $data['system'] ?? 'all';
         self::$userMode = $data['user_mode'] ?? 'admin';
         $testType = $data['test_type'] ?? 'all'; // smoke, functional, integration, all
@@ -874,7 +874,7 @@ class QaController
             exit;
         }
         
-        $data = Request::all();
+        $data = Request::input();
         $system = $data['system'] ?? 'all';
         $prefix = 'QA_TEST_';
         
@@ -919,7 +919,7 @@ class QaController
             exit;
         }
         
-        $data = Request::all();
+        $data = Request::input();
         $prefix = $data['prefix'] ?? 'QA_TEST_';
         
         $cleaned = [];

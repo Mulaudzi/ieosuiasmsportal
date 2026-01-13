@@ -36,7 +36,7 @@ import Support from "./pages/Support";
 import Documentation from "./pages/Documentation";
 import Careers from "./pages/Careers";
 import Contact from "./pages/Contact";
-import SenderIds from "./pages/SenderIds";
+
 import CreateEmailCampaign from "./pages/CreateEmailCampaign";
 import AdminDashboard from "./pages/AdminDashboard";
 import QaConsole from "./pages/QaConsole";
@@ -87,7 +87,7 @@ const App = () => (
             <Route path="/reports" element={<ProtectedRoute requireVerified><Reports /></ProtectedRoute>} />
             <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            <Route path="/sender-ids" element={<ProtectedRoute><SenderIds /></ProtectedRoute>} />
+            
             <Route path="/qa" element={<ProtectedRoute><QaConsole /></ProtectedRoute>} />
             
             {/* Admin Routes */}

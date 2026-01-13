@@ -10,7 +10,6 @@ import {
   Settings,
   LogOut,
   ChevronRight,
-  Key,
   Shield,
   Bug,
 } from "lucide-react";
@@ -24,7 +23,6 @@ const navigation = [
   { name: "Email Campaigns", href: "/email-campaigns", icon: Mail },
   { name: "Contacts", href: "/contacts", icon: Users },
   { name: "Templates", href: "/templates", icon: FileText },
-  { name: "Sender IDs", href: "/sender-ids", icon: Key },
   { name: "Wallet", href: "/wallet", icon: Wallet },
   { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "QA Console", href: "/qa", icon: Bug },

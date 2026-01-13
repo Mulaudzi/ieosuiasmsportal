@@ -8,7 +8,16 @@ class WalletController {
         $wallet = table('wallets')->where('user_id', Auth::id())->first();
         
         if (!$wallet) {
-            Response::error('Wallet not found', 404);
+            // Create wallet if doesn't exist
+            $walletId = table('wallets')->insert([
+                'user_id' => Auth::id(),
+                'balance' => 0,
+                'reserved' => 0,
+                'currency' => 'ZAR',
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            $wallet = table('wallets')->where('id', $walletId)->first();
         }
         
         Response::success([
@@ -19,6 +28,45 @@ class WalletController {
                 'available' => (float) $wallet['balance'] - (float) $wallet['reserved'],
                 'currency' => $wallet['currency'],
             ]
+        ]);
+    }
+    
+    public function stats(): void {
+        $userId = Auth::id();
+        $wallet = table('wallets')->where('user_id', $userId)->first();
+        
+        if (!$wallet) {
+            // Create wallet if doesn't exist
+            $walletId = table('wallets')->insert([
+                'user_id' => $userId,
+                'balance' => 0,
+                'reserved' => 0,
+                'currency' => 'ZAR',
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            $wallet = table('wallets')->where('id', $walletId)->first();
+        }
+        
+        // Calculate used this month
+        $startOfMonth = date('Y-m-01 00:00:00');
+        $usedThisMonth = table('wallet_transactions')
+            ->where('wallet_id', $wallet['id'])
+            ->where('type', 'debit')
+            ->where('created_at', '>=', $startOfMonth)
+            ->sum('amount');
+        
+        // Calculate total spent (all time debits)
+        $totalSpent = table('wallet_transactions')
+            ->where('wallet_id', $wallet['id'])
+            ->where('type', 'debit')
+            ->where('status', 'completed')
+            ->sum('amount');
+        
+        Response::success([
+            'balance' => (float) $wallet['balance'],
+            'used_this_month' => abs((float) $usedThisMonth),
+            'total_spent' => abs((float) $totalSpent),
         ]);
     }
     

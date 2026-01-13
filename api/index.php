@@ -145,11 +145,11 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/realtime/poll', 'RealtimeController@poll');
     $router->post('/admin/realtime/cleanup', 'RealtimeController@cleanup');
     
-    // QA Console (admin only)
-    $router->post('/admin/qa/run', 'QaController@runTests');
-    $router->get('/admin/qa/health', 'QaController@healthOverview');
-    $router->post('/admin/qa/seed', 'QaController@seedTestData');
-    $router->post('/admin/qa/cleanup', 'QaController@cleanupTestData');
+    // QA Console (all authenticated users)
+    $router->post('/qa/run', 'QaController@runTests');
+    $router->get('/qa/health', 'QaController@healthOverview');
+    $router->post('/qa/seed', 'QaController@seedTestData');
+    $router->post('/qa/cleanup', 'QaController@cleanupTestData');
     
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
@@ -206,19 +206,11 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/attachments/upload', 'CampaignController@uploadAttachment');
     $router->delete('/attachments/{id}', 'CampaignController@deleteAttachment');
     
-    // Sender IDs
-    $router->get('/sender-ids', 'SenderIdController@index');
-    $router->post('/sender-ids', 'SenderIdController@store');
-    $router->put('/sender-ids/{id}', 'SenderIdController@update');
-    $router->delete('/sender-ids/{id}', 'SenderIdController@destroy');
-    $router->post('/sender-ids/{id}/default', 'SenderIdController@setDefault');
-    
-    // Admin: Sender ID approval
-    $router->post('/admin/sender-ids/{id}/approve', 'SenderIdController@approve');
-    $router->post('/admin/sender-ids/{id}/reject', 'SenderIdController@reject');
+    // Sender IDs - REMOVED
     
     // Wallet
     $router->get('/wallet', 'WalletController@index');
+    $router->get('/wallet/stats', 'WalletController@stats');
     $router->get('/wallet/transactions', 'WalletController@transactions');
     $router->post('/wallet/buy', 'WalletController@buy');
     
