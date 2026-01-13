@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { format } from "date-fns";
+import { format, formatDistanceToNow, differenceInSeconds, differenceInMinutes, differenceInHours, differenceInDays } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -198,6 +198,81 @@ const actionConfig: Record<string, { label: string; icon: React.ElementType; col
   smtp_settings_updated: { label: "SMTP Settings Updated", icon: Settings, color: "text-primary" },
   notification_settings_updated: { label: "Notification Settings Updated", icon: Bell, color: "text-primary" },
 };
+
+// Scheduled Campaign Card with Countdown Timer
+function ScheduledCampaignCard({ campaign, isPast }: { campaign: ScheduledCampaign; isPast: boolean }) {
+  const [countdown, setCountdown] = useState<string>("");
+
+  useEffect(() => {
+    const updateCountdown = () => {
+      const now = new Date();
+      const scheduledDate = new Date(campaign.scheduled_at);
+      
+      if (scheduledDate <= now) {
+        setCountdown("Overdue");
+        return;
+      }
+
+      const diffSecs = differenceInSeconds(scheduledDate, now);
+      const diffMins = differenceInMinutes(scheduledDate, now);
+      const diffHours = differenceInHours(scheduledDate, now);
+      const diffDays = differenceInDays(scheduledDate, now);
+
+      if (diffDays > 0) {
+        const hours = diffHours % 24;
+        setCountdown(`${diffDays}d ${hours}h`);
+      } else if (diffHours > 0) {
+        const mins = diffMins % 60;
+        setCountdown(`${diffHours}h ${mins}m`);
+      } else if (diffMins > 0) {
+        const secs = diffSecs % 60;
+        setCountdown(`${diffMins}m ${secs}s`);
+      } else {
+        setCountdown(`${diffSecs}s`);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [campaign.scheduled_at]);
+
+  return (
+    <div className={cn(
+      "rounded-lg border p-4 transition-colors",
+      isPast ? "border-warning bg-warning/5" : "border-border bg-muted/30"
+    )}>
+      <div className="flex items-start justify-between mb-3">
+        <div className={cn(
+          "flex h-8 w-8 items-center justify-center rounded-lg",
+          campaign.type === "sms" ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
+        )}>
+          {campaign.type === "sms" ? <MessageSquare className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+        </div>
+        <div className={cn(
+          "text-right",
+          isPast ? "text-warning" : "text-primary"
+        )}>
+          <div className="text-lg font-bold font-mono">{countdown}</div>
+          <div className="text-xs text-muted-foreground">
+            {isPast ? "overdue" : "remaining"}
+          </div>
+        </div>
+      </div>
+      <h4 className="font-medium text-foreground truncate mb-1">{campaign.name}</h4>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{campaign.user?.name || "Unknown"}</span>
+        <span className="flex items-center gap-1">
+          <Users className="h-3 w-3" />
+          {campaign.total_recipients}
+        </span>
+      </div>
+      <div className="mt-2 text-xs text-muted-foreground">
+        {format(new Date(campaign.scheduled_at), "MMM d, yyyy 'at' h:mm a")}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -729,6 +804,56 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Scheduled Campaigns Widget */}
+      {scheduledCampaigns.length > 0 && (
+        <div className="mb-8 rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-2">
+              <Timer className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold text-foreground">Upcoming Scheduled Campaigns</h3>
+              <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+                {scheduledCampaigns.length}
+              </span>
+            </div>
+            <Button 
+              size="sm"
+              onClick={handleRunScheduledCampaigns} 
+              disabled={runningCron}
+              className="gap-2"
+            >
+              {runningCron ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              Process Now
+            </Button>
+          </div>
+          <div className="p-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {scheduledCampaigns.slice(0, 6).map((campaign) => {
+                const scheduledDate = new Date(campaign.scheduled_at);
+                const now = new Date();
+                const isPast = scheduledDate <= now;
+                
+                return (
+                  <ScheduledCampaignCard 
+                    key={campaign.id} 
+                    campaign={campaign} 
+                    isPast={isPast} 
+                  />
+                );
+              })}
+            </div>
+            {scheduledCampaigns.length > 6 && (
+              <p className="text-center text-sm text-muted-foreground mt-4">
+                +{scheduledCampaigns.length - 6} more scheduled campaigns
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <Tabs defaultValue="sender-ids">
         <TabsList>
