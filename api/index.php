@@ -14,7 +14,12 @@ require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/RateLimiter.php';
 require_once __DIR__ . '/core/EmailValidator.php';
 require_once __DIR__ . '/core/RecaptchaValidator.php';
-require_once __DIR__ . '/services/EmailService.php';
+
+// Load services (with graceful handling)
+$emailServicePath = __DIR__ . '/services/EmailService.php';
+if (file_exists($emailServicePath)) {
+    require_once $emailServicePath;
+}
 
 // CORS Headers
 header('Access-Control-Allow-Origin: *');
