@@ -1,24 +1,23 @@
 import { Link } from "react-router-dom";
-import { Zap, ArrowLeft, Shield, CheckCircle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Shield, CheckCircle, AlertCircle } from "lucide-react";
+import { Logo } from "@/components/layout/Logo";
+import { Footer } from "@/components/layout/Footer";
 
 export default function PopiaCompliance() {
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        <div className="flex items-center gap-3 mb-8">
-          <Link to="/landing" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Zap className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold text-foreground">IEOSUIA SMS PORTAL</span>
+      {/* Navigation */}
+      <nav className="bg-background border-b border-border">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <Logo size="md" linkTo="/landing" />
+          <Link to="/landing" className="inline-flex items-center gap-2 text-primary hover:underline">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Home
           </Link>
         </div>
+      </nav>
 
-        <Link to="/landing" className="inline-flex items-center gap-2 text-primary hover:underline mb-8">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Home
-        </Link>
-
+      <div className="max-w-4xl mx-auto px-6 py-12">
         <div className="flex items-center gap-3 mb-6">
           <Shield className="h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold text-foreground">POPIA Compliance</h1>
@@ -250,9 +249,9 @@ export default function PopiaCompliance() {
             <div className="bg-muted/50 rounded-lg p-4">
               <p className="text-muted-foreground">
                 <strong className="text-foreground">Information Officer:</strong> IEOSUIA PTY LTD<br />
-                <strong className="text-foreground">Email:</strong> privacy@ieosuia.com<br />
-                <strong className="text-foreground">Address:</strong> 106 Harry Street, Robertsham, Johannesburg, 2190<br />
-                <strong className="text-foreground">Phone:</strong> +27 11 123 4567
+                <strong className="text-foreground">Email:</strong> <a href="mailto:hello@ieosuia.com" className="text-primary hover:underline">hello@ieosuia.com</a><br />
+                <strong className="text-foreground">Address:</strong> 26 Rock Alder, Extension 15, Naturena, Johannesburg, 2095<br />
+                <strong className="text-foreground">Phone:</strong> 079 928 2775 / 063 154 0696
               </p>
             </div>
           </section>
@@ -288,26 +287,9 @@ export default function PopiaCompliance() {
             </ul>
           </section>
         </div>
-
-        {/* Footer */}
-        <div className="mt-12 pt-8 border-t border-border text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Zap className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="text-lg font-bold text-foreground">IEOSUIA SMS PORTAL</span>
-          </div>
-          <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
-            <Link to="/terms-of-service" className="hover:text-foreground">Terms of Service</Link>
-            <Link to="/privacy-policy" className="hover:text-foreground">Privacy Policy</Link>
-            <Link to="/cookie-policy" className="hover:text-foreground">Cookie Policy</Link>
-            <Link to="/support" className="hover:text-foreground">Support</Link>
-          </div>
-          <p className="mt-4 text-sm text-muted-foreground">
-            © {new Date().getFullYear()} IEOSUIA SMS PORTAL. All rights reserved.
-          </p>
-        </div>
       </div>
+
+      <Footer variant="full" />
     </div>
   );
 }

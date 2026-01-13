@@ -32,6 +32,7 @@ import PopiaCompliance from "./pages/PopiaCompliance";
 import Support from "./pages/Support";
 import Documentation from "./pages/Documentation";
 import Careers from "./pages/Careers";
+import Contact from "./pages/Contact";
 import SenderIds from "./pages/SenderIds";
 import CreateEmailCampaign from "./pages/CreateEmailCampaign";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -61,6 +62,7 @@ const App = () => (
             <Route path="/support" element={<Support />} />
             <Route path="/documentation" element={<Documentation />} />
             <Route path="/careers" element={<Careers />} />
+            <Route path="/contact" element={<Contact />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/sms-campaigns" element={<ProtectedRoute requireVerified><SmsCampaigns /></ProtectedRoute>} />

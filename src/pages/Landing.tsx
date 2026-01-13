@@ -12,9 +12,6 @@ import {
   Zap,
   Check,
   ArrowRight,
-  Phone,
-  MapPin,
-  Clock,
   MessageCircle,
   ChevronDown,
   ChevronUp,
@@ -154,7 +151,7 @@ export default function Landing() {
             <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">How it Works</a>
             <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
-            <a href="#contact" className="text-muted-foreground hover:text-foreground transition-colors">Contact</a>
+            <Link to="/contact" className="text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
           </div>
           <div className="flex items-center gap-3">
             <Link to="/login">
@@ -324,92 +321,6 @@ export default function Landing() {
                 </>
               )}
             </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Contact Section */}
-      <section id="contact" className="py-20 px-4">
-        <div className="container mx-auto max-w-4xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Get in Touch
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Have questions? We're here to help.
-            </p>
-          </div>
-          <div className="grid gap-8 md:grid-cols-2">
-            <div className="space-y-6">
-              <div className="flex items-start gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                  <Mail className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-foreground">Email</h4>
-                  <p className="text-muted-foreground">hello@ieosuia.com</p>
-                  <p className="text-sm text-muted-foreground">Support: support@ieosuia.com</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                  <Phone className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-foreground">Phone (Calls Only)</h4>
-                  <p className="text-muted-foreground">079 928 2775</p>
-                  <p className="text-muted-foreground">063 154 0696</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                  <MapPin className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-foreground">Address</h4>
-                  <p className="text-muted-foreground">26 Rock Alder, Extension 15<br />Naturena, Johannesburg, 2095</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                  <Clock className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-foreground">Business Hours</h4>
-                  <p className="text-muted-foreground">Mon - Fri: 8:00 AM - 5:00 PM</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-card rounded-xl p-6 border border-border">
-              <form className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Name</label>
-                  <input
-                    type="text"
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="Your name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
-                  <input
-                    type="email"
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="you@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Message</label>
-                  <textarea
-                    rows={4}
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                    placeholder="How can we help?"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">Enquiry from IEOSUIA SMS Portal</p>
-                <Button type="submit" className="w-full">Send Message</Button>
-              </form>
-            </div>
           </div>
         </div>
       </section>
