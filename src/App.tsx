@@ -2,11 +2,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, ProtectedRoute } from "@/hooks/useAuth";
+import { AdminRoute } from "@/components/auth/AdminRoute";
 import { CookieConsent } from "@/components/CookieConsent";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import AdminLogin from "./pages/AdminLogin";
 import Register from "./pages/Register";
 import GoogleCallback from "./pages/GoogleCallback";
 import VerifyEmail from "./pages/VerifyEmail";
@@ -68,6 +70,7 @@ const App = () => (
             <Route path="/careers" element={<Careers />} />
             <Route path="/contact" element={<Contact />} />
             
+            {/* User Dashboard Routes */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/sms-campaigns" element={<ProtectedRoute requireVerified><SmsCampaigns /></ProtectedRoute>} />
@@ -77,9 +80,6 @@ const App = () => (
             <Route path="/email-campaigns/new" element={<ProtectedRoute requireVerified><CreateEmailCampaign /></ProtectedRoute>} />
             <Route path="/email-campaigns/:id" element={<ProtectedRoute requireVerified><CampaignDetails /></ProtectedRoute>} />
             <Route path="/contacts" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
-            <Route path="/admin/users" element={<ProtectedRoute><AdminManagement /></ProtectedRoute>} />
-            <Route path="/admin/qa" element={<ProtectedRoute><QaConsole /></ProtectedRoute>} />
             <Route path="/contacts/import" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute requireVerified><Templates /></ProtectedRoute>} />
             <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
@@ -87,6 +87,13 @@ const App = () => (
             <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/sender-ids" element={<ProtectedRoute><SenderIds /></ProtectedRoute>} />
+            
+            {/* Admin Routes */}
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+            <Route path="/admin/users" element={<AdminRoute><AdminManagement /></AdminRoute>} />
+            <Route path="/admin/qa" element={<AdminRoute><QaConsole /></AdminRoute>} />
+            
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
