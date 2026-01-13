@@ -2,9 +2,6 @@ import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
-// Email allowed to access QA Console
-const QA_ALLOWED_EMAIL = "vendaboy.lm@gmail.com";
-
 interface QaRouteProps {
   children: ReactNode;
 }
@@ -18,15 +15,9 @@ export function QaRoute({ children }: QaRouteProps) {
   useEffect(() => {
     if (isLoading) return;
 
-    // Check if user is authenticated
+    // Check if user is authenticated - QA is now available to all authenticated users
     if (!user) {
       navigate("/login", { replace: true });
-      return;
-    }
-
-    // Check if user has the allowed email
-    if (user.email !== QA_ALLOWED_EMAIL) {
-      navigate("/dashboard", { replace: true });
       return;
     }
 
