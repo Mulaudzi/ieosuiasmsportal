@@ -23,7 +23,7 @@ class SmsService {
         $this->logicSmsPassword = env('LOGICSMS_PASSWORD');
     }
     
-    public function send(string $phone, string $message, string $senderId = null): array {
+    public function send(string $phone, string $message, ?string $senderId = null): array {
         $senderId = $senderId ?? env('SMS_DEFAULT_SENDER', 'IEOSUIA');
         
         // Try primary gateway (Telnyx)

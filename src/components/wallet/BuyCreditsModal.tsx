@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,9 +17,11 @@ import {
   Copy,
   Check,
   Loader2,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { buyCredits, handleApiError } from "@/lib/api";
 
 interface BuyCreditsModalProps {
   open: boolean;
@@ -34,7 +36,12 @@ const paymentMethods = [
     name: "PayFast",
     description: "Credit/Debit Card",
     icon: CreditCard,
-    logos: ["Visa", "Mastercard"],
+  },
+  {
+    id: "paystack",
+    name: "Paystack",
+    description: "Cards & Mobile Money",
+    icon: Wallet,
   },
   {
     id: "ozow",
@@ -69,6 +76,15 @@ export function BuyCreditsModal({
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [paymentReference, setPaymentReference] = useState<string>("");
+  const [eftBankDetails, setEftBankDetails] = useState<any>(null);
+
+  // Update credits when selectedCredits prop changes
+  useEffect(() => {
+    if (selectedCredits > 0) {
+      setCredits(selectedCredits);
+    }
+  }, [selectedCredits]);
 
   const pricePerSms = 0.27;
   const vatRate = 0.15;
@@ -110,36 +126,60 @@ export function BuyCreditsModal({
 
     setIsProcessing(true);
 
-    // Simulate payment processing
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      const response = await buyCredits({
+        amount: total,
+        payment_method: selectedPayment,
+      });
 
-    if (selectedPayment === "eft") {
-      toast({
-        title: "Order placed!",
-        description: "Please complete the EFT payment. Credits will be added once payment is confirmed.",
-      });
-      setStep("confirmation");
-    } else {
-      // For PayFast and Ozow, would redirect to payment gateway
-      toast({
-        title: "Redirecting to payment...",
-        description: `You will be redirected to ${selectedPayment === "payfast" ? "PayFast" : "Ozow"} to complete payment.`,
-      });
-      // Simulate redirect
-      setTimeout(() => {
-        setStep("confirmation");
-        setIsProcessing(false);
-      }, 1500);
+      if (response.success && response.data) {
+        const { payment_url, bank_details, reference } = response.data;
+        setPaymentReference(reference);
+
+        if (selectedPayment === "eft") {
+          // For EFT, show bank details
+          setEftBankDetails(bank_details);
+          toast({
+            title: "Order placed!",
+            description: "Please complete the EFT payment. Credits will be added once payment is confirmed.",
+          });
+          setStep("confirmation");
+        } else if (payment_url) {
+          // For PayFast, Paystack, Ozow - redirect to payment URL
+          toast({
+            title: "Redirecting to payment...",
+            description: `You will be redirected to ${selectedPayment === "payfast" ? "PayFast" : selectedPayment === "paystack" ? "Paystack" : "Ozow"} to complete payment.`,
+          });
+          
+          // Small delay to show toast, then redirect
+          setTimeout(() => {
+            window.location.href = payment_url;
+          }, 1000);
+        } else {
+          // Fallback if no payment URL (shouldn't happen)
+          toast({
+            title: "Payment initiated",
+            description: "Your payment is being processed.",
+          });
+          setStep("confirmation");
+        }
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setIsProcessing(false);
     }
-
-    setIsProcessing(false);
   };
 
   const resetModal = () => {
     setStep("order");
     setSelectedPayment(null);
+    setPaymentReference("");
+    setEftBankDetails(null);
     onOpenChange(false);
   };
+
+  const displayBankDetails = eftBankDetails || bankDetails;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -205,7 +245,7 @@ export function BuyCreditsModal({
               <div className="space-y-6">
                 <div>
                   <h3 className="font-medium text-foreground mb-4">Select your payment method</h3>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {paymentMethods.map((method) => (
                       <button
                         key={method.id}
@@ -230,11 +270,25 @@ export function BuyCreditsModal({
                     <div className="flex items-center gap-2 mb-2">
                       <CreditCard className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm text-muted-foreground">
-                        Credit / Debit selected for checkout
+                        Credit / Debit Card via PayFast
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      After clicking 'Complete Purchase' you will be redirected to PayFast to securely complete your payment.
+                      You will be redirected to PayFast to securely complete your payment with Visa, Mastercard, or other supported cards.
+                    </p>
+                  </div>
+                )}
+
+                {selectedPayment === "paystack" && (
+                  <div className="bg-muted/50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Wallet className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        Cards & Mobile Money via Paystack
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      You will be redirected to Paystack to complete your payment using cards or mobile money.
                     </p>
                   </div>
                 )}
@@ -254,80 +308,15 @@ export function BuyCreditsModal({
                 )}
 
                 {selectedPayment === "eft" && (
-                  <div className="space-y-4">
-                    <div className="bg-muted/50 rounded-lg p-4">
-                      <h4 className="font-medium text-foreground mb-3">Bank Details</h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Bank</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{bankDetails.bankName}</span>
-                            <button onClick={() => handleCopy(bankDetails.bankName, "Bank")}>
-                              {copied === "Bank" ? (
-                                <Check className="h-4 w-4 text-success" />
-                              ) : (
-                                <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Account Name</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{bankDetails.accountName}</span>
-                            <button onClick={() => handleCopy(bankDetails.accountName, "Account Name")}>
-                              {copied === "Account Name" ? (
-                                <Check className="h-4 w-4 text-success" />
-                              ) : (
-                                <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Account Number</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{bankDetails.accountNumber}</span>
-                            <button onClick={() => handleCopy(bankDetails.accountNumber, "Account Number")}>
-                              {copied === "Account Number" ? (
-                                <Check className="h-4 w-4 text-success" />
-                              ) : (
-                                <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Branch Code</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{bankDetails.branchCode}</span>
-                            <button onClick={() => handleCopy(bankDetails.branchCode, "Branch Code")}>
-                              {copied === "Branch Code" ? (
-                                <Check className="h-4 w-4 text-success" />
-                              ) : (
-                                <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Reference</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-primary">{bankDetails.reference}{Math.random().toString(36).substr(2, 8).toUpperCase()}</span>
-                            <button onClick={() => handleCopy(`${bankDetails.reference}${Math.random().toString(36).substr(2, 8).toUpperCase()}`, "Reference")}>
-                              {copied === "Reference" ? (
-                                <Check className="h-4 w-4 text-success" />
-                              ) : (
-                                <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                  <div className="bg-muted/50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        Manual EFT / Bank Transfer
+                      </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Credits will be added to your account within 24 hours after payment confirmation.
-                      Please use the unique reference above for faster processing.
+                      You will receive bank details to complete a manual transfer. Credits will be added within 24 hours after payment confirmation.
                     </p>
                   </div>
                 )}
@@ -336,19 +325,52 @@ export function BuyCreditsModal({
 
             {/* Step 3: Confirmation */}
             {step === "confirmation" && (
-              <div className="text-center py-8">
-                <div className="h-16 w-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
-                  <Check className="h-8 w-8 text-success" />
+              <div className="space-y-6">
+                <div className="text-center py-4">
+                  <div className="h-16 w-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
+                    <Check className="h-8 w-8 text-success" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-foreground mb-2">
+                    Order Placed!
+                  </h3>
+                  <p className="text-muted-foreground">
+                    Reference: <span className="font-mono font-medium">{paymentReference}</span>
+                  </p>
                 </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">
-                  {selectedPayment === "eft" ? "Order Placed!" : "Payment Successful!"}
-                </h3>
-                <p className="text-muted-foreground mb-6">
-                  {selectedPayment === "eft"
-                    ? "Please complete the EFT payment using the bank details provided. Your credits will be added once payment is confirmed."
-                    : `${credits.toLocaleString()} credits have been added to your account.`}
-                </p>
-                <Button onClick={resetModal}>Back to Wallet</Button>
+
+                {selectedPayment === "eft" && displayBankDetails && (
+                  <div className="bg-muted/50 rounded-lg p-4">
+                    <h4 className="font-medium text-foreground mb-3">Bank Details</h4>
+                    <div className="space-y-3">
+                      {[
+                        { label: "Bank", value: displayBankDetails.bank_name || displayBankDetails.bankName },
+                        { label: "Account Name", value: displayBankDetails.account_name || displayBankDetails.accountName },
+                        { label: "Account Number", value: displayBankDetails.account_number || displayBankDetails.accountNumber },
+                        { label: "Branch Code", value: displayBankDetails.branch_code || displayBankDetails.branchCode },
+                        { label: "Reference", value: displayBankDetails.reference || paymentReference },
+                      ].map((item) => (
+                        <div key={item.label} className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">{item.label}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{item.value}</span>
+                            <button onClick={() => handleCopy(item.value, item.label)}>
+                              {copied === item.label ? (
+                                <Check className="h-4 w-4 text-success" />
+                              ) : (
+                                <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-4">
+                      Credits will be added to your account within 24 hours after payment confirmation.
+                    </p>
+                  </div>
+                )}
+
+                <Button onClick={resetModal} className="w-full">Back to Wallet</Button>
               </div>
             )}
           </div>

@@ -97,13 +97,22 @@ class WalletController {
     public function buy(): void {
         $data = Request::validate([
             'amount' => 'required|numeric|min:10',
-            'payment_method' => 'required|in:payfast,ozow,eft',
+            'payment_method' => 'required|in:payfast,paystack,ozow,eft',
         ]);
         
         $wallet = table('wallets')->where('user_id', Auth::id())->first();
         
         if (!$wallet) {
-            Response::error('Wallet not found', 404);
+            // Create wallet if doesn't exist
+            $walletId = table('wallets')->insert([
+                'user_id' => Auth::id(),
+                'balance' => 0,
+                'reserved' => 0,
+                'currency' => 'ZAR',
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            $wallet = table('wallets')->where('id', $walletId)->first();
         }
         
         $amount = (float) $data['amount'];
@@ -127,6 +136,9 @@ class WalletController {
         switch ($data['payment_method']) {
             case 'payfast':
                 $paymentUrl = $this->generatePayFastUrl($amount, $reference);
+                break;
+            case 'paystack':
+                $paymentUrl = $this->generatePaystackUrl($amount, $reference);
                 break;
             case 'ozow':
                 $paymentUrl = $this->generateOzowUrl($amount, $reference);
@@ -220,5 +232,49 @@ class WalletController {
         $baseUrl = $sandbox ? 'https://pay.ozow.com' : 'https://pay.ozow.com';
         
         return $baseUrl . '?' . http_build_query($data);
+    }
+    
+    /**
+     * Generate Paystack payment URL
+     */
+    private function generatePaystackUrl(float $amount, string $reference): string {
+        $publicKey = env('PAYSTACK_PUBLIC_KEY');
+        $secretKey = env('PAYSTACK_SECRET_KEY');
+        
+        $user = Auth::user();
+        
+        // Initialize transaction via Paystack API
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => 'https://api.paystack.co/transaction/initialize',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode([
+                'email' => $user['email'],
+                'amount' => (int) ($amount * 100), // Paystack uses kobo/cents
+                'reference' => $reference,
+                'callback_url' => env('FRONTEND_URL') . '/wallet?success=1',
+                'metadata' => [
+                    'user_id' => $user['id'],
+                    'user_name' => $user['name'],
+                ],
+            ]),
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $secretKey,
+                'Content-Type: application/json',
+            ],
+        ]);
+        
+        $response = curl_exec($ch);
+        curl_close($ch);
+        
+        $result = json_decode($response, true);
+        
+        if ($result && $result['status'] && isset($result['data']['authorization_url'])) {
+            return $result['data']['authorization_url'];
+        }
+        
+        // Fallback to manual URL construction
+        return 'https://paystack.com/pay/' . $reference;
     }
 }
