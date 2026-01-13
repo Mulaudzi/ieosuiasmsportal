@@ -80,34 +80,45 @@ export default function Contact() {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Get origin URL for tracking
-    const originUrl = window.location.href;
-    
-    // Prepare email data
-    const emailData = {
-      name: formData.name,
-      email: formData.email,
-      message: formData.message,
-      purpose: purpose,
-      recipient: getEmailRecipient(),
-      cc: "info@ieosuia.com",
-      originUrl: originUrl,
-      subject: `[${purpose.toUpperCase()}] Contact Form - ${formData.name}`,
-    };
-    
-    console.log("Contact form submission:", emailData);
-    
-    // Simulate form submission (replace with actual API call when backend is ready)
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    toast({
-      title: "Message Sent",
-      description: `Thank you for your message. Our ${purpose === "sales" ? "sales" : purpose === "support" ? "support" : ""} team will get back to you soon!`,
-    });
-    
-    setFormData({ name: "", email: "", message: "" });
-    setPurpose("general");
-    setIsSubmitting(false);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://sms.ieosuia.com/api';
+      
+      const response = await fetch(`${apiUrl}/contact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          message: formData.message,
+          purpose: purpose,
+          originUrl: window.location.href,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send message');
+      }
+      
+      toast({
+        title: "Message Sent",
+        description: `Thank you for your message. Our ${purpose === "sales" ? "sales" : purpose === "support" ? "support" : ""} team will get back to you soon!`,
+      });
+      
+      setFormData({ name: "", email: "", message: "" });
+      setPurpose("general");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const selectedPurpose = purposeOptions.find(p => p.id === purpose);
