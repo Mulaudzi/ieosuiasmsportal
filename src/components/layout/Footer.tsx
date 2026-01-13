@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { Facebook, Youtube, Mail, Phone, MapPin } from "lucide-react";
-import ieosuiaLogo from "@/assets/ieosuia-logo.png";
+import { Facebook, Youtube, Instagram } from "lucide-react";
+import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
 
 interface FooterProps {
   variant?: "full" | "simple";
@@ -12,11 +12,7 @@ export function Footer({ variant = "full" }: FooterProps) {
       <footer className="bg-sidebar py-8 px-4">
         <div className="container mx-auto max-w-6xl text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <img src={ieosuiaLogo} alt="IEOSUIA" className="h-8 w-auto" />
-            <div className="flex flex-col items-start">
-              <span className="text-lg font-bold text-sidebar-primary-foreground leading-tight">IEOSUIA</span>
-              <span className="text-[8px] text-sidebar-muted font-medium tracking-wider uppercase">SMS PORTAL</span>
-            </div>
+            <img src={smsPortalLogoWhite} alt="IEOSUIA SMS Portal" className="h-8 w-auto" />
           </div>
           <p className="text-sm text-sidebar-muted mb-4">
             Professional bulk SMS and email messaging platform for businesses.
@@ -27,10 +23,20 @@ export function Footer({ variant = "full" }: FooterProps) {
             <Link to="/popia-compliance" className="hover:text-sidebar-primary-foreground">POPIA Compliance</Link>
             <Link to="/cookie-policy" className="hover:text-sidebar-primary-foreground">Cookie Policy</Link>
             <Link to="/support" className="hover:text-sidebar-primary-foreground">Support</Link>
+            <Link to="/contact" className="hover:text-sidebar-primary-foreground">Contact</Link>
             <Link to="/landing" className="hover:text-sidebar-primary-foreground">Home</Link>
           </div>
           {/* Social Links */}
           <div className="flex justify-center gap-4 mb-4">
+            <a 
+              href="https://www.instagram.com/ieosuia/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-sidebar-muted hover:text-sidebar-primary-foreground transition-colors"
+              aria-label="Instagram"
+            >
+              <Instagram className="h-5 w-5" />
+            </a>
             <a 
               href="https://www.facebook.com/iegroupSA" 
               target="_blank" 
@@ -65,17 +71,22 @@ export function Footer({ variant = "full" }: FooterProps) {
           {/* Brand */}
           <div>
             <div className="flex items-center gap-3 mb-4">
-              <img src={ieosuiaLogo} alt="IEOSUIA" className="h-10 w-auto" />
-              <div className="flex flex-col">
-                <span className="text-lg font-bold text-sidebar-primary-foreground leading-tight">IEOSUIA</span>
-                <span className="text-[9px] text-sidebar-muted font-medium tracking-wider uppercase">SMS PORTAL</span>
-              </div>
+              <img src={smsPortalLogoWhite} alt="IEOSUIA SMS Portal" className="h-10 w-auto" />
             </div>
             <p className="text-sm text-sidebar-muted mb-4">
               Professional bulk SMS and email messaging platform for South African businesses.
             </p>
             {/* Social Links */}
             <div className="flex gap-3">
+              <a 
+                href="https://www.instagram.com/ieosuia/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-accent text-sidebar-muted hover:text-sidebar-primary-foreground transition-colors"
+                aria-label="Instagram"
+              >
+                <Instagram className="h-4 w-4" />
+              </a>
               <a 
                 href="https://www.facebook.com/iegroupSA" 
                 target="_blank" 
@@ -116,7 +127,7 @@ export function Footer({ variant = "full" }: FooterProps) {
               <li><Link to="/support" className="hover:text-sidebar-primary-foreground">Help Center</Link></li>
               <li><a href="https://www.youtube.com/@ieosuia" target="_blank" rel="noopener noreferrer" className="hover:text-sidebar-primary-foreground">Tutorials</a></li>
               <li><Link to="/careers" className="hover:text-sidebar-primary-foreground">Careers</Link></li>
-              <li><a href="#contact" className="hover:text-sidebar-primary-foreground">Contact Us</a></li>
+              <li><Link to="/contact" className="hover:text-sidebar-primary-foreground">Contact Us</Link></li>
             </ul>
           </div>
           
@@ -132,22 +143,8 @@ export function Footer({ variant = "full" }: FooterProps) {
           </div>
         </div>
         
-        {/* Contact Info */}
+        {/* Bottom section */}
         <div className="mt-8 pt-8 border-t border-sidebar-border">
-          <div className="grid gap-4 md:grid-cols-3 text-sm text-sidebar-muted mb-6">
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-primary" />
-              <span>hello@ieosuia.com</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Phone className="h-4 w-4 text-primary" />
-              <span>079 928 2775 / 063 154 0696</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-primary" />
-              <span>26 Rock Alder, Ext 15, Naturena, JHB</span>
-            </div>
-          </div>
           <div className="text-center text-sm text-sidebar-muted">
             © {new Date().getFullYear()} IEOSUIA. All rights reserved.
           </div>

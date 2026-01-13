@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Zap, Loader2, Eye, EyeOff, Shield } from "lucide-react";
+import { Loader2, Eye, EyeOff, Shield } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
 import { useGoogleAuth } from "@/hooks/useGoogleAuth";
+import smsPortalLogo from "@/assets/ieosuia-sms-portal-logo.png";
+import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
 
 // Admin multi-password configuration (hashed comparison would be better in production)
 const ADMIN_EMAIL = "admin@ieosuia.com";
@@ -192,11 +194,12 @@ export default function Login() {
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-sidebar items-center justify-center p-12">
         <div className="max-w-md">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-              <Zap className="h-7 w-7 text-primary-foreground" />
-            </div>
-            <span className="text-2xl font-bold text-sidebar-primary-foreground">IEOSUIA SMS PORTAL</span>
+          <div className="mb-8">
+            <img 
+              src={smsPortalLogoWhite} 
+              alt="IEOSUIA SMS Portal" 
+              className="h-14 w-auto"
+            />
           </div>
           <h1 className="text-4xl font-bold text-sidebar-primary-foreground mb-4">
             Welcome back!
@@ -230,11 +233,12 @@ export default function Login() {
       {/* Right Panel - Login Form */}
       <div className="flex-1 flex items-center justify-center p-8 bg-background">
         <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Zap className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold text-foreground">IEOSUIA SMS PORTAL</span>
+          <div className="lg:hidden flex items-center justify-center mb-8">
+            <img 
+              src={smsPortalLogo} 
+              alt="IEOSUIA SMS Portal" 
+              className="h-12 w-auto"
+            />
           </div>
 
           <div className="text-center mb-8">
