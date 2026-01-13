@@ -592,6 +592,144 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Quick Actions & Recent Activity Widgets */}
+      <div className="mb-8 grid gap-6 lg:grid-cols-2">
+        {/* Pending Approvals Quick Actions */}
+        <div className="rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-2">
+              <Key className="h-5 w-5 text-warning" />
+              <h3 className="font-semibold text-foreground">Pending Approvals</h3>
+              {pendingCount > 0 && (
+                <span className="rounded-full bg-warning px-2 py-0.5 text-xs font-medium text-warning-foreground">
+                  {pendingCount}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="p-4">
+            {senderIds.filter(s => s.status === "pending").length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <CheckCircle className="h-10 w-10 text-success/50 mb-2" />
+                <p className="text-sm text-muted-foreground">All caught up! No pending approvals.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {senderIds.filter(s => s.status === "pending").slice(0, 5).map((sender) => (
+                  <div key={sender.id} className="flex items-center justify-between rounded-lg border border-border bg-muted/30 p-3">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-lg",
+                        sender.type === "sms" ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
+                      )}>
+                        {sender.type === "sms" ? <MessageSquare className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {sender.sender_id || sender.sender_email}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{sender.user_email}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-success hover:bg-success/10 hover:text-success"
+                        onClick={() => handleApproveSenderId(sender.id)}
+                        disabled={actionLoading === `approve-${sender.id}`}
+                      >
+                        {actionLoading === `approve-${sender.id}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => handleRejectSenderId(sender.id)}
+                        disabled={actionLoading === `reject-${sender.id}`}
+                      >
+                        {actionLoading === `reject-${sender.id}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <X className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {senderIds.filter(s => s.status === "pending").length > 5 && (
+                  <p className="text-center text-xs text-muted-foreground pt-2">
+                    +{senderIds.filter(s => s.status === "pending").length - 5} more pending
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold text-foreground">Recent Activity</h3>
+            </div>
+          </div>
+          <div className="p-4">
+            {auditLogs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Activity className="h-10 w-10 text-muted-foreground/50 mb-2" />
+                <p className="text-sm text-muted-foreground">No recent activity</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {auditLogs.slice(0, 5).map((log) => {
+                  const config = actionConfig[log.action] || { 
+                    label: log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), 
+                    icon: Activity, 
+                    color: "text-muted-foreground" 
+                  };
+                  const ActionIcon = config.icon;
+                  
+                  return (
+                    <div key={log.id} className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                      <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg bg-muted", config.color)}>
+                        <ActionIcon className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{config.label}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {log.user_name || "System"} • {log.entity_type} {log.entity_id ? `#${log.entity_id}` : ""}
+                        </p>
+                      </div>
+                      <div className="text-xs text-muted-foreground whitespace-nowrap">
+                        {(() => {
+                          const date = new Date(log.created_at);
+                          const now = new Date();
+                          const diffMs = now.getTime() - date.getTime();
+                          const diffMins = Math.floor(diffMs / 60000);
+                          const diffHours = Math.floor(diffMs / 3600000);
+                          const diffDays = Math.floor(diffMs / 86400000);
+                          
+                          if (diffMins < 1) return "Just now";
+                          if (diffMins < 60) return `${diffMins}m ago`;
+                          if (diffHours < 24) return `${diffHours}h ago`;
+                          return `${diffDays}d ago`;
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       <Tabs defaultValue="sender-ids">
         <TabsList>
           <TabsTrigger value="sender-ids" className="gap-2">
