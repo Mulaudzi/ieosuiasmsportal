@@ -11,7 +11,8 @@ class CronController {
     public function status(): void {
         // Verify admin
         $user = Auth::user();
-        if (!$user || $user['role'] !== 'admin') {
+        // FIXED: Changed from checking non-existent 'role' column to 'account_type'
+        if (!$user || ($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Unauthorized', 403);
         }
         
@@ -26,7 +27,8 @@ class CronController {
     public function runScheduledCampaigns(): void {
         // Verify admin
         $user = Auth::user();
-        if (!$user || $user['role'] !== 'admin') {
+        // FIXED: Changed from checking non-existent 'role' column to 'account_type'
+        if (!$user || ($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Unauthorized', 403);
         }
         
@@ -135,7 +137,7 @@ class CronController {
      */
     public function pendingCampaigns(): void {
         $user = Auth::user();
-        if (!$user || $user['role'] !== 'admin') {
+        if (!$user || ($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Unauthorized', 403);
         }
         

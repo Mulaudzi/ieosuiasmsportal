@@ -9,11 +9,18 @@ class AdminController
 {
     /**
      * Check if user is admin
+     * 
+     * FIXED: Changed from checking non-existent 'role' column to 'account_type' column
+     * This was a critical bug that prevented admin authorization from working.
+     * 
+     * @return void
+     * @throws Response::error if user is not admin
      */
     private function requireAdmin(): void
     {
         $user = Auth::user();
-        if (!$user || $user['role'] !== 'admin') {
+        // FIXED: Use account_type instead of role (role column doesn't exist in database)
+        if (!$user || ($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Unauthorized', 403);
         }
     }
@@ -70,8 +77,9 @@ class AdminController
         $pdo = db();
         
         if ($search) {
+            // FIXED: Changed from 'role' to 'account_type' column
             $stmt = $pdo->prepare("
-                SELECT id, name, email, role, is_active, email_verified_at, created_at, last_login_at
+                SELECT id, name, email, account_type, is_active, email_verified_at, created_at, last_login_at
                 FROM users 
                 WHERE name LIKE ? OR email LIKE ?
                 ORDER BY created_at DESC
@@ -81,8 +89,9 @@ class AdminController
             $stmt->execute([$searchTerm, $searchTerm, $perPage, ($page - 1) * $perPage]);
             $users = $stmt->fetchAll();
         } else {
+            // FIXED: Changed from 'role' to 'account_type' column
             $users = table('users')
-                ->select(['id', 'name', 'email', 'role', 'is_active', 'email_verified_at', 'created_at', 'last_login_at'])
+                ->select(['id', 'name', 'email', 'account_type', 'is_active', 'email_verified_at', 'created_at', 'last_login_at'])
                 ->orderBy('created_at', 'DESC')
                 ->limit($perPage)
                 ->offset(($page - 1) * $perPage)
@@ -162,7 +171,13 @@ class AdminController
     }
     
     /**
-     * Change user role
+     * Change user account type (role)
+     * 
+     * FIXED: Updated to use 'account_type' column instead of non-existent 'role' column.
+     * The input parameter is still called 'role' for API compatibility, but it maps to 'account_type' in database.
+     * 
+     * @param array $params Route parameters containing user ID
+     * @return void
      */
     public function changeRole(array $params): void
     {
@@ -173,19 +188,21 @@ class AdminController
             Response::error('User not found', 404);
         }
         
+        // Note: Input field is 'role' but maps to 'account_type' column in database
         $data = Request::validate([
-            'role' => 'required|in:user,moderator,admin',
+            'role' => 'required|in:standard,individual,business,organization,admin',
         ]);
         
-        // Prevent changing own role
+        // Prevent changing own account type
         if ((int) $user['id'] === Auth::id()) {
-            Response::error('Cannot change your own role', 400);
+            Response::error('Cannot change your own account type', 400);
         }
         
-        $oldValues = ['role' => $user['role']];
+        $oldValues = ['account_type' => $user['account_type'] ?? 'standard'];
         
+        // FIXED: Update account_type column (not role)
         table('users')->where('id', $params['id'])->update([
-            'role' => $data['role'],
+            'account_type' => $data['role'], // Maps input 'role' to database 'account_type'
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         
@@ -195,10 +212,10 @@ class AdminController
             'user',
             (int) $params['id'],
             $oldValues,
-            ['role' => $data['role']]
+            ['account_type' => $data['role']]
         );
         
-        Response::success(['message' => 'User role updated']);
+        Response::success(['message' => 'User account type updated']);
     }
     
     /**

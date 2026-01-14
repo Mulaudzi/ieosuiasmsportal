@@ -9,10 +9,16 @@ class AdminNotificationSettingsController
     /**
      * Check if user is admin
      */
+    /**
+     * Check if user is admin
+     * 
+     * FIXED: Changed from checking non-existent 'role' column to 'account_type' column
+     */
     private function requireAdmin(): void
     {
         $user = Auth::user();
-        if (!$user || $user['role'] !== 'admin') {
+        // FIXED: Use account_type instead of role (role column doesn't exist in database)
+        if (!$user || ($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Unauthorized', 403);
         }
     }

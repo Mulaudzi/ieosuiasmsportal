@@ -19,7 +19,8 @@ class SmtpSettingsController
     public function index(): void
     {
         $user = Auth::user();
-        if ($user['role'] !== 'admin') {
+        // FIXED: Changed from checking non-existent 'role' column to 'account_type'
+        if (($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Admin access required', 403);
         }
 
@@ -40,7 +41,7 @@ class SmtpSettingsController
     public function show(array $params): void
     {
         $user = Auth::user();
-        if ($user['role'] !== 'admin') {
+        if (($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Admin access required', 403);
         }
 
@@ -68,7 +69,7 @@ class SmtpSettingsController
     public function update(array $params): void
     {
         $user = Auth::user();
-        if ($user['role'] !== 'admin') {
+        if (($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Admin access required', 403);
         }
 
@@ -133,7 +134,7 @@ class SmtpSettingsController
     public function test(array $params): void
     {
         $user = Auth::user();
-        if ($user['role'] !== 'admin') {
+        if (($user['account_type'] ?? 'standard') !== 'admin') {
             Response::error('Admin access required', 403);
         }
 
