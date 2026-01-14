@@ -42,7 +42,6 @@ import Contact from "./pages/Contact";
 
 import CreateEmailCampaign from "./pages/CreateEmailCampaign";
 import AdminDashboard from "./pages/AdminDashboard";
-import E2ETestConsole from "./pages/E2ETestConsole";
 import AutomatedTestDashboard from "./pages/AutomatedTestDashboard";
 import Pricing from "./pages/Pricing";
 import AdminManagement from "./pages/AdminManagement";
@@ -95,8 +94,7 @@ const App = () => (
             <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             
-            <Route path="/e2e-tests" element={<ProtectedRoute><E2ETestConsole /></ProtectedRoute>} />
-            <Route path="/test-dashboard" element={<AutomatedTestDashboard />} />
+            <Route path="/test-dashboard" element={<ProtectedRoute><AutomatedTestDashboard /></ProtectedRoute>} />
             
             {/* Admin Routes */}
             <Route path="/admin/login" element={<AdminLogin />} />
