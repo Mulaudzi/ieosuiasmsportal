@@ -27,7 +27,7 @@ const navigation = [
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Wallet", href: "/wallet", icon: Wallet },
   { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "E2E Tests", href: "/e2e-tests", icon: Bug },
+  { name: "Tests", href: "/test-dashboard", icon: Bug },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

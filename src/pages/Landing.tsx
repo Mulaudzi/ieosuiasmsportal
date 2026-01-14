@@ -17,7 +17,6 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
-  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -229,12 +228,6 @@ export default function Landing() {
             <Link to="/contact" className="text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/test-dashboard">
-              <Button variant="outline" size="sm" className="gap-2">
-                <FlaskConical className="h-4 w-4" />
-                Tests
-              </Button>
-            </Link>
             <Link to="/login">
               <Button variant="ghost">Login</Button>
             </Link>
