@@ -96,7 +96,7 @@ const App = () => (
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             
             <Route path="/e2e-tests" element={<ProtectedRoute><E2ETestConsole /></ProtectedRoute>} />
-            <Route path="/test-dashboard" element={<ProtectedRoute><AutomatedTestDashboard /></ProtectedRoute>} />
+            <Route path="/test-dashboard" element={<AutomatedTestDashboard />} />
             
             {/* Admin Routes */}
             <Route path="/admin/login" element={<AdminLogin />} />
