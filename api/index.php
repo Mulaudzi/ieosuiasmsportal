@@ -155,15 +155,15 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/dashboard/recent-campaigns', 'DashboardController@recentCampaigns');
     $router->get('/dashboard/schedule-recommendations', 'DashboardController@scheduleRecommendations');
     
-    // Contacts
+    // Contacts - static paths must come before dynamic {id} paths
     $router->get('/contacts', 'ContactController@index');
     $router->post('/contacts', 'ContactController@store');
     $router->post('/contacts/bulk-delete', 'ContactController@bulkDelete');
+    $router->post('/contacts/import', 'ContactController@import');
+    $router->get('/contacts/export', 'ContactController@export');
     $router->get('/contacts/{id}', 'ContactController@show');
     $router->put('/contacts/{id}', 'ContactController@update');
     $router->delete('/contacts/{id}', 'ContactController@destroy');
-    $router->post('/contacts/import', 'ContactController@import');
-    $router->get('/contacts/export', 'ContactController@export');
     
     // Contact Groups
     $router->get('/contact-groups', 'ContactController@groups');
