@@ -270,6 +270,16 @@ class E2ETestController
             $tests[] = self::failTest('DELETE Contact', 'contacts', 'CREATE Contact failed - no contact ID available');
         }
         
+        // Test 6: EXPORT contacts (tests route ordering fix)
+        $tests[] = self::executeTest(
+            'EXPORT Contacts',
+            'contacts',
+            'GET',
+            '/contacts/export',
+            null,
+            null // Export returns CSV, not JSON - just check it doesn't 404
+        );
+        
         return $tests;
     }
     
