@@ -68,9 +68,9 @@ class ContactController {
         $data = Request::validate([
             'name' => 'max:100',
             'surname' => 'max:100',
-            'phone' => 'max:20',
+            'phone' => 'max:50',  // Increased for international numbers with country codes
             'email' => 'email|max:255',
-            'country_code' => 'max:5',
+            'country_code' => 'max:10',
             'group_id' => 'exists:contact_groups,id',
         ]);
         
@@ -84,30 +84,57 @@ class ContactController {
             Response::error('Either phone or email is required', 400);
         }
         
-        $contactId = table('contacts')->insert([
-            'user_id' => Auth::id(),
-            'name' => $name,
-            'surname' => $data['surname'] ?? null,
-            'phone' => $phone,
-            'email' => $email,
-            'country_code' => $data['country_code'] ?? '+27',
-            'subscription_status' => 'subscribed',
-            'subscribed_at' => date('Y-m-d H:i:s'),
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ]);
-        
-        // Add to group if specified
-        if (isset($data['group_id'])) {
-            table('group_contacts')->insert([
-                'group_id' => $data['group_id'],
-                'contact_id' => $contactId,
-                'created_at' => date('Y-m-d H:i:s'),
-            ]);
+        // Clean and validate phone if provided
+        if ($phone) {
+            // Remove any non-numeric characters except + at start
+            $phone = preg_replace('/[^0-9+]/', '', $phone);
+            // Ensure it starts with + for E.164 format
+            if ($phone && $phone[0] !== '+' && !empty($data['country_code'])) {
+                $phone = $data['country_code'] . ltrim($phone, '0');
+            }
         }
         
-        $contact = table('contacts')->where('id', $contactId)->first();
-        Response::created(['contact' => $contact]);
+        try {
+            $pdo = db();
+            $pdo->beginTransaction();
+            
+            $contactId = table('contacts')->insert([
+                'user_id' => Auth::id(),
+                'name' => $name,
+                'surname' => $data['surname'] ?? null,
+                'phone' => $phone,
+                'email' => $email,
+                'country_code' => $data['country_code'] ?? '+27',
+                'subscription_status' => 'subscribed',
+                'subscribed_at' => date('Y-m-d H:i:s'),
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            
+            if (!$contactId) {
+                throw new Exception('Failed to create contact - no ID returned');
+            }
+            
+            // Add to group if specified
+            if (isset($data['group_id'])) {
+                table('group_contacts')->insert([
+                    'group_id' => $data['group_id'],
+                    'contact_id' => $contactId,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+            }
+            
+            $pdo->commit();
+            
+            $contact = table('contacts')->where('id', $contactId)->first();
+            Response::created(['contact' => $contact]);
+        } catch (Exception $e) {
+            if (isset($pdo)) {
+                $pdo->rollBack();
+            }
+            error_log('Contact store error: ' . $e->getMessage());
+            Response::error('Failed to create contact: ' . $e->getMessage(), 500);
+        }
     }
     
     public function show(array $params): void {
@@ -135,7 +162,7 @@ class ContactController {
         
         $data = Request::validate([
             'name' => 'max:100',
-            'phone' => 'max:20',
+            'phone' => 'max:50',  // Increased for international numbers
             'email' => 'email|max:255',
         ]);
         
@@ -286,50 +313,68 @@ class ContactController {
     }
     
     public function export(): void {
-        $userId = Auth::id();
-        $groupId = Request::query('group_id');
-        
-        if ($groupId) {
-            $pdo = db();
-            $stmt = $pdo->prepare("
-                SELECT c.* FROM contacts c
-                JOIN group_contacts gc ON c.id = gc.contact_id
-                WHERE gc.group_id = ? AND c.user_id = ?
-                ORDER BY c.name ASC
-            ");
-            $stmt->execute([$groupId, $userId]);
-            $contacts = $stmt->fetchAll();
-        } else {
-            $contacts = table('contacts')
-                ->where('user_id', $userId)
-                ->orderBy('name', 'ASC')
-                ->get();
+        try {
+            $userId = Auth::id();
+            
+            if (!$userId) {
+                Response::error('Unauthorized - user not loaded', 401);
+                return;
+            }
+            
+            $groupId = Request::query('group_id');
+            
+            if ($groupId) {
+                $pdo = db();
+                $stmt = $pdo->prepare("
+                    SELECT c.* FROM contacts c
+                    JOIN group_contacts gc ON c.id = gc.contact_id
+                    WHERE gc.group_id = ? AND c.user_id = ?
+                    ORDER BY c.name ASC
+                ");
+                $stmt->execute([$groupId, $userId]);
+                $contacts = $stmt->fetchAll();
+            } else {
+                $contacts = table('contacts')
+                    ->where('user_id', $userId)
+                    ->orderBy('name', 'ASC')
+                    ->get();
+            }
+            
+            // Generate CSV
+            $output = fopen('php://temp', 'r+');
+            fputcsv($output, ['Name', 'Surname', 'Phone', 'Email', 'Country Code', 'Status', 'Created At']);
+            
+            foreach ($contacts as $contact) {
+                fputcsv($output, [
+                    $contact['name'],
+                    $contact['surname'] ?? '',
+                    $contact['phone'] ?? '',
+                    $contact['email'] ?? '',
+                    $contact['country_code'] ?? '+27',
+                    $contact['subscription_status'] ?? 'subscribed',
+                    $contact['created_at'],
+                ]);
+            }
+            
+            rewind($output);
+            $csv = stream_get_contents($output);
+            fclose($output);
+            
+            // Clear any output buffers to prevent JSON wrapper
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="contacts_export_' . date('Y-m-d') . '.csv"');
+            header('Content-Length: ' . strlen($csv));
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            echo $csv;
+            exit;
+        } catch (Exception $e) {
+            error_log('Export contacts error: ' . $e->getMessage());
+            Response::error('Failed to export contacts: ' . $e->getMessage(), 500);
         }
-        
-        // Generate CSV
-        $output = fopen('php://temp', 'r+');
-        fputcsv($output, ['Name', 'Surname', 'Phone', 'Email', 'Country Code', 'Status', 'Created At']);
-        
-        foreach ($contacts as $contact) {
-            fputcsv($output, [
-                $contact['name'],
-                $contact['surname'] ?? '',
-                $contact['phone'] ?? '',
-                $contact['email'] ?? '',
-                $contact['country_code'] ?? '+27',
-                $contact['subscription_status'] ?? 'subscribed',
-                $contact['created_at'],
-            ]);
-        }
-        
-        rewind($output);
-        $csv = stream_get_contents($output);
-        fclose($output);
-        
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="contacts_export_' . date('Y-m-d') . '.csv"');
-        echo $csv;
-        exit;
     }
     
     public function groups(): void {

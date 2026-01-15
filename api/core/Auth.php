@@ -5,6 +5,7 @@
 
 class Auth {
     private static $user = null;
+    private static $tokenChecked = false;
     
     public static function check(): void {
         $token = Request::bearerToken();
@@ -26,9 +27,30 @@ class Auth {
         }
         
         self::$user = $user;
+        self::$tokenChecked = true;
     }
     
+    /**
+     * Get the authenticated user, auto-loading from token if needed
+     */
     public static function user(): ?array {
+        // If user already loaded, return it
+        if (self::$user !== null) {
+            return self::$user;
+        }
+        
+        // Try to load user from token if not yet checked
+        if (!self::$tokenChecked) {
+            $token = Request::bearerToken();
+            if ($token) {
+                $payload = JWT::decode($token);
+                if ($payload && isset($payload['sub'])) {
+                    self::$user = table('users')->where('id', $payload['sub'])->first();
+                    self::$tokenChecked = true;
+                }
+            }
+        }
+        
         return self::$user;
     }
     
