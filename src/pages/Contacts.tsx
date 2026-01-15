@@ -34,6 +34,10 @@ import {
   Loader2,
   RefreshCw,
   MoreVertical,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -544,28 +548,110 @@ export default function Contacts() {
               )}
             </div>
 
-            {/* Pagination */}
-            {!loading && contacts.length > 0 && (
-              <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Showing {((pagination.page - 1) * pagination.limit) + 1}-{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total.toLocaleString()} contacts
-                </p>
-                <div className="flex items-center gap-2">
+            {/* Pagination Controls */}
+            {!loading && pagination.total > 0 && (
+              <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {contacts.length > 0 ? ((pagination.page - 1) * pagination.limit) + 1 : 0}-{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total.toLocaleString()} contacts
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Per page:</span>
+                    <Select 
+                      value={pagination.limit.toString()} 
+                      onValueChange={(value) => setPagination(prev => ({ ...prev, limit: parseInt(value), page: 1 }))}
+                    >
+                      <SelectTrigger className="w-20 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                        <SelectItem value="200">200</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-1">
+                  {/* First page */}
                   <Button 
                     variant="outline" 
-                    size="sm" 
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={pagination.page <= 1}
+                    onClick={() => setPagination(prev => ({ ...prev, page: 1 }))}
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  
+                  {/* Previous page */}
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    className="h-8 w-8"
                     disabled={pagination.page <= 1}
                     onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
                   >
-                    Previous
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
+                  
+                  {/* Page numbers */}
+                  {(() => {
+                    const totalPages = Math.ceil(pagination.total / pagination.limit);
+                    const currentPage = pagination.page;
+                    const pages: (number | string)[] = [];
+                    
+                    if (totalPages <= 7) {
+                      for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                      pages.push(1);
+                      if (currentPage > 3) pages.push('...');
+                      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+                        pages.push(i);
+                      }
+                      if (currentPage < totalPages - 2) pages.push('...');
+                      pages.push(totalPages);
+                    }
+                    
+                    return pages.map((page, idx) => (
+                      typeof page === 'number' ? (
+                        <Button
+                          key={idx}
+                          variant={page === currentPage ? "default" : "outline"}
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setPagination(prev => ({ ...prev, page }))}
+                        >
+                          {page}
+                        </Button>
+                      ) : (
+                        <span key={idx} className="px-2 text-muted-foreground">...</span>
+                      )
+                    ));
+                  })()}
+                  
+                  {/* Next page */}
                   <Button 
                     variant="outline" 
-                    size="sm"
+                    size="icon"
+                    className="h-8 w-8"
                     disabled={pagination.page * pagination.limit >= pagination.total}
                     onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
                   >
-                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  
+                  {/* Last page */}
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={pagination.page * pagination.limit >= pagination.total}
+                    onClick={() => setPagination(prev => ({ ...prev, page: Math.ceil(pagination.total / pagination.limit) }))}
+                  >
+                    <ChevronsRight className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
