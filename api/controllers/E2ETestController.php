@@ -842,15 +842,30 @@ class E2ETestController
                 throw new Exception("cURL error: " . $curlError);
             }
             
-            // Parse response
-            $responseData = json_decode($response, true);
-            $result['response_body'] = $responseData;
+            // Parse response - handle both JSON and non-JSON (like CSV exports)
+            $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            $isJson = $contentType && strpos($contentType, 'application/json') !== false;
+            $isCsv = $contentType && strpos($contentType, 'text/csv') !== false;
+            
+            if ($isJson || (!$isCsv && $response)) {
+                $responseData = json_decode($response, true);
+                $result['response_body'] = $responseData;
+            } else {
+                // For CSV or other non-JSON responses, just store raw
+                $result['response_body'] = ['raw_response' => substr($response, 0, 500), 'content_type' => $contentType];
+            }
             
             // Check if request was successful
             $isSuccess = $httpCode >= 200 && $httpCode < 300;
             
             if (!$isSuccess) {
-                throw new Exception("HTTP {$httpCode}: " . ($responseData['error'] ?? $responseData['message'] ?? 'Unknown error'));
+                $errorMsg = 'Unknown error';
+                if (is_array($responseData)) {
+                    $errorMsg = $responseData['error'] ?? $responseData['message'] ?? 'Unknown error';
+                } elseif ($response) {
+                    $errorMsg = substr($response, 0, 200);
+                }
+                throw new Exception("HTTP {$httpCode}: " . $errorMsg);
             }
             
             // Run database verification if provided
