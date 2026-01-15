@@ -116,10 +116,15 @@ class Request {
                 
             case 'max':
                 $max = (int) $params[0];
+                // Force string-only handling for specific fields (e.g., phone)
+                $stringFields = ['phone', 'other_string_field'];  // Add more fields as needed
+                $treatAsStringOnly = in_array($field, $stringFields);
+                
                 if (is_string($value) && strlen($value) > $max) {
                     return "$label must not exceed $max characters";
                 }
-                if (is_numeric($value) && $value > $max) {
+                // Skip numeric check for string-only fields
+                if (!$treatAsStringOnly && is_numeric($value) && $value > $max) {
                     return "$label must not exceed $max";
                 }
                 break;
