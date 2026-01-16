@@ -8,6 +8,44 @@ require_once __DIR__ . '/../services/AuditLogService.php';
 
 class E2ETestController
 {
+    /**
+     * Run PHPUnit tests and return JSON results
+     */
+    public static function runPhpunit(): void
+    {
+        $user = Auth::user();
+        if (!$user) {
+            Response::error('Unauthorized', 401);
+            return;
+        }
+        
+        $output = [];
+        $returnCode = 0;
+        $phpunitPath = __DIR__ . '/../vendor/bin/phpunit';
+        $configPath = __DIR__ . '/../phpunit.xml';
+        
+        // Check if PHPUnit is installed
+        if (!file_exists($phpunitPath)) {
+            Response::success([
+                'status' => 'not_installed',
+                'message' => 'PHPUnit not installed. Run: composer require --dev phpunit/phpunit ^10',
+                'output' => [],
+            ]);
+            return;
+        }
+        
+        // Run PHPUnit with testdox format
+        $command = escapeshellcmd($phpunitPath) . ' --testdox -c ' . escapeshellarg($configPath) . ' 2>&1';
+        exec($command, $output, $returnCode);
+        
+        Response::success([
+            'status' => $returnCode === 0 ? 'passed' : 'failed',
+            'return_code' => $returnCode,
+            'output' => $output,
+            'timestamp' => date('Y-m-d H:i:s'),
+        ]);
+    }
+{
     private static int $userId;
     private static array $testData = [];
     private static array $createdRecords = [];

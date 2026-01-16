@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
@@ -22,4 +23,16 @@ export default defineConfig(({ mode }) => ({
   },
   // Ensure proper base path
   base: "/",
+  // Vitest configuration
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: ["./src/tests/setup.ts"],
+    include: ["src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+    exclude: ["node_modules", "dist"],
+    coverage: {
+      reporter: ["text", "json", "html"],
+      exclude: ["node_modules/", "src/tests/"],
+    },
+  },
 }));
