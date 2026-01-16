@@ -148,6 +148,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     // E2E Test Console (all authenticated users)
     $router->post('/e2e/run', 'E2ETestController@runTests');
     $router->get('/e2e/health', 'E2ETestController@healthCheck');
+    $router->get('/e2e/phpunit', 'E2ETestController@runPhpunit');
     
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
