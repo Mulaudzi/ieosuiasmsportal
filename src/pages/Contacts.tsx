@@ -108,16 +108,46 @@ export default function Contacts() {
         getContactGroups()
       ]);
       
-      if (contactsRes.success && contactsRes.data) {
-        setContacts(contactsRes.data.contacts || []);
-        setPagination(prev => ({ ...prev, total: contactsRes.data?.total || 0 }));
-      }
-      
-      if (groupsRes.success && groupsRes.data) {
-        // Handle response format: { groups: [...] }
-        const groupsData = Array.isArray(groupsRes.data) ? groupsRes.data : (groupsRes.data.groups || []);
-        setGroups(groupsData);
-      }
+     // ---------- CONTACTS ----------
+if (contactsRes?.success) {
+  const contactsData = Array.isArray(contactsRes.data)
+    ? contactsRes.data
+    : [];
+
+  setContacts(
+    contactsData.map((c: any) => ({
+      ...c,
+      id: String(c.id),
+      group_id: c.group_id ? String(c.group_id) : "",
+      group_name: c.group_name ?? "",
+    }))
+  );
+
+  setPagination(prev => ({
+    ...prev,
+    total: contactsRes.data?.total ?? contactsData.length
+  }));
+}
+
+// ---------- GROUPS ----------
+if (groupsRes?.success) {
+  const groupsData = Array.isArray(groupsRes.data?.groups)
+    ? groupsRes.data.groups
+    : [];
+
+  setGroups(
+    groupsData.map((g: any) => ({
+      ...g,
+      id: String(g.id),
+      contact_count: g.contact_count ?? 0
+    }))
+  );
+}
+
+console.log("CONTACT RAW RESPONSE:", contactsRes);
+
+console.log("GROUPS RAW RESPONSE:", groupsRes);
+
     } catch (error) {
       handleApiError(error);
     } finally {
