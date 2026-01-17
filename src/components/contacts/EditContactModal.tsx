@@ -64,10 +64,10 @@ export function EditContactModal({ open, onOpenChange, contact, onSuccess }: Edi
     setLoadingGroups(true);
     try {
       const res = await getContactGroups();
-      if (res.success && res.data) {
-        const data = res.data as { groups?: Group[] } | Group[];
-        const groupsData = Array.isArray(data) ? data : (data.groups || []);
-        setGroups(groupsData);
+      if (res.success) {
+        // Backend returns merged format: { success: true, groups: [...] }
+        const groupsData = (res as any).groups || [];
+        setGroups(Array.isArray(groupsData) ? groupsData : []);
       }
     } catch (error) {
       console.error("Failed to load groups:", error);

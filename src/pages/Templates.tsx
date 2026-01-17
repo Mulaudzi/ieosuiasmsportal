@@ -56,9 +56,10 @@ export default function Templates() {
     setLoading(true);
     try {
       const response = await getTemplates();
-      if (response.success && response.data) {
-        const responseData = response.data as any;
-        setTemplates(Array.isArray(responseData) ? responseData : responseData.data || []);
+      if (response.success) {
+        // Backend returns merged format: { success: true, templates: [...] }
+        const templates = (response as any).templates || response.data || [];
+        setTemplates(Array.isArray(templates) ? templates : []);
       } else {
         setTemplates([]);
       }
@@ -109,14 +110,19 @@ export default function Templates() {
   const handleDelete = async () => {
     if (!templateToDelete) return;
     setDeleting(true);
+    
+    // Optimistic delete - update UI immediately
+    setTemplates(templates.filter(t => String(t.id) !== String(templateToDelete.id)));
+    
     try {
       const response = await deleteTemplate(templateToDelete.id);
       if (response.success) {
         toast({ title: "Template deleted", description: `${templateToDelete.name} has been removed.` });
-        setTemplates(templates.filter(t => t.id !== templateToDelete.id));
       }
     } catch (error) {
       handleApiError(error);
+      // Restore the template if deletion failed
+      setTemplates(prev => [...prev, templateToDelete]);
     } finally {
       setDeleting(false);
       setDeleteDialogOpen(false);

@@ -124,7 +124,7 @@ export default function CreateEmailCampaign() {
       ]);
 
       if (templatesRes.success) setTemplates(templatesRes.data || []);
-      if (groupsRes.success && groupsRes.data) setContactGroups(groupsRes.data.groups || []);
+      if (groupsRes.success) setContactGroups((groupsRes.groups as ContactGroup[]) || []);
     } catch (error) {
       console.error("Failed to load initial data:", error);
     }
@@ -134,8 +134,9 @@ export default function CreateEmailCampaign() {
     try {
       const response = await api.get<{ data: any[] }>("/contacts", { group_id: groupId, per_page: "1000" });
       if (response.success) {
-        setContacts(response.data?.data || []);
-        setSelectedContacts((response.data?.data || []).map((c: any) => c.id));
+        const contactsData = (response.data as any[]) || [];
+        setContacts(contactsData);
+        setSelectedContacts(contactsData.map((c: any) => c.id));
       }
     } catch (error) {
       console.error("Failed to load contacts:", error);

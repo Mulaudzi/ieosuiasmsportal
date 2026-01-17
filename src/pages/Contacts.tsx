@@ -12,6 +12,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -90,8 +98,10 @@ export default function Contacts() {
   const [editGroupModalOpen, setEditGroupModalOpen] = useState(false);
   const [groupToEdit, setGroupToEdit] = useState<Group | null>(null);
   const [deleteGroupDialogOpen, setDeleteGroupDialogOpen] = useState(false);
-  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
-  const [deletingGroup, setDeletingGroup] = useState(false);
+  const [groupsToDelete, setGroupsToDelete] = useState<Group[]>([]);
+  const [selectedGroupsForDelete, setSelectedGroupsForDelete] = useState<Set<string>>(new Set());
+  const [deleteContactsWithGroups, setDeleteContactsWithGroups] = useState(false);
+  const [deletingGroups, setDeletingGroups] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, limit: 50 });
   const [sortOrder, setSortOrder] = useState("newest");
 
@@ -100,10 +110,10 @@ export default function Contacts() {
     try {
       const [contactsRes, groupsRes] = await Promise.all([
         getContacts({ 
-          group: selectedGroup !== "all" ? selectedGroup : undefined,
+          group_id: selectedGroup !== "all" ? selectedGroup : undefined,
           search: searchQuery || undefined,
           page: pagination.page,
-          limit: pagination.limit
+          per_page: pagination.limit
         }),
         getContactGroups()
       ]);
@@ -125,28 +135,24 @@ if (contactsRes?.success) {
 
   setPagination(prev => ({
     ...prev,
-    total: contactsRes.data?.total ?? contactsData.length
+    total: parseInt(String(contactsRes.meta?.total ?? contactsData.length), 10)
   }));
 }
 
 // ---------- GROUPS ----------
 if (groupsRes?.success) {
-  const groupsData = Array.isArray(groupsRes.data?.groups)
-    ? groupsRes.data.groups
+  const groupsData = Array.isArray(groupsRes.groups as any[])
+    ? (groupsRes.groups as any[])
     : [];
 
   setGroups(
     groupsData.map((g: any) => ({
       ...g,
       id: String(g.id),
-      contact_count: g.contact_count ?? 0
+      contact_count: parseInt(String(g.contact_count ?? 0), 10)
     }))
   );
 }
-
-console.log("CONTACT RAW RESPONSE:", contactsRes);
-
-console.log("GROUPS RAW RESPONSE:", groupsRes);
 
     } catch (error) {
       handleApiError(error);
@@ -250,32 +256,78 @@ console.log("GROUPS RAW RESPONSE:", groupsRes);
     setEditGroupModalOpen(true);
   };
 
-  const handleDeleteGroupConfirm = (group: Group) => {
-    setGroupToDelete(group);
-    setDeleteGroupDialogOpen(true);
+  const handleDeleteGroupConfirm = (group: Group, multiSelect: boolean = false) => {
+    if (multiSelect && selectedGroupsForDelete.has(group.id)) {
+      const newSelected = new Set(selectedGroupsForDelete);
+      newSelected.delete(group.id);
+      setSelectedGroupsForDelete(newSelected);
+      if (newSelected.size === 0) {
+        setDeleteGroupDialogOpen(false);
+      }
+    } else if (multiSelect) {
+      const newSelected = new Set(selectedGroupsForDelete);
+      newSelected.add(group.id);
+      setSelectedGroupsForDelete(newSelected);
+      setGroupsToDelete(groups.filter(g => newSelected.has(g.id)));
+      setDeleteGroupDialogOpen(true);
+    } else {
+      setGroupsToDelete([group]);
+      setSelectedGroupsForDelete(new Set([group.id]));
+      setDeleteGroupDialogOpen(true);
+    }
   };
 
-  const handleDeleteGroup = async () => {
-    if (!groupToDelete) return;
-    setDeletingGroup(true);
+  const handleDeleteGroups = async () => {
+    if (groupsToDelete.length === 0) return;
+    setDeletingGroups(true);
+    
+    const previousGroups = groups;
+    const previousSelectedGroup = selectedGroup;
+    const idsToDelete = Array.from(selectedGroupsForDelete);
+    
     try {
-      const response = await deleteContactGroup(groupToDelete.id);
-      if (response.success) {
-        toast({
-          title: "Group deleted",
-          description: `"${groupToDelete.name}" has been removed.`,
-        });
-        if (selectedGroup === groupToDelete.id) {
-          setSelectedGroup("all");
+      // Optimistic update
+      setGroups(groups.filter(g => !selectedGroupsForDelete.has(g.id)));
+      if (selectedGroupsForDelete.has(selectedGroup)) {
+        setSelectedGroup("all");
+      }
+      
+      // Delete groups sequentially
+      let failed = 0;
+      for (const id of idsToDelete) {
+        try {
+          await deleteContactGroup(id);
+        } catch (error) {
+          failed++;
         }
-        loadData();
+      }
+      
+      const successful = idsToDelete.length - failed;
+      if (successful > 0) {
+        toast({
+          title: `${successful} group${successful !== 1 ? 's' : ''} deleted`,
+          description: deleteContactsWithGroups 
+            ? `${successful} group${successful !== 1 ? 's' : ''} and their contacts removed.`
+            : `${successful} group${successful !== 1 ? 's' : ''} removed.`,
+        });
+      }
+      if (failed > 0) {
+        toast({
+          title: `${failed} deletion${failed !== 1 ? 's' : ''} failed`,
+          description: "Some groups could not be deleted. Please try again.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
+      setGroups(previousGroups);
+      setSelectedGroup(previousSelectedGroup);
       handleApiError(error);
     } finally {
-      setDeletingGroup(false);
+      setDeletingGroups(false);
       setDeleteGroupDialogOpen(false);
-      setGroupToDelete(null);
+      setSelectedGroupsForDelete(new Set());
+      setGroupsToDelete([]);
+      setDeleteContactsWithGroups(false);
     }
   };
 
@@ -287,12 +339,12 @@ console.log("GROUPS RAW RESPONSE:", groupsRes);
     }
   };
 
-  const totalContacts = groups.reduce((acc, g) => acc + (g.contact_count || 0), 0);
+  const totalContacts = groups.reduce((acc, g) => acc + (parseInt(String(g.contact_count || 0), 10)), 0);
   const optedOutCount = contacts.filter(c => c.subscription_status === "unsubscribed").length;
 
   return (
     <>
-      <ContactImportModal open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) loadData(); }} />
+      <ContactImportModal open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) loadData(); }} groups={groups} />
       <AddContactModal open={addContactModalOpen} onOpenChange={(open) => { setAddContactModalOpen(open); if (!open) loadData(); }} />
       <EditContactModal 
         open={editContactModalOpen} 
@@ -691,27 +743,99 @@ console.log("GROUPS RAW RESPONSE:", groupsRes);
       </DashboardLayout>
 
       {/* Delete Group Confirmation Dialog */}
-      <AlertDialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Group</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{groupToDelete?.name}"? This will remove the group but not the contacts in it.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteGroup} 
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deletingGroup}
+      <Dialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {groupsToDelete.length === 1 ? 'Group' : 'Groups'}</DialogTitle>
+            <DialogDescription>
+              {groupsToDelete.length === 1 
+                ? `You are about to delete "${groupsToDelete[0].name}".`
+                : `You are about to delete ${groupsToDelete.length} groups.`
+              }
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {groupsToDelete.length > 1 && (
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-border bg-muted/50 p-3">
+                <p className="mb-2 text-sm font-medium">Groups to delete:</p>
+                <ul className="space-y-1">
+                  {groupsToDelete.map((g) => (
+                    <li key={g.id} className="text-sm text-muted-foreground">
+                      • {g.name} ({g.contact_count} contacts)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="rounded-lg border border-border bg-muted/50 p-3">
+              <p className="mb-3 text-sm font-medium">What would you like to do with the contacts in these groups?</p>
+              <div className="space-y-2">
+                <button
+                  onClick={() => setDeleteContactsWithGroups(false)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors",
+                    !deleteContactsWithGroups
+                      ? "bg-primary/10 border border-primary"
+                      : "border border-transparent hover:bg-muted"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 rounded border flex items-center justify-center",
+                    !deleteContactsWithGroups ? "bg-primary border-primary" : "border-muted-foreground"
+                  )}>
+                    {!deleteContactsWithGroups && <div className="h-2 w-2 bg-white rounded-sm" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Keep contacts</p>
+                    <p className="text-xs text-muted-foreground">Contacts will remain in your database</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setDeleteContactsWithGroups(true)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors",
+                    deleteContactsWithGroups
+                      ? "bg-destructive/10 border border-destructive"
+                      : "border border-transparent hover:bg-muted"
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 rounded border flex items-center justify-center",
+                    deleteContactsWithGroups ? "bg-destructive border-destructive" : "border-muted-foreground"
+                  )}>
+                    {deleteContactsWithGroups && <div className="h-2 w-2 bg-white rounded-sm" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-destructive">Delete contacts too</p>
+                    <p className="text-xs text-muted-foreground">Contacts will be permanently removed</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteGroupDialogOpen(false)}
+              disabled={deletingGroups}
             >
-              {deletingGroup && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteGroups}
+              disabled={deletingGroups}
+            >
+              {deletingGroups && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete {groupsToDelete.length === 1 ? 'Group' : `${groupsToDelete.length} Groups`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

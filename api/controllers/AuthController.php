@@ -352,7 +352,7 @@ class AuthController {
     public function uploadAvatar(): void {
         $user = Auth::user();
         
-        $input = Request::all();
+        $input = Request::input();
         
         if (isset($input['avatar']) && strpos($input['avatar'], 'data:image') === 0) {
             // Handle base64 image

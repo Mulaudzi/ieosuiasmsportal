@@ -128,7 +128,8 @@ export function TemplateModal({ open, onOpenChange, template, onSave }: Template
             title: "Template created",
             description: `"${name}" has been saved.`,
           });
-          onSave?.(response.data?.template || { name, type, content, subject });
+          // Call onSave to trigger parent's loadTemplates() refetch
+          onSave?.();
           onOpenChange(false);
         }
       }

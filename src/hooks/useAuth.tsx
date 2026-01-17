@@ -443,14 +443,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const responseData = await response.json();
 
-      if (responseData.success && responseData.data?.user) {
-        const updatedUser: User = {
-          ...user!,
-          ...responseData.data.user,
-        };
-        setUser(updatedUser);
-        localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
-        return { success: true };
+      if (responseData.success) {
+        // Handle both response structures: data.user and root.user
+        const updatedUserData = responseData.data?.user || responseData.user;
+        if (updatedUserData) {
+          const updatedUser: User = {
+            ...user!,
+            ...updatedUserData,
+          };
+          setUser(updatedUser);
+          localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+          return { success: true };
+        }
       }
       return { success: false, error: responseData.message || "Update failed" };
     } catch (error) {

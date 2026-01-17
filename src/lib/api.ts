@@ -2,12 +2,29 @@ import { toast } from "@/hooks/use-toast";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://sms.ieosuia.com/api';
 
+/**
+ * ApiResponse represents the actual server response structure
+ * The server returns different structures depending on the endpoint:
+ * - Type A (merged): { success: true, ...data } e.g., { success: true, groups: [...] }
+ * - Type B (paginated): { success: true, data: [...], meta: {...} }
+ * - Type C (single resource): { success: true, ...data } e.g., { success: true, contact: {...} }
+ * 
+ * To handle this, we use index signature to allow any property at the top level
+ */
 interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
   errors?: Record<string, string[]>;
   message?: string;
+  meta?: {
+    current_page?: number;
+    per_page?: number;
+    total?: number;
+    last_page?: number;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown; // Allow any other properties (groups, contacts, etc.)
 }
 
 class ApiClient {
@@ -129,6 +146,7 @@ export const api = new ApiClient(API_BASE_URL);
 export const login = (email: string, password: string) => api.post<{ user: any; token: string }>('/auth/login', { email, password }, false);
 export const register = (data: { name: string; email: string; password: string; account_type?: string }) => api.post<{ user: any; token: string }>('/auth/register', data, false);
 export const logout = () => api.post('/auth/logout');
+export const getCurrentUser = () => api.get<{ user: any; wallet: any }>('/auth/user');
 export const getDashboardStats = () => api.get<any>('/dashboard/stats');
 export const getCampaign = (id: string) => api.get<any>(`/campaigns/${id}`);
 export const getSmsCampaign = (id: string) => api.get<any>(`/sms/campaigns/${id}`);
@@ -189,8 +207,8 @@ export const updateProfile = (data: { name?: string; email?: string; phone?: str
 export const uploadBranding = (formData: FormData) => api.upload<any>('/settings/branding', formData);
 
 // Contacts
-export const getContacts = (params?: { group?: string; search?: string; page?: number; limit?: number }) => 
-  api.get<{ contacts: any[]; total: number; page: number; limit: number }>('/contacts', params as any);
+export const getContacts = (params?: { group_id?: string; search?: string; page?: number; per_page?: number }) => 
+  api.get<{ contacts: any[]; total: number; page: number; per_page: number }>('/contacts', params as any);
 export const getContact = (id: string) => api.get<any>(`/contacts/${id}`);
 export const createContact = (data: { name: string; phone?: string; email?: string; group_id?: string }) => 
   api.post<any>('/contacts', data);

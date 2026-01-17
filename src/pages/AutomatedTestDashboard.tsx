@@ -838,7 +838,7 @@ ${fileDependencyResults.length > 50 ? `\n*... and ${fileDependencyResults.length
       }
       
       result.response_status = response.status || 200;
-      result.response_body = response.data;
+      result.response_body = response; // Capture entire response for inspection
       
       // Check expected status
       if (!config.expectedStatus.includes(result.response_status)) {
@@ -846,8 +846,8 @@ ${fileDependencyResults.length > 50 ? `\n*... and ${fileDependencyResults.length
       }
       
       // Track created records for cleanup
-      if (config.method === "POST" && config.cleanup && response.data) {
-        const createdId = response.data.id || response.data.contact?.id || response.data.template?.id || response.data.group?.id;
+      if (config.method === "POST" && config.cleanup && response) {
+        const createdId = response.id || response.contact?.id || response.template?.id || response.group?.id;
         if (createdId) {
           const table = config.endpoint.split("/")[1];
           setCleanupRecords(prev => [...prev, { table, id: createdId }]);
@@ -1098,8 +1098,7 @@ ${fileDependencyResults.length > 50 ? `\n*... and ${fileDependencyResults.length
     const createStart = performance.now();
     try {
       const createResponse = await api.post<{ id?: number; contact?: { id: number }; template?: { id: number }; group?: { id: number } }>(ep.create, createPayload);
-      const data = createResponse.data;
-      createdId = data?.id || data?.contact?.id || data?.template?.id || data?.group?.id || null;
+      createdId = createResponse.id || createResponse.contact?.id || createResponse.template?.id || createResponse.group?.id || null;
       
       if (!createdId) {
         throw new Error("No ID returned from create operation");

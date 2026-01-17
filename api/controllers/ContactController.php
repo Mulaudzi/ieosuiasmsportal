@@ -11,15 +11,20 @@ class ContactController {
         $search = Request::query('search', '');
         $groupId = Request::query('group_id');
         
-        $query = table('contacts')->where('user_id', $userId);
+        $pdo = db();
         
         if ($search) {
-            // Simple search - in production use full-text search
-            $pdo = db();
+            // Search with group information
             $stmt = $pdo->prepare("
-                SELECT * FROM contacts 
-                WHERE user_id = ? AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)
-                ORDER BY created_at DESC
+                SELECT c.*, 
+                       GROUP_CONCAT(g.id) as group_id,
+                       GROUP_CONCAT(g.name) as group_name
+                FROM contacts c
+                LEFT JOIN group_contacts gc ON c.id = gc.contact_id
+                LEFT JOIN contact_groups g ON gc.group_id = g.id
+                WHERE c.user_id = ? AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
+                GROUP BY c.id
+                ORDER BY c.created_at DESC
                 LIMIT ? OFFSET ?
             ");
             $searchTerm = "%$search%";
@@ -27,38 +32,77 @@ class ContactController {
             $contacts = $stmt->fetchAll();
             
             $countStmt = $pdo->prepare("
-                SELECT COUNT(*) as count FROM contacts 
-                WHERE user_id = ? AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)
+                SELECT COUNT(DISTINCT c.id) as count FROM contacts c
+                WHERE c.user_id = ? AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
             ");
             $countStmt->execute([$userId, $searchTerm, $searchTerm, $searchTerm]);
             $total = $countStmt->fetch()['count'];
         } elseif ($groupId) {
-            $pdo = db();
+            // Filter by group with group information
+            if ($groupId === 'uncategorized') {
+                $stmt = $pdo->prepare("
+                    SELECT c.* 
+                    FROM contacts c
+                    WHERE c.user_id = ?
+                    AND c.id NOT IN (
+                        SELECT DISTINCT contact_id FROM group_contacts
+                    )
+                    ORDER BY c.created_at DESC
+                    LIMIT ? OFFSET ?
+                ");
+                $stmt->execute([$userId, $perPage, ($page - 1) * $perPage]);
+                $contacts = $stmt->fetchAll();
+                
+                $countStmt = $pdo->prepare("
+                    SELECT COUNT(*) as count FROM contacts c
+                    WHERE c.user_id = ?
+                    AND c.id NOT IN (
+                        SELECT DISTINCT contact_id FROM group_contacts
+                    )
+                ");
+                $countStmt->execute([$userId]);
+                $total = $countStmt->fetch()['count'];
+            } else {
+                $stmt = $pdo->prepare("
+                    SELECT c.*,
+                           g.id as group_id,
+                           g.name as group_name
+                    FROM contacts c
+                    JOIN group_contacts gc ON c.id = gc.contact_id
+                    JOIN contact_groups g ON gc.group_id = g.id
+                    WHERE gc.group_id = ? AND c.user_id = ?
+                    ORDER BY c.created_at DESC
+                    LIMIT ? OFFSET ?
+                ");
+                $stmt->execute([$groupId, $userId, $perPage, ($page - 1) * $perPage]);
+                $contacts = $stmt->fetchAll();
+                
+                $countStmt = $pdo->prepare("
+                    SELECT COUNT(*) as count FROM contacts c
+                    JOIN group_contacts gc ON c.id = gc.contact_id
+                    WHERE gc.group_id = ? AND c.user_id = ?
+                ");
+                $countStmt->execute([$groupId, $userId]);
+                $total = $countStmt->fetch()['count'];
+            }
+        } else {
+            // All contacts with group information
             $stmt = $pdo->prepare("
-                SELECT c.* FROM contacts c
-                JOIN group_contacts gc ON c.id = gc.contact_id
-                WHERE gc.group_id = ? AND c.user_id = ?
+                SELECT c.*,
+                       GROUP_CONCAT(g.id) as group_id,
+                       GROUP_CONCAT(g.name) as group_name
+                FROM contacts c
+                LEFT JOIN group_contacts gc ON c.id = gc.contact_id
+                LEFT JOIN contact_groups g ON gc.group_id = g.id
+                WHERE c.user_id = ?
+                GROUP BY c.id
                 ORDER BY c.created_at DESC
                 LIMIT ? OFFSET ?
             ");
-            $stmt->execute([$groupId, $userId, $perPage, ($page - 1) * $perPage]);
+            $stmt->execute([$userId, $perPage, ($page - 1) * $perPage]);
             $contacts = $stmt->fetchAll();
             
-            $countStmt = $pdo->prepare("
-                SELECT COUNT(*) as count FROM contacts c
-                JOIN group_contacts gc ON c.id = gc.contact_id
-                WHERE gc.group_id = ? AND c.user_id = ?
-            ");
-            $countStmt->execute([$groupId, $userId]);
-            $total = $countStmt->fetch()['count'];
-        } else {
             $total = table('contacts')->where('user_id', $userId)->count();
-            $contacts = table('contacts')
-                ->where('user_id', $userId)
-                ->orderBy('created_at', 'DESC')
-                ->limit($perPage)
-                ->offset(($page - 1) * $perPage)
-                ->get();
         }
         
         Response::paginate($contacts, $total, $page, $perPage);
@@ -138,13 +182,38 @@ class ContactController {
     }
     
     public function show(array $params): void {
-        $contact = table('contacts')
-            ->where('id', $params['id'])
-            ->where('user_id', Auth::id())
-            ->first();
+        $pdo = db();
+        $stmt = $pdo->prepare("
+            SELECT c.*, 
+                   GROUP_CONCAT(cg.name) as group_names,
+                   GROUP_CONCAT(g.id) as group_ids
+            FROM contacts c
+            LEFT JOIN group_contacts gc ON c.id = gc.contact_id
+            LEFT JOIN contact_groups g ON gc.group_id = g.id
+            WHERE c.id = ? AND c.user_id = ?
+            GROUP BY c.id
+        ");
+        
+        $stmt->execute([$params['id'], Auth::id()]);
+        $contact = $stmt->fetch();
         
         if (!$contact) {
             Response::error('Contact not found', 404);
+        }
+        
+        // Parse group information for better handling
+        if ($contact['group_ids']) {
+            $groupIds = explode(',', $contact['group_ids']);
+            $groupNames = explode(',', $contact['group_names']);
+            $contact['groups'] = array_map(function($id, $name) {
+                return ['id' => (int)$id, 'name' => $name];
+            }, $groupIds, $groupNames);
+            $contact['primary_group_id'] = (int)$groupIds[0];
+            $contact['primary_group_name'] = $groupNames[0];
+        } else {
+            $contact['groups'] = [];
+            $contact['primary_group_id'] = null;
+            $contact['primary_group_name'] = null;
         }
         
         Response::success(['contact' => $contact]);
@@ -164,11 +233,41 @@ class ContactController {
             'name' => 'max:100',
             'phone' => 'max:50',  // Increased for international numbers
             'email' => 'email|max:255',
+            'group_id' => 'exists:contact_groups,id',  // NEW: Validate group_id
         ]);
         
         $data['updated_at'] = date('Y-m-d H:i:s');
         
         table('contacts')->where('id', $params['id'])->update($data);
+        
+        // NEW: Handle group assignment
+        if (isset($data['group_id'])) {
+            try {
+                $pdo = db();
+                $pdo->beginTransaction();
+                
+                // Delete existing group assignments
+                table('group_contacts')->where('contact_id', $params['id'])->delete();
+                
+                // Add new group assignment if provided
+                if ($data['group_id']) {
+                    table('group_contacts')->insert([
+                        'group_id' => $data['group_id'],
+                        'contact_id' => $params['id'],
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ]);
+                }
+                
+                $pdo->commit();
+            } catch (Exception $e) {
+                if (isset($pdo)) {
+                    $pdo->rollBack();
+                }
+                error_log('Group assignment error: ' . $e->getMessage());
+                Response::error('Failed to update group assignment: ' . $e->getMessage(), 500);
+                return;
+            }
+        }
         
         $contact = table('contacts')->where('id', $params['id'])->first();
         Response::success(['contact' => $contact]);
@@ -191,125 +290,207 @@ class ContactController {
     }
     
     public function import(): void {
-        $file = Request::file('file');
-        $skipDuplicates = Request::query('skip_duplicates', 'true') === 'true';
-        $groupId = Request::query('group_id');
-        
-        // Validate group_id ownership if provided
-        if ($groupId) {
-            if (!is_numeric($groupId)) {
-                Response::error('Invalid group ID', 400);
-            }
-            $group = table('contact_groups')
-                ->where('id', $groupId)
-                ->where('user_id', Auth::id())
-                ->first();
-            if (!$group) {
-                Response::error('Group not found or access denied', 404);
-            }
-        }
-        
-        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-            Response::error('No file uploaded', 400);
-        }
-        
-        $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if (!in_array($extension, ['csv', 'txt', 'xlsx', 'xls'])) {
-            Response::error('Only CSV and Excel files are allowed', 400);
-        }
-        
-        $handle = fopen($file['tmp_name'], 'r');
-        if (!$handle) {
-            Response::error('Failed to read file', 500);
-        }
-        
-        $header = fgetcsv($handle);
-        $header = array_map('strtolower', array_map('trim', $header));
-        
-        $imported = 0;
-        $failed = 0;
-        $duplicates = 0;
-        $userId = Auth::id();
-        $pdo = db();
-        
-        while (($row = fgetcsv($handle)) !== false) {
-            if (count($row) !== count($header)) {
-                $failed++;
-                continue;
+        try {
+            $file = Request::file('file');
+            $skipDuplicates = Request::input('skip_duplicates') !== 'false';
+            $groupId = Request::input('group_id');
+            
+            // Parse column mapping from frontend
+            $columnMapping = [];
+            $mappingJson = Request::input('column_mapping');
+            if ($mappingJson) {
+                $columnMapping = json_decode($mappingJson, true) ?? [];
             }
             
-            $data = array_combine($header, $row);
-            
-            // Map common column variations
-            $name = $data['name'] ?? $data['first_name'] ?? $data['firstname'] ?? 'Esteemed';
-            $surname = $data['surname'] ?? $data['last_name'] ?? $data['lastname'] ?? null;
-            $phone = $data['phone'] ?? $data['mobile'] ?? $data['cell'] ?? $data['telephone'] ?? null;
-            $email = $data['email'] ?? $data['e-mail'] ?? null;
-            $countryCode = $data['country_code'] ?? $data['country'] ?? '+27';
-            
-            // Clean phone number
-            if ($phone) {
-                $phone = preg_replace('/[^0-9+]/', '', $phone);
-            }
-            
-            // Skip if no phone and no email
-            if (empty($phone) && empty($email)) {
-                $failed++;
-                continue;
-            }
-            
-            // Check for duplicates
-            if ($skipDuplicates && $phone) {
-                $existing = table('contacts')
-                    ->where('user_id', $userId)
-                    ->where('phone', $phone)
+            // Validate group_id ownership if provided
+            if ($groupId) {
+                if (!is_numeric($groupId)) {
+                    Response::error('Invalid group ID', 400);
+                    return;
+                }
+                $group = table('contact_groups')
+                    ->where('id', $groupId)
+                    ->where('user_id', Auth::id())
                     ->first();
+                if (!$group) {
+                    Response::error('Group not found or access denied', 404);
+                    return;
+                }
+            }
+            
+            if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
+                Response::error('No file uploaded', 400);
+                return;
+            }
+            
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($extension, ['csv', 'txt', 'xlsx', 'xls'])) {
+                Response::error('Only CSV and Excel files are allowed', 400);
+                return;
+            }
+            
+            $handle = fopen($file['tmp_name'], 'r');
+            if (!$handle) {
+                Response::error('Failed to read file', 400);
+                return;
+            }
+            
+            $header = fgetcsv($handle, 0, ',', '"', '\\');
+            if (!$header || empty($header)) {
+                fclose($handle);
+                Response::error('CSV file is empty or invalid', 400);
+                return;
+            }
+            
+            $header = array_map('strtolower', array_map('trim', $header));
+            $headerOriginal = array_map('trim', fgetcsv($handle, 0, ',', '"', '\\') !== false ? array_keys(array_combine($header, $header)) : $header);
+            rewind($handle);
+            fgetcsv($handle, 0, ',', '"', '\\'); // skip header again
+            
+            $imported = 0;
+            $failed = 0;
+            $duplicates = 0;
+            $userId = Auth::id();
+            $pdo = db();
+            $rowNumber = 1; // For error reporting (0-indexed in fgetcsv)
+            
+            while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
+                $rowNumber++;
                 
-                if ($existing) {
-                    $duplicates++;
+                // Skip empty rows
+                if (empty($row) || (count($row) === 1 && empty($row[0]))) {
                     continue;
                 }
-            }
-            
-            try {
-                $contactId = table('contacts')->insert([
-                    'user_id' => $userId,
-                    'name' => $name,
-                    'surname' => $surname,
-                    'phone' => $phone,
-                    'email' => $email ?: null,
-                    'country_code' => $countryCode,
-                    'subscription_status' => 'subscribed',
-                    'subscribed_at' => date('Y-m-d H:i:s'),
-                    'created_at' => date('Y-m-d H:i:s'),
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ]);
                 
-                // Add to group if specified
-                if ($groupId && $contactId) {
-                    table('group_contacts')->insert([
-                        'group_id' => $groupId,
-                        'contact_id' => $contactId,
-                        'created_at' => date('Y-m-d H:i:s'),
-                    ]);
+                if (count($row) !== count($header)) {
+                    $failed++;
+                    continue;
                 }
                 
-                $imported++;
-            } catch (Exception $e) {
-                $failed++;
+                $data = array_combine($header, $row);
+                
+                // If column mapping is provided, use it; otherwise fall back to auto-detection
+                if (!empty($columnMapping)) {
+                    // Use user-selected column mappings
+                    $name = '';
+                    $surname = '';
+                    $phone = '';
+                    $email = '';
+                    $countryCode = $data['country_code'] ?? $data['country'] ?? '+27';
+                    
+                    // Extract values based on column mappings
+                    if (!empty($columnMapping['name'])) {
+                        $nameCol = strtolower(trim($columnMapping['name']));
+                        $name = trim($data[$nameCol] ?? '');
+                    }
+                    
+                    if (!empty($columnMapping['surname'])) {
+                        $surnameCol = strtolower(trim($columnMapping['surname']));
+                        $surname = trim($data[$surnameCol] ?? '');
+                    }
+                    
+                    if (!empty($columnMapping['phone'])) {
+                        $phoneCol = strtolower(trim($columnMapping['phone']));
+                        $phone = trim($data[$phoneCol] ?? '');
+                    }
+                    
+                    if (!empty($columnMapping['email'])) {
+                        $emailCol = strtolower(trim($columnMapping['email']));
+                        $email = trim($data[$emailCol] ?? '');
+                    }
+                } else {
+                    // Fall back to auto-detection for backward compatibility
+                    $name = trim($data['name'] ?? $data['first_name'] ?? $data['firstname'] ?? '');
+                    $surname = trim($data['surname'] ?? $data['last_name'] ?? $data['lastname'] ?? '');
+                    $phone = trim($data['phone'] ?? $data['mobile'] ?? $data['cell'] ?? $data['telephone'] ?? '');
+                    $email = trim($data['email'] ?? $data['e-mail'] ?? '');
+                    $countryCode = $data['country_code'] ?? $data['country'] ?? '+27';
+                }
+                
+                // Clean phone number
+                if ($phone) {
+                    $phone = preg_replace('/[^0-9+]/', '', $phone);
+                    if (empty($phone)) {
+                        $phone = null;
+                    }
+                }
+                
+                // VALIDATION: Phone is required (mandatory field)
+                if (empty($phone)) {
+                    $failed++;
+                    continue;
+                }
+                
+                // Name/surname are optional - if we have name, combine with surname
+                $fullName = '';
+                if (!empty($name) && !empty($surname)) {
+                    $fullName = $name . ' ' . $surname;
+                } elseif (!empty($name)) {
+                    $fullName = $name;
+                } elseif (!empty($surname)) {
+                    $fullName = $surname;
+                } else {
+                    // If no name or surname provided, use a placeholder
+                    $fullName = 'Contact';
+                }
+                
+                // Check for duplicates
+                if ($skipDuplicates && $phone) {
+                    $existing = table('contacts')
+                        ->where('user_id', $userId)
+                        ->where('phone', $phone)
+                        ->first();
+                    
+                    if ($existing) {
+                        $duplicates++;
+                        continue;
+                    }
+                }
+                
+                try {
+                    $contactId = table('contacts')->insert([
+                        'user_id' => $userId,
+                        'name' => !empty($name) ? $name : '',
+                        'surname' => !empty($surname) ? $surname : '',
+                        'phone' => $phone ?: null,
+                        'email' => $email ?: null,
+                        'country_code' => $countryCode,
+                        'subscription_status' => 'subscribed',
+                        'subscribed_at' => date('Y-m-d H:i:s'),
+                        'created_at' => date('Y-m-d H:i:s'),
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    
+                    // Add to group if specified
+                    if ($groupId && $contactId) {
+                        table('group_contacts')->insert([
+                            'group_id' => $groupId,
+                            'contact_id' => $contactId,
+                            'created_at' => date('Y-m-d H:i:s'),
+                        ]);
+                    }
+                    
+                    $imported++;
+                } catch (Exception $e) {
+                    error_log("Contact import row $rowNumber error: " . $e->getMessage());
+                    $failed++;
+                }
             }
+            
+            fclose($handle);
+            
+            Response::success([
+                'imported' => $imported,
+                'failed' => $failed,
+                'duplicates' => $duplicates,
+                'message' => "Imported $imported contacts" . 
+                    ($duplicates > 0 ? ", $duplicates duplicates skipped" : "") . 
+                    ($failed > 0 ? ", $failed failed" : ""),
+            ]);
+        } catch (Exception $e) {
+            error_log('Import error: ' . $e->getMessage());
+            Response::error('Import failed: ' . $e->getMessage(), 400);
         }
-        
-        fclose($handle);
-        
-        Response::success([
-            'imported' => $imported,
-            'failed' => $failed,
-            'duplicates' => $duplicates,
-            'message' => "Imported $imported contacts" . 
-                ($duplicates > 0 ? ", $duplicates duplicates skipped" : "") . 
-                ($failed > 0 ? ", $failed failed" : ""),
-        ]);
     }
     
     public function export(): void {
@@ -378,17 +559,41 @@ class ContactController {
     }
     
     public function groups(): void {
+        $userId = Auth::id();
+        
+        // Get actual groups
         $groups = table('contact_groups')
-            ->where('user_id', Auth::id())
+            ->where('user_id', $userId)
             ->orderBy('name', 'ASC')
             ->get();
         
         // Add contact counts
         foreach ($groups as &$group) {
-            $group['contact_count'] = table('group_contacts')
+            $group['contact_count'] = (int) table('group_contacts')
                 ->where('group_id', $group['id'])
                 ->count();
         }
+        
+        // Count uncategorized contacts (in no group)
+        $pdo = db();
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as count FROM contacts c
+            WHERE c.user_id = ?
+            AND c.id NOT IN (
+                SELECT DISTINCT contact_id FROM group_contacts
+            )
+        ");
+        $stmt->execute([$userId]);
+        $uncategorizedCount = (int) ($stmt->fetch()['count'] ?? 0);
+        
+        // Add virtual Uncategorized group at start
+        array_unshift($groups, [
+            'id' => 'uncategorized',
+            'name' => 'Uncategorized',
+            'description' => 'Contacts with no group assigned',
+            'contact_count' => $uncategorizedCount,
+            'is_virtual' => true,
+        ]);
         
         Response::success(['groups' => $groups]);
     }

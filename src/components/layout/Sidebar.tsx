@@ -151,12 +151,12 @@ export function Sidebar() {
         <div className="border-t border-sidebar-border p-3">
           <div className="flex items-center gap-3 rounded-lg px-3 py-2">
             <Link 
-              to="/profile"
+              to="/settings"
               className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-accent text-sm font-medium text-sidebar-primary-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
             >
               {user ? getInitials(user.name) : 'U'}
             </Link>
-            <Link to="/profile" className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
+            <Link to="/settings" className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
               <p className="truncate text-sm font-medium text-sidebar-primary-foreground">
                 {user?.name || 'User'}
               </p>

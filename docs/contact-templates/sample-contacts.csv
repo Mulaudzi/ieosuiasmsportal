@@ -1,0 +1,8 @@
+name,surname,phone,email,country_code,status
+John Smith,Smith,27123456789,john.smith@example.com,27,subscribed
+Sarah Johnson,Johnson,27987654321,sarah.johnson@example.com,27,subscribed
+Michael Williams,Williams,27555123456,michael.williams@example.com,27,subscribed
+Emma Brows,Brown,27666789012,emma.brown@example.com,27,subscribed
+David Jones,Jones,27777234567,david.jones@example.com,27,subscribed
+Lisa,Garcia,27888345678,lisa.garcia@example.com,27,subscribed
+James,Martinez,27654321098,james.martinez@example.com,27,subscribed
