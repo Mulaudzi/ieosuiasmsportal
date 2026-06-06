@@ -4,17 +4,20 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Wallet, FileText, ArrowRight, Loader2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, getPaymentStatus } from '@/lib/api';
 
 const PaymentSuccess = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   
   const reference = searchParams.get('reference');
   
   useEffect(() => {
+    let pollTimer: number | undefined;
+
     const fetchWalletBalance = async () => {
       try {
         const response = await api.get('/wallet') as unknown as { wallet: { balance: number } };
@@ -24,24 +27,66 @@ const PaymentSuccess = () => {
       } catch (error) {
         console.error('Failed to fetch wallet balance:', error);
       } finally {
+      }
+    };
+
+    const syncPaymentStatus = async (attempt = 0) => {
+      if (!reference) {
+        await fetchWalletBalance();
+        setPaymentStatus('completed');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await getPaymentStatus(reference);
+        const payload = response.data ?? response;
+        const resolvedStatus = payload.payment_status || payload.transaction_status || 'pending';
+        setPaymentStatus(resolvedStatus);
+
+        if (resolvedStatus === 'pending' && attempt < 6) {
+          pollTimer = window.setTimeout(() => {
+            void syncPaymentStatus(attempt + 1);
+          }, 2000);
+          return;
+        }
+
+        await fetchWalletBalance();
+      } catch {
+        await fetchWalletBalance();
+      } finally {
         setLoading(false);
       }
     };
-    
-    fetchWalletBalance();
-  }, []);
+
+    void syncPaymentStatus();
+
+    return () => {
+      if (pollTimer) {
+        window.clearTimeout(pollTimer);
+      }
+    };
+  }, [reference]);
+
+  const isPending = paymentStatus === 'pending';
   
   return (
-    <DashboardLayout title="Payment Successful">
+    <DashboardLayout title={isPending ? 'Payment Processing' : 'Payment Successful'}>
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-full max-w-lg text-center">
           <CardHeader className="pb-4">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
-              <CheckCircle className="h-12 w-12 text-green-600" />
+              {loading || isPending ? (
+                <Loader2 className="h-12 w-12 text-green-600 animate-spin" />
+              ) : (
+                <CheckCircle className="h-12 w-12 text-green-600" />
+              )}
             </div>
-            <CardTitle className="text-2xl">Payment Successful!</CardTitle>
+            <CardTitle className="text-2xl">{isPending ? 'Payment Received' : 'Payment Successful!'}</CardTitle>
             <CardDescription className="text-base">
-              Your payment has been processed and credits have been added to your account.
+              {isPending
+                ? 'Your checkout returned successfully. We are waiting for the final PayOS callback to confirm your wallet top-up.'
+                : 'Your payment has been processed and credits have been added to your account.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -91,7 +136,9 @@ const PaymentSuccess = () => {
             </div>
             
             <p className="text-sm text-muted-foreground">
-              A confirmation email has been sent to your registered email address.
+              {isPending
+                ? 'If this stays pending, refresh this page or check your payment history in a moment.'
+                : 'A confirmation email has been sent to your registered email address.'}
             </p>
           </CardContent>
         </Card>

@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 
 interface Payment {
   id: number;
-  gateway: 'payfast' | 'paystack' | 'ozow' | 'eft';
+  gateway: 'payos' | 'eft';
   gateway_reference: string | null;
   merchant_reference: string;
   amount: number;
@@ -106,9 +106,7 @@ const PaymentHistory = () => {
 
   const getGatewayLabel = (gateway: Payment['gateway']) => {
     const labels: Record<Payment['gateway'], string> = {
-      payfast: 'PayFast',
-      paystack: 'Paystack',
-      ozow: 'Ozow',
+      payos: 'PayOS',
       eft: 'EFT',
     };
     return labels[gateway];
@@ -186,9 +184,7 @@ const PaymentHistory = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Gateways</SelectItem>
-                    <SelectItem value="payfast">PayFast</SelectItem>
-                    <SelectItem value="paystack">Paystack</SelectItem>
-                    <SelectItem value="ozow">Ozow</SelectItem>
+                    <SelectItem value="payos">PayOS</SelectItem>
                     <SelectItem value="eft">EFT</SelectItem>
                   </SelectContent>
                 </Select>

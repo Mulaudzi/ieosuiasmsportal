@@ -2,7 +2,7 @@
 /**
  * Contact Form Controller
  * Handles public contact form submissions and sends emails to appropriate departments
- * Includes reCAPTCHA validation, rate limiting, and email delivery logging
+ * Includes rate limiting and email delivery logging
  */
 
 require_once __DIR__ . '/../lib/PHPMailer/Exception.php';
@@ -29,9 +29,6 @@ class ContactFormController
         
         // Rate limiting - 5 submissions per 15 minutes per IP
         RateLimiter::checkOrFail("contact_form:{$ip}", 5, 15);
-        
-        // Verify reCAPTCHA
-        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'contact_form');
         
         // Validate required fields
         $required = ['name', 'email', 'message', 'purpose'];

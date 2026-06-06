@@ -159,7 +159,6 @@ export default function CookiePolicy() {
             </p>
             <ul className="list-disc list-inside text-muted-foreground space-y-2">
               <li><strong>Google Analytics:</strong> For website analytics and performance monitoring</li>
-              <li><strong>Google reCAPTCHA:</strong> For security and spam prevention</li>
               <li><strong>Payment Processors:</strong> For secure payment processing</li>
             </ul>
           </section>

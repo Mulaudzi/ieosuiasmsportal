@@ -7,7 +7,6 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { useRecaptcha } from "@/hooks/useRecaptcha";
 import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import smsPortalLogo from "@/assets/ieosuia-sms-portal-logo.png";
 import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
@@ -15,7 +14,6 @@ import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
 export default function Login() {
   const navigate = useNavigate();
   const { login, user } = useAuth();
-  const { executeRecaptcha } = useRecaptcha();
   const { isAvailable: googleAvailable, isLoading: googleLoading, signInWithGoogle } = useGoogleAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -58,13 +56,7 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      const recaptchaToken = await executeRecaptcha('login');
-      
-      const result = await login(
-        formData.email, 
-        formData.password, 
-        recaptchaToken || undefined
-      );
+      const result = await login(formData.email, formData.password);
       
       if (result.success) {
         setPendingRedirect(true);

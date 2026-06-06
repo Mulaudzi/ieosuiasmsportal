@@ -3,6 +3,8 @@
  * Wallet Controller
  */
 
+require_once __DIR__ . '/../services/PayOSService.php';
+
 class WalletController {
     public function index(): void {
         $wallet = table('wallets')->where('user_id', Auth::id())->first();
@@ -241,7 +243,8 @@ class WalletController {
     public function buy(): void {
         $data = Request::validate([
             'amount' => 'required|numeric|min:10',
-            'payment_method' => 'required|in:payfast,paystack,ozow,eft',
+            'payment_method' => 'required|in:payos,eft',
+            'requested_credits' => 'numeric|min:1',
         ]);
         
         $wallet = table('wallets')->where('user_id', Auth::id())->first();
@@ -260,42 +263,55 @@ class WalletController {
         }
         
         $amount = (float) $data['amount'];
-        $reference = 'SMS' . time() . rand(1000, 9999);
+        $requestedCredits = isset($data['requested_credits']) ? (int) $data['requested_credits'] : null;
+        $requestedCredits = $requestedCredits !== null && $requestedCredits > 0 ? $requestedCredits : null;
+        $reference = 'WALLET-SMS-' . date('YmdHis') . '-' . rand(100, 999);
+        $hostedMethod = $data['payment_method'] === 'eft' ? 'eft' : 'payos';
         
         // Create pending transaction
-        $transactionId = table('wallet_transactions')->insert([
+        $transactionData = [
             'wallet_id' => $wallet['id'],
             'amount' => $amount,
             'type' => 'credit',
-            'description' => "Credit purchase via {$data['payment_method']}",
+            'description' => "Credit purchase via {$hostedMethod}",
             'reference' => $reference,
             'status' => 'pending',
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
-        ]);
+        ];
+
+        if ($requestedCredits !== null && $this->hasColumn('wallet_transactions', 'requested_credits')) {
+            $transactionData['requested_credits'] = $requestedCredits;
+        }
+
+        if ($this->hasColumn('wallet_transactions', 'checkout_initiated_at')) {
+            $transactionData['checkout_initiated_at'] = date('Y-m-d H:i:s');
+        }
+
+        $transactionId = table('wallet_transactions')->insert($transactionData);
         
         $paymentUrl = null;
         $bankDetails = null;
         
-        switch ($data['payment_method']) {
-            case 'payfast':
-                $paymentUrl = $this->generatePayFastUrl($amount, $reference);
-                break;
-            case 'paystack':
-                $paymentUrl = $this->generatePaystackUrl($amount, $reference);
-                break;
-            case 'ozow':
-                $paymentUrl = $this->generateOzowUrl($amount, $reference);
-                break;
-            case 'eft':
-                $bankDetails = [
-                    'bank_name' => env('EFT_BANK_NAME', 'First National Bank'),
-                    'account_name' => env('EFT_ACCOUNT_NAME', 'IEOSUIA PTY LTD'),
-                    'account_number' => env('EFT_ACCOUNT_NUMBER', '62000000000'),
-                    'branch_code' => env('EFT_BRANCH_CODE', '250655'),
-                    'reference' => $reference,
-                ];
-                break;
+        if ($hostedMethod === 'eft') {
+            $bankDetails = [
+                'bank_name' => env('EFT_BANK_NAME', 'First National Bank'),
+                'account_name' => env('EFT_ACCOUNT_NAME', 'IEOSUIA PTY LTD'),
+                'account_number' => env('EFT_ACCOUNT_NUMBER', '62000000000'),
+                'branch_code' => env('EFT_BRANCH_CODE', '250655'),
+                'reference' => $reference,
+            ];
+        } else {
+            $transaction = table('wallet_transactions')->where('id', $transactionId)->first();
+            $response = $this->createPayOSCheckout($wallet, $transaction, $requestedCredits);
+            $paymentUrl = $response['payment_url'];
+
+            if (!empty($response['internal_reference']) && $this->hasColumn('wallet_transactions', 'payos_reference')) {
+                table('wallet_transactions')->where('id', $transactionId)->update([
+                    'payos_reference' => $response['internal_reference'],
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+            }
         }
         
         Response::success([
@@ -304,122 +320,119 @@ class WalletController {
             'amount' => $amount,
             'payment_url' => $paymentUrl,
             'bank_details' => $bankDetails,
+            'payment_method' => $hostedMethod,
         ]);
     }
-    
-    private function generatePayFastUrl(float $amount, string $reference): string {
-        $merchantId = env('PAYFAST_MERCHANT_ID');
-        $merchantKey = env('PAYFAST_MERCHANT_KEY');
-        $sandbox = env('PAYFAST_SANDBOX', true);
-        
-        $user = Auth::user();
-        
-        $data = [
-            'merchant_id' => $merchantId,
-            'merchant_key' => $merchantKey,
-            'return_url' => env('FRONTEND_URL') . '/payment/success?reference=' . $reference,
-            'cancel_url' => env('FRONTEND_URL') . '/payment/failed?cancelled=1&reference=' . $reference,
-            'notify_url' => env('APP_URL') . '/payments/payfast/itn',
-            'name_first' => explode(' ', $user['name'])[0],
-            'email_address' => $user['email'],
-            'amount' => number_format($amount, 2, '.', ''),
-            'm_payment_id' => $reference,
-            'item_name' => 'SMS Credits',
-        ];
-        
-        // Generate signature
-        $signatureString = '';
-        foreach ($data as $key => $val) {
-            $signatureString .= $key . '=' . urlencode($val) . '&';
+
+    public function paymentStatus(): void {
+        $reference = Request::query('reference');
+
+        if (!$reference) {
+            Response::error('Reference is required', 400);
         }
-        $signatureString = rtrim($signatureString, '&');
-        
-        if ($passphrase = env('PAYFAST_PASSPHRASE')) {
-            $signatureString .= '&passphrase=' . urlencode($passphrase);
+
+        $wallet = table('wallets')->where('user_id', Auth::id())->first();
+        if (!$wallet) {
+            Response::error('Wallet not found', 404);
         }
-        
-        $data['signature'] = md5($signatureString);
-        
-        $baseUrl = $sandbox ? 'https://sandbox.payfast.co.za/eng/process' : 'https://www.payfast.co.za/eng/process';
-        
-        return $baseUrl . '?' . http_build_query($data);
+
+        $transaction = table('wallet_transactions')
+            ->where('wallet_id', $wallet['id'])
+            ->where('reference', $reference)
+            ->first();
+
+        if (!$transaction) {
+            Response::error('Transaction not found', 404);
+        }
+
+        $payment = table('payments')
+            ->where('transaction_id', $transaction['id'])
+            ->orderBy('created_at', 'DESC')
+            ->first();
+
+        Response::success([
+            'reference' => $reference,
+            'transaction_status' => $transaction['status'],
+            'payment_status' => $payment['status'] ?? null,
+            'gateway_status' => $payment['gateway_status'] ?? null,
+            'gateway_reference' => $payment['gateway_reference'] ?? null,
+        ]);
     }
-    
-    private function generateOzowUrl(float $amount, string $reference): string {
-        $siteCode = env('OZOW_SITE_CODE');
-        $privateKey = env('OZOW_PRIVATE_KEY');
-        $sandbox = env('OZOW_SANDBOX', true);
-        
-        $data = [
-            'SiteCode' => $siteCode,
-            'CountryCode' => 'ZA',
-            'CurrencyCode' => 'ZAR',
-            'Amount' => number_format($amount, 2, '.', ''),
-            'TransactionReference' => $reference,
-            'BankReference' => $reference,
-            'Optional1' => '',
-            'Optional2' => '',
-            'Optional3' => '',
-            'Optional4' => '',
-            'Optional5' => '',
-            'Customer' => Auth::user()['email'],
-            'CancelUrl' => env('FRONTEND_URL') . '/payment/failed?cancelled=1&reference=' . $reference,
-            'ErrorUrl' => env('FRONTEND_URL') . '/payment/failed?reference=' . $reference,
-            'SuccessUrl' => env('FRONTEND_URL') . '/payment/success?reference=' . $reference,
-            'NotifyUrl' => env('APP_URL') . '/payments/ozow/notify',
-            'IsTest' => $sandbox ? 'true' : 'false',
-        ];
-        
-        $hashString = implode('', array_values($data)) . $privateKey;
-        $data['HashCheck'] = strtolower(hash('sha512', strtolower($hashString)));
-        
-        $baseUrl = $sandbox ? 'https://pay.ozow.com' : 'https://pay.ozow.com';
-        
-        return $baseUrl . '?' . http_build_query($data);
-    }
-    
-    /**
-     * Generate Paystack payment URL
-     */
-    private function generatePaystackUrl(float $amount, string $reference): string {
-        $publicKey = env('PAYSTACK_PUBLIC_KEY');
-        $secretKey = env('PAYSTACK_SECRET_KEY');
-        
+
+    private function createPayOSCheckout(array $wallet, array $transaction, ?int $requestedCredits): array {
         $user = Auth::user();
-        
-        // Initialize transaction via Paystack API
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => 'https://api.paystack.co/transaction/initialize',
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode([
-                'email' => $user['email'],
-                'amount' => (int) ($amount * 100),
-                'reference' => $reference,
-                'callback_url' => env('FRONTEND_URL') . '/payment/success?reference=' . $reference,
-                'metadata' => [
-                    'user_id' => $user['id'],
-                    'user_name' => $user['name'],
-                    'cancel_action' => env('FRONTEND_URL') . '/payment/failed?cancelled=1&reference=' . $reference,
-                ],
-            ]),
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $secretKey,
-                'Content-Type: application/json',
+        $account = table('accounts')->where('user_id', $user['id'])->first();
+        $payOS = new PayOSService();
+        $reference = $transaction['reference'];
+        $requestedCredits = $requestedCredits ?? $this->getRequestedCreditsFromTransaction($transaction);
+
+        $payload = [
+            'tenant_identifier' => env('PAYOS_TENANT_IDENTIFIER', 'sms-ieosuia'),
+            'external_order_id' => $reference,
+            'amount' => round((float) $transaction['amount'], 2),
+            'currency' => 'ZAR',
+            'customer_name' => $user['name'] ?? 'Customer',
+            'customer_email' => $user['email'] ?? null,
+            'customer_phone' => $user['phone'] ?? null,
+            'item_name' => 'SMS wallet top-up',
+            'item_description' => 'Wallet top-up for prepaid SMS credits',
+            'source_website' => env('FRONTEND_URL', 'https://sms.ieosuia.com'),
+            'return_url' => env('PAYOS_RETURN_URL', env('FRONTEND_URL', 'https://sms.ieosuia.com') . '/payment/success') . '?reference=' . urlencode($reference),
+            'cancel_url' => env('PAYOS_CANCEL_URL', env('FRONTEND_URL', 'https://sms.ieosuia.com') . '/payment/failed') . '?cancelled=1&reference=' . urlencode($reference),
+            'metadata' => [
+                'platform' => env('PAYOS_TENANT_IDENTIFIER', 'sms-ieosuia'),
+                'wallet_reference' => $reference,
+                'wallet_id' => (int) $wallet['id'],
+                'user_id' => (int) $user['id'],
+                'requested_credits' => $requestedCredits,
+                'checkout_source' => 'web',
+                'account_id' => $account['id'] ?? null,
+                'company_name' => $account['company_name'] ?? null,
             ],
-        ]);
-        
-        $response = curl_exec($ch);
-        curl_close($ch);
-        
-        $result = json_decode($response, true);
-        
-        if ($result && $result['status'] && isset($result['data']['authorization_url'])) {
-            return $result['data']['authorization_url'];
+        ];
+
+        $branding = [
+            'store_name' => env('PAYOS_STORE_NAME', env('APP_NAME', 'IEOSUIA SMS Portal')),
+            'brand_color' => env('PAYOS_BRAND_COLOR', '#0f425b'),
+        ];
+
+        $logoUrl = env('PAYOS_LOGO_URL', '');
+        if ($logoUrl !== '') {
+            $branding['logo_url'] = $logoUrl;
         }
-        
-        // Fallback to manual URL construction
-        return 'https://paystack.com/pay/' . $reference;
+
+        $payload['branding'] = $branding;
+
+        $response = $payOS->createCheckout($payload);
+
+        return [
+            'payment_url' => $payOS->getCheckoutUrl($response),
+            'internal_reference' => $payOS->getInternalReference($response),
+            'raw_response' => $response,
+        ];
+    }
+
+    private function getRequestedCreditsFromTransaction(array $transaction): ?int {
+        if (isset($transaction['requested_credits']) && is_numeric($transaction['requested_credits'])) {
+            return (int) $transaction['requested_credits'];
+        }
+
+        return null;
+    }
+
+    private function hasColumn(string $table, string $column): bool {
+        static $cache = [];
+        $key = $table . '.' . $column;
+
+        if (array_key_exists($key, $cache)) {
+            return $cache[$key];
+        }
+
+        $sql = 'SELECT COUNT(*) AS count FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?';
+        $stmt = db()->prepare($sql);
+        $stmt->execute([env('DB_DATABASE'), $table, $column]);
+
+        $cache[$key] = (int) ($stmt->fetch()['count'] ?? 0) > 0;
+        return $cache[$key];
     }
 }

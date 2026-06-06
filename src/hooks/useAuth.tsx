@@ -19,13 +19,13 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isEmailVerified: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, recaptchaToken?: string, password2?: string, password3?: string) => Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }>;
-  register: (data: { name: string; email: string; password: string; accountType: string; recaptchaToken?: string }) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string, password2?: string, password3?: string) => Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }>;
+  register: (data: { name: string; email: string; password: string; accountType: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
   resendVerification: () => Promise<{ success: boolean; error?: string }>;
-  forgotPassword: (email: string, recaptchaToken?: string) => Promise<{ success: boolean; error?: string }>;
-  resetPassword: (email: string, otp: string, password: string, recaptchaToken?: string) => Promise<{ success: boolean; error?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string, otp: string, password: string) => Promise<{ success: boolean; error?: string }>;
   updateUser: (data: Partial<User> & { password?: string; current_password?: string; password_confirmation?: string }) => Promise<{ success: boolean; error?: string }>;
   setAuthFromGoogle: (user: User, token: string) => void;
 }
@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (email: string, password: string, recaptchaToken?: string, password2?: string, password3?: string): Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }> => {
+  const login = async (email: string, password: string, password2?: string, password3?: string): Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }> => {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
@@ -149,7 +149,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password, 
           password_2: password2,
           password_3: password3,
-          recaptcha_token: recaptchaToken 
         }),
       });
 
@@ -248,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (data: { name: string; email: string; password: string; accountType: string; recaptchaToken?: string }): Promise<{ success: boolean; error?: string }> => {
+  const register = async (data: { name: string; email: string; password: string; accountType: string }): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
@@ -259,7 +258,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password: data.password,
           password_confirmation: data.password,
           account_type: data.accountType,
-          recaptcha_token: data.recaptchaToken,
         }),
       });
 
@@ -364,12 +362,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const forgotPassword = async (email: string, recaptchaToken?: string): Promise<{ success: boolean; error?: string }> => {
+  const forgotPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await fetch(`${API_URL}/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, recaptcha_token: recaptchaToken }),
+        body: JSON.stringify({ email }),
       });
 
       const data = await response.json();
@@ -384,7 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const resetPassword = async (email: string, otp: string, password: string, recaptchaToken?: string): Promise<{ success: boolean; error?: string }> => {
+  const resetPassword = async (email: string, otp: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await fetch(`${API_URL}/auth/reset-password`, {
         method: "POST",
@@ -394,7 +392,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           otp, 
           password, 
           password_confirmation: password,
-          recaptcha_token: recaptchaToken 
         }),
       });
 

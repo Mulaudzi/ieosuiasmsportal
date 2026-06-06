@@ -26,6 +26,7 @@ class PdfReceiptService {
         $subtotal = (float)$payment['amount'] - $vatAmount;
         
         $gatewayLabels = [
+            'payos' => 'PayOS',
             'payfast' => 'PayFast',
             'paystack' => 'Paystack',
             'ozow' => 'Ozow',

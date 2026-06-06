@@ -32,11 +32,7 @@ class AuthController {
             'password' => 'required|min:8|confirmed',
             'phone' => 'max:20',
             'account_type' => 'max:20',
-            'recaptcha_token' => 'max:2048',
         ]);
-        
-        // Verify reCAPTCHA (soft fail if not configured)
-        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'register');
         
         // Rate limit registration by IP
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
@@ -121,11 +117,7 @@ class AuthController {
             'password' => 'required',
             'password_2' => 'max:255',
             'password_3' => 'max:255',
-            'recaptcha_token' => 'max:2048',
         ]);
-        
-        // Verify reCAPTCHA (soft fail if not configured)
-        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'login');
         
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         
@@ -490,10 +482,7 @@ class AuthController {
     public function forgotPassword(): void {
         $data = Request::validate([
             'email' => 'required|email',
-            'recaptcha_token' => 'max:2048',
         ]);
-        
-        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'forgot_password');
         
         RateLimiter::checkOrFail("forgot_password:{$data['email']}", 3, 15);
         
@@ -530,10 +519,7 @@ class AuthController {
             'email' => 'required|email',
             'otp' => 'required|min:6|max:6',
             'password' => 'required|min:8|confirmed',
-            'recaptcha_token' => 'max:2048',
         ]);
-        
-        RecaptchaValidator::verifyOrFail($data['recaptcha_token'] ?? '', 'reset_password');
         
         RateLimiter::checkOrFail("reset_password:{$data['email']}", 5, 15);
         

@@ -77,7 +77,6 @@ src/
 ├── hooks/
 │   ├── useAuth.tsx              # Auth context (CRITICAL)
 │   ├── useGoogleAuth.ts         # Google OAuth
-│   ├── useRecaptcha.ts          # reCAPTCHA
 │   ├── useWallet.ts             # Wallet state
 │   └── useAdminSession.ts       # Admin session
 ├── components/
@@ -127,7 +126,6 @@ api/
 | `TELNYX_API_KEY` | ✅ | SMS sending fails |
 | `SMTP_*` | ✅ | Email sending fails |
 | `GOOGLE_CLIENT_ID` | ⚠️ | Google OAuth disabled |
-| `RECAPTCHA_SECRET_KEY` | ⚠️ | Form protection disabled |
 
 ### 1.5 System-Wide Risk Map
 
@@ -203,7 +201,7 @@ api/
 | **Purpose** | Authenticate users (email/password + Google) |
 | **User Roles** | Public (unauthenticated) |
 | **Importance** | 🔴 Critical (auth gateway) |
-| **Dependencies** | `useAuth.tsx`, `useGoogleAuth.ts`, `useRecaptcha.ts` |
+| **Dependencies** | `useAuth.tsx`, `useGoogleAuth.ts` |
 | **Safe to Disable** | ❌ No |
 
 #### File Dependencies
@@ -212,7 +210,6 @@ api/
 | Frontend Page | `src/pages/Login.tsx` | Login form |
 | Auth Hook | `src/hooks/useAuth.tsx` | `login()` function |
 | Google Hook | `src/hooks/useGoogleAuth.ts` | OAuth flow |
-| reCAPTCHA | `src/hooks/useRecaptcha.ts` | Bot protection |
 | API Call | `POST /auth/login` | Authenticate |
 | Controller | `api/controllers/AuthController.php` | `login()` |
 | Database | `users`, `admin_users` | Credential verification |
@@ -221,12 +218,10 @@ api/
 ```
 User submits form
 → Login.tsx: handleSubmit()
-→ useRecaptcha.ts: executeRecaptcha()
-→ useAuth.tsx: login(email, password, token)
+→ useAuth.tsx: login(email, password)
 → api.ts: api.post('/auth/login')
 → AuthController.php: login()
 → RateLimiter::checkOrFail()
-→ RecaptchaValidator::verifyOrFail()
 → QueryBuilder: table('users')->where('email')
 → password_verify()
 → JWT::encode()
@@ -269,13 +264,12 @@ User clicks "Continue with Google"
 | Form submits, nothing happens | Redirect | No action | API call failing | Check Network tab | `api.ts`, `AuthController.php` |
 | "Invalid password" with correct password | Login | Error | Password hash mismatch | Re-hash password | `AuthController.php:247` |
 | Google redirect loop | Dashboard | Loop | Using `navigate()` not `window.location.href` | Use full page reload | `GoogleCallback.tsx` |
-| reCAPTCHA error | Login | Error toast | Missing/invalid key | Check `RECAPTCHA_SECRET_KEY` | `.env`, `RecaptchaValidator.php` |
 | Rate limited | Login | 429 error | Too many attempts | Wait 15 minutes | `RateLimiter.php` |
 | 500 error on submit | Success | Server error | DB connection failed | Check `.env` DB credentials | `database.php` |
 
 #### Debugging Steps
 1. **Browser**: Open DevTools → Network → Submit form → Check POST /auth/login
-2. **Expected Request**: `{ email, password, recaptcha_token }`
+2. **Expected Request**: `{ email, password }`
 3. **Expected Response**: `{ success: true, data: { user, token } }`
 4. **If 401**: Check password hash in database
 5. **If 500**: Check PHP error logs, database connection
@@ -306,13 +300,11 @@ User clicks "Continue with Google"
 #### Execution Chain
 ```
 User fills form → Submit
-→ useRecaptcha: executeRecaptcha()
 → useAuth: register(data)
 → api.post('/auth/register', { name, email, password, password_confirmation, account_type })
 → AuthController::register()
 → Request::validate()
 → RateLimiter::checkOrFail()
-→ RecaptchaValidator::verifyOrFail()
 → EmailValidator::validate() (disposable check)
 → table('users')->insert()
 → table('wallets')->insert()
@@ -892,7 +884,6 @@ $router->group(['middleware' => 'auth'], function($router) {
 | Measure | Implementation | Status |
 |---------|----------------|--------|
 | Rate Limiting | `RateLimiter.php` | ✅ Active |
-| reCAPTCHA | `RecaptchaValidator.php` | ✅ Active (soft fail) |
 | Password Hashing | `password_hash()` / `password_verify()` | ✅ bcrypt |
 | CSRF Protection | State parameter for OAuth | ✅ Implemented |
 | Audit Logging | `AuditLogService.php` | ✅ Active |
@@ -1105,7 +1096,7 @@ SELECT COUNT(*), status FROM messages WHERE campaign_id = {id} GROUP BY status;
 |----------|-------|----------|
 | Core Functionality | ✅ 95% | All CRUD operations verified |
 | Authentication | ✅ 100% | JWT, Google, Admin all work |
-| Security | ⚠️ 85% | Rate limiting, reCAPTCHA active; needs audit |
+| Security | ⚠️ 80% | Rate limiting active; bot protection currently reduced |
 | Data Integrity | ⚠️ 75% | Some operations lack transactions |
 | Testing | ⚠️ 50% | Manual E2E only; no automated tests |
 | Error Handling | ✅ 90% | Errors logged, user-friendly messages |

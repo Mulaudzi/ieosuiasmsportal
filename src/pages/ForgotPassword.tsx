@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Mail, CheckCircle, KeyRound } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { useRecaptcha } from "@/hooks/useRecaptcha";
 import smsPortalLogo from "@/assets/ieosuia-sms-portal-logo.png";
 import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
 
@@ -19,7 +18,6 @@ export default function ForgotPassword() {
   const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const { executeRecaptcha } = useRecaptcha();
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,12 +28,8 @@ export default function ForgotPassword() {
 
     setIsLoading(true);
     try {
-      // Execute reCAPTCHA
-      const recaptchaToken = await executeRecaptcha('forgot_password');
-      
       const response = await api.post("/auth/forgot-password", { 
         email,
-        recaptcha_token: recaptchaToken 
       });
       if (response.success) {
         toast({ title: "Code sent", description: "Check your email for the reset code." });
@@ -70,15 +64,11 @@ export default function ForgotPassword() {
 
     setIsLoading(true);
     try {
-      // Execute reCAPTCHA
-      const recaptchaToken = await executeRecaptcha('reset_password');
-      
       const response = await api.post("/auth/reset-password", {
         email,
         otp,
         password,
         password_confirmation: confirmPassword,
-        recaptcha_token: recaptchaToken,
       });
       if (response.success) {
         setStep("success");

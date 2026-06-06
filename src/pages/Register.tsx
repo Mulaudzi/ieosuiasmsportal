@@ -15,7 +15,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Eye, EyeOff, Check, X, AlertCircle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { useRecaptcha } from "@/hooks/useRecaptcha";
 import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import smsPortalLogo from "@/assets/ieosuia-sms-portal-logo.png";
 import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
@@ -23,7 +22,6 @@ import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
 export default function Register() {
   const navigate = useNavigate();
   const { register } = useAuth();
-  const { executeRecaptcha } = useRecaptcha();
   const { isAvailable: googleAvailable, isLoading: googleLoading, signInWithGoogle } = useGoogleAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -138,14 +136,11 @@ export default function Register() {
 
     setIsLoading(true);
     try {
-      const recaptchaToken = await executeRecaptcha('register');
-      
       const result = await register({
         name: formData.name,
         email: formData.email,
         password: formData.password,
         accountType: formData.accountType,
-        recaptchaToken: recaptchaToken || undefined,
       });
       
       if (result.success) {

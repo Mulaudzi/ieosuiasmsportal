@@ -178,7 +178,8 @@ export const exportContacts = (groupId?: string) => {
     : `${API_BASE_URL}/contacts/export?token=${token}`;
   window.open(url, '_blank');
 };
-export const buyCredits = (data: { amount: number; payment_method: string }) => api.post<any>('/wallet/buy', data);
+export const buyCredits = (data: { amount: number; payment_method: string; requested_credits?: number }) => api.post<any>('/wallet/buy', data);
+export const getPaymentStatus = (reference: string) => api.get<any>('/wallet/payments/status', { reference });
 export const getWalletHistory = () => api.get<any[]>('/wallet/history');
 export const saveSettings = (section: string, data: any) => api.put<any>(`/settings/${section}`, data);
 export const exportReport = (type: string) => api.get<any>(`/reports/export/${type}`);

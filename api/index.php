@@ -13,7 +13,6 @@ require_once __DIR__ . '/core/JWT.php';
 require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/RateLimiter.php';
 require_once __DIR__ . '/core/EmailValidator.php';
-require_once __DIR__ . '/core/RecaptchaValidator.php';
 
 // Load services (with graceful handling)
 $emailServicePath = __DIR__ . '/services/EmailService.php';
@@ -213,6 +212,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/wallet/stats', 'WalletController@stats');
     $router->get('/wallet/transactions', 'WalletController@transactions');
     $router->get('/wallet/payments', 'WalletController@payments');
+    $router->get('/wallet/payments/status', 'WalletController@paymentStatus');
     $router->get('/wallet/receipt', 'WalletController@receipt');
     $router->get('/wallet/packages', 'WalletController@packages');
     $router->post('/wallet/buy', 'WalletController@buy');
@@ -260,10 +260,7 @@ $router->post('/webhooks/telnyx/dlr-failover', 'TelnyxWebhookController@dlrFailo
 $router->post('/webhooks/telnyx/inbound', 'TelnyxWebhookController@inbound');
 
 // Payment Webhooks (public with signature validation)
-$router->post('/payments/payfast/itn', 'PaymentWebhookController@payfastItn');
-$router->post('/payments/payfast/subscription', 'PaymentWebhookController@payfastSubscriptionItn');
-$router->post('/payments/paystack/webhook', 'PaymentWebhookController@paystackWebhook');
-$router->post('/payments/ozow/notify', 'PaymentWebhookController@ozowNotify');
+$router->post('/payments/payos/callback', 'PaymentWebhookController@payosCallback');
 
 // Run router
 $router->dispatch();

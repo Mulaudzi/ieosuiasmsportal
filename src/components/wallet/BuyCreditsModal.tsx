@@ -33,22 +33,10 @@ interface BuyCreditsModalProps {
 
 const paymentMethods = [
   {
-    id: "payfast",
-    name: "PayFast",
-    description: "Credit/Debit Card",
+    id: "payos",
+    name: "PayOS Checkout",
+    description: "Hosted card payment",
     icon: CreditCard,
-  },
-  {
-    id: "paystack",
-    name: "Paystack",
-    description: "Cards & Mobile Money",
-    icon: Wallet,
-  },
-  {
-    id: "ozow",
-    name: "Ozow",
-    description: "Instant EFT",
-    icon: Building2,
   },
   {
     id: "eft",
@@ -132,10 +120,12 @@ export function BuyCreditsModal({
       const response = await buyCredits({
         amount: total,
         payment_method: selectedPayment,
+        requested_credits: credits,
       });
 
-      if (response.success && response.data) {
-        const { payment_url, bank_details, reference } = response.data;
+      if (response.success) {
+        const payload = response.data ?? response;
+        const { payment_url, bank_details, reference } = payload;
         setPaymentReference(reference);
 
         if (selectedPayment === "eft") {
@@ -147,10 +137,10 @@ export function BuyCreditsModal({
           });
           setStep("confirmation");
         } else if (payment_url) {
-          // For PayFast, Paystack, Ozow - redirect to payment URL
+          // Hosted PayOS checkout redirect
           toast({
             title: "Redirecting to payment...",
-            description: `You will be redirected to ${selectedPayment === "payfast" ? "PayFast" : selectedPayment === "paystack" ? "Paystack" : "Ozow"} to complete payment.`,
+            description: "You will be redirected to PayOS to complete your payment.",
           });
           
           // Small delay to show toast, then redirect
@@ -249,7 +239,7 @@ export function BuyCreditsModal({
               <div className="space-y-6">
                 <div>
                   <h3 className="font-medium text-foreground mb-4">Select your payment method</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     {paymentMethods.map((method) => (
                       <button
                         key={method.id}
@@ -269,44 +259,16 @@ export function BuyCreditsModal({
                   </div>
                 </div>
 
-                {selectedPayment === "payfast" && (
+                {selectedPayment === "payos" && (
                   <div className="bg-muted/50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <CreditCard className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm text-muted-foreground">
-                        Credit / Debit Card via PayFast
+                        Hosted checkout via PayOS
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      You will be redirected to PayFast to securely complete your payment with Visa, Mastercard, or other supported cards.
-                    </p>
-                  </div>
-                )}
-
-                {selectedPayment === "paystack" && (
-                  <div className="bg-muted/50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Wallet className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        Cards & Mobile Money via Paystack
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      You will be redirected to Paystack to complete your payment using cards or mobile money.
-                    </p>
-                  </div>
-                )}
-
-                {selectedPayment === "ozow" && (
-                  <div className="bg-muted/50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        Instant EFT via Ozow
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      You will be redirected to Ozow to complete an instant bank transfer. Funds are verified in real-time.
+                      You will be redirected to the PayOS hosted checkout. PayOS orchestrates the payment flow and returns you here after completion.
                     </p>
                   </div>
                 )}
