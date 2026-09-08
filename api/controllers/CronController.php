@@ -15,9 +15,10 @@ class CronController {
             Response::error('Unauthorized', 403);
         }
         
-        $jobs = table('cron_jobs')->get();
-        
-        Response::success(['jobs' => $jobs]);
+        $rows=db()->query("SELECT service_name job_name,last_seen_at,TIMESTAMPDIFF(SECOND,last_seen_at,NOW()) age_seconds,metadata_json last_result FROM service_heartbeats ORDER BY service_name")->fetchAll();
+        $limits=['sms-worker'=>120,'sms-scheduler'=>180,'sms-dlr-poller'=>300];
+        foreach($rows as &$row){$row['status']=(int)$row['age_seconds']<=($limits[$row['job_name']]??300)?'healthy':'stale';$row['run_count']=null;$row['error_count']=null;}$row=null;
+        Response::success(['jobs'=>$rows]);
     }
     
     /**
@@ -29,6 +30,8 @@ class CronController {
         if (!$user || $user['role'] !== 'admin') {
             Response::error('Unauthorized', 403);
         }
+        $pdo=db();$pdo->beginTransaction();
+        try{$ids=$pdo->query("SELECT id FROM sms_campaigns WHERE state='scheduled' AND scheduled_at<=NOW() ORDER BY scheduled_at LIMIT 100 FOR UPDATE SKIP LOCKED")->fetchAll(PDO::FETCH_COLUMN);if($ids){$marks=implode(',',array_fill(0,count($ids),'?'));$pdo->prepare("UPDATE sms_campaigns SET state='queued',queued_count=recipient_count,queued_at=NOW(),updated_at=NOW() WHERE id IN ($marks) AND state='scheduled'")->execute($ids);}$pdo->commit();Response::success(['message'=>'Queued '.count($ids).' due SMS campaigns','results'=>['total_due'=>count($ids),'processed'=>count($ids),'errors'=>[]]]);}catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();Response::error('Could not queue due campaigns',500);}
         
         // Update job status
         table('cron_jobs')->where('job_name', 'process_scheduled_campaigns')->update([
@@ -139,11 +142,7 @@ class CronController {
             Response::error('Unauthorized', 403);
         }
         
-        $campaigns = table('campaigns')
-            ->where('status', 'scheduled')
-            ->orderBy('scheduled_at', 'ASC')
-            ->limit(50)
-            ->get();
+        $campaigns = table('sms_campaigns')->where('state','scheduled')->orderBy('scheduled_at','ASC')->limit(50)->get();
         
         // Add user info
         foreach ($campaigns as &$campaign) {
@@ -152,6 +151,7 @@ class CronController {
                 ->select(['id', 'name', 'email'])
                 ->first();
             $campaign['user'] = $campaignUser;
+            $campaign['type']='sms';$campaign['status']=$campaign['state'];$campaign['total_recipients']=$campaign['recipient_count'];
         }
         
         Response::success(['campaigns' => $campaigns]);

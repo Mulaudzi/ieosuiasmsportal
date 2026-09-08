@@ -5,12 +5,12 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
   CreditCard,
-  Building2,
   FileText,
   ArrowRight,
   ArrowLeft,
@@ -27,7 +27,6 @@ interface BuyCreditsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPurchaseComplete?: () => void;
-  selectedCredits?: number;
   selectedPrice?: number;
 }
 
@@ -46,41 +45,30 @@ const paymentMethods = [
   },
 ];
 
-const bankDetails = {
-  bankName: "First National Bank (FNB)",
-  accountName: "IEOSUIA (Pty) Ltd",
-  accountNumber: "62123456789",
-  branchCode: "250655",
-  reference: "SMS-",
-};
-
 export function BuyCreditsModal({
   open,
   onOpenChange,
   onPurchaseComplete,
-  selectedCredits = 0,
   selectedPrice = 0,
 }: BuyCreditsModalProps) {
   const [step, setStep] = useState<"order" | "payment" | "confirmation">("order");
-  const [credits, setCredits] = useState(selectedCredits || 500);
+  const [amount, setAmount] = useState(selectedPrice || 10);
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [paymentReference, setPaymentReference] = useState<string>("");
   const [eftBankDetails, setEftBankDetails] = useState<any>(null);
 
-  // Update credits when selectedCredits prop changes
+  // Update amount when a caller supplies a preset.
   useEffect(() => {
-    if (selectedCredits > 0) {
-      setCredits(selectedCredits);
+    if (selectedPrice > 0) {
+      setAmount(selectedPrice);
     }
-  }, [selectedCredits]);
+  }, [selectedPrice]);
 
-  const pricePerSms = 0.27;
-  const vatRate = 0.15;
-  const subtotal = credits * pricePerSms;
-  const vat = subtotal * vatRate;
-  const total = subtotal + vat;
+  const pricePerCredit = 0.35;
+  const total = amount;
+  const estimatedCredits = Math.floor((amount + 0.000001) / pricePerCredit);
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -93,10 +81,10 @@ export function BuyCreditsModal({
   };
 
   const handleProceedToPayment = () => {
-    if (credits < 100) {
+    if (amount < 10) {
       toast({
         title: "Minimum order",
-        description: "Minimum order is 100 credits",
+        description: "Minimum SMS credit purchase is R10",
         variant: "destructive",
       });
       return;
@@ -120,7 +108,6 @@ export function BuyCreditsModal({
       const response = await buyCredits({
         amount: total,
         payment_method: selectedPayment,
-        requested_credits: credits,
       });
 
       if (response.success) {
@@ -133,7 +120,7 @@ export function BuyCreditsModal({
           setEftBankDetails(bank_details);
           toast({
             title: "Order placed!",
-            description: "Please complete the EFT payment. Credits will be added once payment is confirmed.",
+            description: "Please complete the EFT payment. Wallet funds are added after verification.",
           });
           setStep("confirmation");
         } else if (payment_url) {
@@ -173,7 +160,7 @@ export function BuyCreditsModal({
     onOpenChange(false);
   };
 
-  const displayBankDetails = eftBankDetails || bankDetails;
+  const displayBankDetails = eftBankDetails;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -182,7 +169,10 @@ export function BuyCreditsModal({
           {/* Main Content */}
           <div className="flex-1 p-6">
             <DialogHeader className="mb-6">
-              <DialogTitle className="text-xl">Buy Credits</DialogTitle>
+              <DialogTitle className="text-xl">Buy SMS Credits</DialogTitle>
+              <DialogDescription>
+                Pay at least R10 using PayOS checkout or EFT. Every R0.35 purchases one SMS credit.
+              </DialogDescription>
             </DialogHeader>
 
             {/* Steps Indicator */}
@@ -204,30 +194,30 @@ export function BuyCreditsModal({
             {step === "order" && (
               <div className="space-y-6">
                 <div>
-                  <Label htmlFor="credits">SMS Credits</Label>
+                  <Label htmlFor="topup-amount">Payment amount (ZAR)</Label>
                   <Input
-                    id="credits"
+                    id="topup-amount"
                     type="number"
-                    min={100}
-                    step={100}
-                    value={credits}
-                    onChange={(e) => setCredits(parseInt(e.target.value) || 0)}
+                    min={10}
+                    step={10}
+                    value={amount}
+                    onChange={(e) => setAmount(Number(e.target.value) || 0)}
                     className="mt-1.5"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Minimum order: 100 credits
+                    Minimum purchase: R10 · approximately {estimatedCredits.toLocaleString()} SMS credits
                   </p>
                 </div>
 
                 <div className="grid grid-cols-4 gap-3">
-                  {[500, 1000, 5000, 10000].map((amount) => (
+                  {[10, 35, 70, 350].map((presetAmount) => (
                     <Button
-                      key={amount}
-                      variant={credits === amount ? "default" : "outline"}
+                      key={presetAmount}
+                      variant={amount === presetAmount ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setCredits(amount)}
+                      onClick={() => setAmount(presetAmount)}
                     >
-                      {amount.toLocaleString()}
+                      R{presetAmount.toLocaleString()}
                     </Button>
                   ))}
                 </div>
@@ -282,7 +272,7 @@ export function BuyCreditsModal({
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      You will receive bank details to complete a manual transfer. Credits will be added within 24 hours after payment confirmation.
+                      You will receive configured bank details to complete a manual transfer. Funds are added only after payment is verified.
                     </p>
                   </div>
                 )}
@@ -331,7 +321,7 @@ export function BuyCreditsModal({
                       ))}
                     </div>
                     <p className="text-xs text-muted-foreground mt-4">
-                      Credits will be added to your account within 24 hours after payment confirmation.
+                      Wallet funds are added only after the transfer is verified.
                     </p>
                   </div>
                 )}
@@ -351,8 +341,8 @@ export function BuyCreditsModal({
                   <CreditCard className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">SMS Credits</p>
-                  <p className="text-sm text-muted-foreground">{credits.toLocaleString()}</p>
+                  <p className="font-medium text-foreground">SMS credit purchase</p>
+                  <p className="text-sm text-muted-foreground">Approximately {estimatedCredits.toLocaleString()} credits</p>
                 </div>
               </div>
 
@@ -360,13 +350,12 @@ export function BuyCreditsModal({
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Cost</span>
                   <div className="text-right">
-                    <span className="font-medium">R {subtotal.toFixed(2)}</span>
-                    <p className="text-xs text-primary">R{pricePerSms.toFixed(2)} per SMS</p>
+                    <span className="font-medium">R {total.toFixed(2)}</span>
                   </div>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">VAT (15%)</span>
-                  <span className="font-medium">R {vat.toFixed(2)}</span>
+                  <span className="text-muted-foreground">Tax</span>
+                  <span className="font-medium">Included where applicable</span>
                 </div>
               </div>
 
@@ -411,7 +400,7 @@ export function BuyCreditsModal({
               )}
 
               <p className="text-xs text-muted-foreground text-center">
-                Credits expire 365 days after purchase
+                SMS charges are shown before you queue a campaign.
               </p>
             </div>
           </div>

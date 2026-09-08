@@ -10,6 +10,10 @@ require_once __DIR__ . '/../services/AuditLogService.php';
 require_once __DIR__ . '/../services/AdminNotificationService.php';
 
 class CampaignController {
+    public function emailComingSoon(): void {
+        Response::error('Email campaigns are coming soon and are not available yet.', 410);
+    }
+
     // SMS Campaigns
     public function smsIndex(): void {
         $userId = Auth::id();
@@ -104,7 +108,7 @@ class CampaignController {
         
         $userId = Auth::id();
         $recipients = $data['recipients'];
-        $cost = count($recipients) * (float) env('SMS_PRICE_PER_CREDIT', 0.38);
+        $cost = count($recipients) * (float) Config::required('SMS_PRICE_PER_SEGMENT');
         $isAbTest = !empty($data['is_ab_test']);
         
         // Check wallet balance
@@ -183,7 +187,7 @@ class CampaignController {
                 'recipient' => $phone,
                 'content' => $content,
                 'status' => 'Pending',
-                'cost' => (float) env('SMS_PRICE_PER_CREDIT', 0.38),
+            'cost' => (float) Config::required('SMS_PRICE_PER_SEGMENT'),
                 'parts' => ceil(strlen($content) / 160),
                 'variant_name' => $variantName,
                 'created_at' => date('Y-m-d H:i:s'),
@@ -1014,7 +1018,7 @@ class CampaignController {
         $type = $data['type'] ?? 'sms';
         
         $pricePerUnit = $type === 'sms' 
-            ? (float) env('SMS_PRICE_PER_CREDIT', 0.38)
+            ? (float) Config::required('SMS_PRICE_PER_SEGMENT')
             : (float) env('EMAIL_PRICE_PER_CREDIT', 0.05);
         
         $estimatedCost = $recipientCount * $pricePerUnit;

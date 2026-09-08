@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Users,
   Shield,
-  Bug,
   Settings,
   Key,
   Mail,
@@ -21,65 +20,61 @@ import { LogoSidebar } from "@/components/layout/Logo";
 const adminNavigation = [
   { 
     name: "Overview", 
-    href: "/admin", 
+    href: "/guymhan",
     icon: LayoutDashboard,
     exact: true,
     description: "Dashboard & stats"
   },
   { 
-    name: "Admin Users", 
-    href: "/admin/users", 
+    name: "Platform Managers",
+    href: "/guymhan/users",
     icon: Shield,
     description: "Manage administrators"
   },
   { 
     name: "User Management", 
-    href: "/admin?tab=users", 
+    href: "/guymhan/tools?tab=users",
     icon: Users,
     description: "All platform users"
   },
   { 
-    name: "Contact Emails", 
-    href: "/admin?tab=contact-emails", 
+    name: "Operations Tools",
+    href: "/guymhan/tools",
     icon: Mail,
-    description: "Form submissions"
-  },
-  { 
-    name: "QA Console", 
-    href: "/admin/qa", 
-    icon: Bug,
-    description: "System testing"
+    description: "Support, audit & settings"
   },
 ];
 
 const settingsNavigation = [
   { 
     name: "SMTP Settings", 
-    href: "/admin?tab=settings", 
+    href: "/guymhan/tools?tab=settings",
     icon: Settings,
     description: "Email configuration"
   },
   { 
     name: "Notifications", 
-    href: "/admin?tab=settings", 
+    href: "/guymhan/tools?tab=settings",
     icon: Bell,
     description: "Alert settings"
   },
   { 
     name: "Audit Logs", 
-    href: "/admin?tab=audit", 
+    href: "/guymhan/logs",
     icon: FileText,
     description: "System activity"
   },
   { 
     name: "System Health", 
-    href: "/admin?tab=health", 
+    href: "/guymhan/tools",
     icon: Activity,
     description: "Service status"
   },
 ];
 
-export function AdminSidebar() {
+interface AdminSidebarProps { mobile?: boolean; onNavigate?: () => void }
+
+export function AdminSidebar({mobile=false,onNavigate}:AdminSidebarProps) {
   const location = useLocation();
   const { user, logout } = useAuth();
 
@@ -111,11 +106,11 @@ export function AdminSidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar">
+    <aside className={cn(mobile?"h-full w-full bg-sidebar":"fixed left-0 top-0 z-40 hidden h-screen w-64 bg-sidebar lg:block")}>
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex h-16 items-center border-b border-sidebar-border px-6">
-          <Link to="/admin">
+          <Link to="/guymhan" onClick={onNavigate}>
             <LogoSidebar size="md" />
           </Link>
         </div>
@@ -124,7 +119,7 @@ export function AdminSidebar() {
         <div className="px-6 py-3 border-b border-sidebar-border">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-destructive" />
-            <span className="text-sm font-semibold text-destructive">Admin Panel</span>
+            <span className="text-sm font-semibold text-destructive">Admin Operations</span>
           </div>
         </div>
 
@@ -133,6 +128,7 @@ export function AdminSidebar() {
           {/* Back to Dashboard */}
           <Link
             to="/dashboard"
+            onClick={onNavigate}
             className="nav-item group mb-4 border border-dashed border-sidebar-border"
           >
             <ArrowLeft className="h-5 w-5 flex-shrink-0" />
@@ -152,6 +148,7 @@ export function AdminSidebar() {
               <Link
                 key={item.name}
                 to={item.href}
+                onClick={onNavigate}
                 className={cn(
                   "nav-item group",
                   active && "active"
@@ -184,6 +181,7 @@ export function AdminSidebar() {
               <Link
                 key={item.name}
                 to={item.href}
+                onClick={onNavigate}
                 className={cn(
                   "nav-item group",
                   active && "active"

@@ -115,8 +115,7 @@ class AuthController {
         $data = Request::validate([
             'email' => 'required|email',
             'password' => 'required',
-            'password_2' => 'max:255',
-            'password_3' => 'max:255',
+            'pin' => 'max:12',
         ]);
         
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
@@ -125,25 +124,15 @@ class AuthController {
         RateLimiter::checkOrFail("login_ip:{$ip}", 20, 15);
         RateLimiter::checkOrFail("login:{$data['email']}", 5, 15);
         
-        // Check if this is an admin email (requires 3 passwords)
+        // Administrators require password + PIN verification.
         require_once __DIR__ . '/AdminUserController.php';
         $isAdminEmail = AdminUserController::isAdminEmail($data['email']);
         
         if ($isAdminEmail) {
-            // Admin login requires all 3 passwords
-            if (empty($data['password_2']) || empty($data['password_3'])) {
-                Response::success([
-                    'requires_admin_auth' => true,
-                    'message' => 'Admin authentication requires 3 passwords',
-                ]);
-                return;
-            }
-            
             $authResult = AdminUserController::authenticate(
                 $data['email'], 
-                $data['password'], 
-                $data['password_2'], 
-                $data['password_3']
+                $data['password'],
+                (string) ($data['pin'] ?? '')
             );
             
             if ($authResult['success'] && isset($authResult['admin'])) {
@@ -157,8 +146,9 @@ class AuthController {
                     $userId = table('users')->insert([
                         'name' => $adminUser['name'],
                         'email' => $adminUser['email'],
-                        'password' => $adminUser['password_1'],
-                        'account_type' => 'admin',
+                        'password' => $adminUser['password'] ?? $adminUser['password_1'],
+                        'account_type' => 'standard',
+                        'role' => 'admin',
                         'email_verified_at' => date('Y-m-d H:i:s'),
                         'created_at' => date('Y-m-d H:i:s'),
                         'updated_at' => date('Y-m-d H:i:s'),
@@ -166,15 +156,16 @@ class AuthController {
                     $userRecord = table('users')->where('id', $userId)->first();
                 } else {
                     // Update account type to admin if needed
-                    if ($userRecord['account_type'] !== 'admin') {
+                    if (($userRecord['role'] ?? 'user') !== 'admin') {
                         table('users')->where('id', $userRecord['id'])->update([
-                            'account_type' => 'admin',
+                            'role' => 'admin',
                             'updated_at' => date('Y-m-d H:i:s'),
                         ]);
-                        $userRecord['account_type'] = 'admin';
+                        $userRecord['role'] = 'admin';
                     }
                 }
                 
+                if (!(bool)($userRecord['is_active'] ?? true)) Response::error('Account is unavailable',403);
                 // Generate token
                 $token = Auth::generateToken($userRecord);
                 
@@ -223,21 +214,16 @@ class AuthController {
         // Find regular user
         $user = table('users')->where('email', $data['email'])->first();
         
-        if (!$user) {
-            Response::error('No account found with this email address', 404);
+        if (!$user || !password_verify($data['password'], $user['password'])) {
+            Response::error('Invalid email or password', 401);
             return;
         }
+        if (!(bool)($user['is_active'] ?? true)) { Response::error('Account is unavailable',403); }
         
         // SECURITY: If user has admin account_type, they MUST authenticate via admin flow
         // This prevents bypassing 3-password auth by using regular login
-        if ($user['account_type'] === 'admin') {
-            Response::error('This account requires admin authentication. Please use all 3 passwords.', 403);
-            return;
-        }
-        
-        // Verify password
-        if (!password_verify($data['password'], $user['password'])) {
-            Response::error('Invalid password', 401);
+        if (($user['role'] ?? 'user') === 'admin') {
+            Response::error('This account requires Guymhan password and PIN authentication.', 403);
             return;
         }
         
@@ -259,6 +245,7 @@ class AuthController {
      * Logout user
      */
     public function logout(): void {
+        if (Auth::id()) db()->prepare('UPDATE users SET auth_version=auth_version+1 WHERE id=?')->execute([Auth::id()]);
         Response::success(['message' => 'Logged out successfully']);
     }
     
@@ -314,6 +301,7 @@ class AuthController {
                 'password' => Auth::hashPassword($data['password']),
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
+            db()->prepare('UPDATE users SET auth_version = auth_version + 1 WHERE id = ?')->execute([$user['id']]);
         }
         
         // Handle profile update
@@ -453,6 +441,7 @@ class AuthController {
             'avatar_url' => $avatarUrl,
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
+        db()->prepare('UPDATE users SET auth_version = auth_version + 1 WHERE id = ?')->execute([$user['id']]);
         
         $updatedUser = table('users')->where('id', $user['id'])->first();
         
@@ -629,7 +618,9 @@ class AuthController {
         RateLimiter::checkOrFail("resend_verification:{$user['id']}", 3, 15);
         RateLimiter::checkOrFail("resend_verification_ip:{$ip}", 10, 60);
         
-        // Generate new token
+        // Keep the previous token usable if SMTP is temporarily unavailable.
+        $previousToken = $user['email_verification_token'] ?? null;
+        $previousSentAt = $user['email_verification_sent_at'] ?? null;
         $verificationToken = bin2hex(random_bytes(32));
         
         table('users')->where('id', $user['id'])->update([
@@ -653,7 +644,12 @@ class AuthController {
         if ($emailSent) {
             Response::success(['message' => 'Verification email sent']);
         } else {
-            Response::error('Failed to send verification email', 500);
+            table('users')->where('id', $user['id'])->where('email_verification_token', $verificationToken)->update([
+                'email_verification_token' => $previousToken,
+                'email_verification_sent_at' => $previousSentAt,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            Response::error('Email service is temporarily unavailable. Your previous verification link remains valid.', 503);
         }
     }
     

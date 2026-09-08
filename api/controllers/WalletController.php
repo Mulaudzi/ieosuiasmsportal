@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/../services/PayOSService.php';
+require_once __DIR__ . '/../domain/SmsPricing.php';
 
 class WalletController {
     public function index(): void {
@@ -22,6 +23,7 @@ class WalletController {
             $wallet = table('wallets')->where('id', $walletId)->first();
         }
         
+        $pricePerCredit = SmsPricing::pricePerSegment();
         Response::success([
             'wallet' => [
                 'id' => $wallet['id'],
@@ -29,6 +31,8 @@ class WalletController {
                 'reserved' => (float) $wallet['reserved'],
                 'available' => (float) $wallet['balance'] - (float) $wallet['reserved'],
                 'currency' => $wallet['currency'],
+                'sms_credits' => max(0, (int) floor((((float) $wallet['balance'] - (float) $wallet['reserved']) + 0.000001) / $pricePerCredit)),
+                'price_per_credit' => $pricePerCredit,
             ]
         ]);
     }
@@ -50,13 +54,9 @@ class WalletController {
             $wallet = table('wallets')->where('id', $walletId)->first();
         }
         
-        // Calculate used this month
+        // Credits are billable SMS segments, sourced from the canonical message ledger.
         $startOfMonth = date('Y-m-01 00:00:00');
-        $usedThisMonth = table('wallet_transactions')
-            ->where('wallet_id', $wallet['id'])
-            ->where('type', 'debit')
-            ->where('created_at', '>=', $startOfMonth)
-            ->sum('amount');
+        $usedStatement=db()->prepare('SELECT COALESCE(SUM(segment_count),0) FROM sms_messages WHERE user_id=? AND actual_charge>0 AND sent_at>=?');$usedStatement->execute([$userId,$startOfMonth]);$usedThisMonth=(int)$usedStatement->fetchColumn();
         
         // Calculate total spent (all time debits)
         $totalSpent = table('wallet_transactions')
@@ -65,9 +65,12 @@ class WalletController {
             ->where('status', 'completed')
             ->sum('amount');
         
+        $pricePerCredit = SmsPricing::pricePerSegment();
         Response::success([
             'balance' => (float) $wallet['balance'],
-            'used_this_month' => abs((float) $usedThisMonth),
+            'sms_credits' => max(0, (int) floor((((float) $wallet['balance'] - (float) ($wallet['reserved'] ?? 0)) + 0.000001) / $pricePerCredit)),
+            'price_per_credit' => $pricePerCredit,
+            'used_this_month' => $usedThisMonth,
             'total_spent' => abs((float) $totalSpent),
         ]);
     }
@@ -138,6 +141,8 @@ class WalletController {
         
         // Format payments for response
         $formattedPayments = array_map(function($payment) {
+            $receipt = null;
+            if ($this->hasTable('payment_receipt_outbox')) $receipt = table('payment_receipt_outbox')->where('payment_id', $payment['id'])->first();
             return [
                 'id' => $payment['id'],
                 'gateway' => $payment['gateway'],
@@ -152,10 +157,37 @@ class WalletController {
                 'created_at' => $payment['created_at'],
                 'processed_at' => $payment['processed_at'],
                 'error_message' => $payment['error_message'],
+                'receipt_email_status' => $receipt['status'] ?? null,
+                'receipt_email_sent_at' => $receipt['sent_at'] ?? null,
             ];
         }, $payments);
         
         Response::paginate($formattedPayments, $total, $page, $perPage);
+    }
+
+    public function exportPayments(): void {
+        $userId=(int)Auth::id();
+        $status=trim((string)Request::query('status',''));
+        $gateway=trim((string)Request::query('gateway',''));
+        $allowedStatuses=['pending','completed','failed','cancelled','refunded'];
+        $allowedGateways=['payos','eft'];
+        if($status!==''&&!in_array($status,$allowedStatuses,true))Response::error('Invalid payment status',422);
+        if($gateway!==''&&!in_array($gateway,$allowedGateways,true))Response::error('Invalid payment gateway',422);
+
+        $sql='SELECT gateway,gateway_reference,merchant_reference,amount,currency,status,gateway_status,payment_method,created_at,processed_at,error_message FROM payments WHERE user_id=?';
+        $args=[$userId];
+        if($status!==''){$sql.=' AND status=?';$args[]=$status;}
+        if($gateway!==''){$sql.=' AND gateway=?';$args[]=$gateway;}
+        $sql.=' ORDER BY created_at DESC';
+        $stmt=db()->prepare($sql);$stmt->execute($args);
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="payment-history-'.date('Y-m-d').'.csv"');
+        $out=fopen('php://output','w');
+        fputcsv($out,['Gateway','Gateway Reference','Merchant Reference','Amount','Currency','Status','Gateway Status','Payment Method','Created At','Processed At','Error']);
+        $safe=static fn($value)=>is_string($value)&&preg_match('/^[=+\-@]/',$value)?"'".$value:$value;
+        while($row=$stmt->fetch(PDO::FETCH_NUM))fputcsv($out,array_map($safe,$row));
+        fclose($out);exit;
     }
     
     /**
@@ -196,55 +228,10 @@ class WalletController {
         exit;
     }
     
-    /**
-     * Get available credit packages
-     */
-    public function packages(): void {
-        // Return hardcoded packages for now
-        // Can be made dynamic from database later
-        $packages = [
-            [
-                'id' => 1,
-                'credits' => 1000,
-                'price' => 270,
-                'currency' => 'ZAR',
-                'price_per_credit' => 0.27,
-                'popular' => false,
-            ],
-            [
-                'id' => 2,
-                'credits' => 5000,
-                'price' => 1350,
-                'currency' => 'ZAR',
-                'price_per_credit' => 0.27,
-                'popular' => true,
-            ],
-            [
-                'id' => 3,
-                'credits' => 10000,
-                'price' => 2700,
-                'currency' => 'ZAR',
-                'price_per_credit' => 0.27,
-                'popular' => false,
-            ],
-            [
-                'id' => 4,
-                'credits' => 25000,
-                'price' => 6750,
-                'currency' => 'ZAR',
-                'price_per_credit' => 0.27,
-                'popular' => false,
-            ],
-        ];
-        
-        Response::success(['packages' => $packages]);
-    }
-    
     public function buy(): void {
         $data = Request::validate([
             'amount' => 'required|numeric|min:10',
             'payment_method' => 'required|in:payos,eft',
-            'requested_credits' => 'numeric|min:1',
         ]);
         
         $wallet = table('wallets')->where('user_id', Auth::id())->first();
@@ -263,9 +250,7 @@ class WalletController {
         }
         
         $amount = (float) $data['amount'];
-        $requestedCredits = isset($data['requested_credits']) ? (int) $data['requested_credits'] : null;
-        $requestedCredits = $requestedCredits !== null && $requestedCredits > 0 ? $requestedCredits : null;
-        $reference = 'WALLET-SMS-' . date('YmdHis') . '-' . rand(100, 999);
+        $reference = 'WALLET-SMS-' . gmdate('YmdHis') . '-' . strtoupper(bin2hex(random_bytes(8)));
         $hostedMethod = $data['payment_method'] === 'eft' ? 'eft' : 'payos';
         
         // Create pending transaction
@@ -273,16 +258,12 @@ class WalletController {
             'wallet_id' => $wallet['id'],
             'amount' => $amount,
             'type' => 'credit',
-            'description' => "Credit purchase via {$hostedMethod}",
+            'description' => "SMS credit purchase via {$hostedMethod}",
             'reference' => $reference,
             'status' => 'pending',
             'created_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ];
-
-        if ($requestedCredits !== null && $this->hasColumn('wallet_transactions', 'requested_credits')) {
-            $transactionData['requested_credits'] = $requestedCredits;
-        }
 
         if ($this->hasColumn('wallet_transactions', 'checkout_initiated_at')) {
             $transactionData['checkout_initiated_at'] = date('Y-m-d H:i:s');
@@ -295,22 +276,31 @@ class WalletController {
         
         if ($hostedMethod === 'eft') {
             $bankDetails = [
-                'bank_name' => env('EFT_BANK_NAME', 'First National Bank'),
-                'account_name' => env('EFT_ACCOUNT_NAME', 'IEOSUIA PTY LTD'),
-                'account_number' => env('EFT_ACCOUNT_NUMBER', '62000000000'),
-                'branch_code' => env('EFT_BRANCH_CODE', '250655'),
+                'bank_name' => Config::required('EFT_BANK_NAME'),
+                'account_name' => Config::required('EFT_ACCOUNT_NAME'),
+                'account_number' => Config::required('EFT_ACCOUNT_NUMBER'),
+                'branch_code' => Config::required('EFT_BRANCH_CODE'),
                 'reference' => $reference,
             ];
         } else {
-            $transaction = table('wallet_transactions')->where('id', $transactionId)->first();
-            $response = $this->createPayOSCheckout($wallet, $transaction, $requestedCredits);
-            $paymentUrl = $response['payment_url'];
+            try {
+                $transaction = table('wallet_transactions')->where('id', $transactionId)->first();
+                $response = $this->createPayOSCheckout($wallet, $transaction);
+                $paymentUrl = $response['payment_url'];
 
-            if (!empty($response['internal_reference']) && $this->hasColumn('wallet_transactions', 'payos_reference')) {
-                table('wallet_transactions')->where('id', $transactionId)->update([
-                    'payos_reference' => $response['internal_reference'],
-                    'updated_at' => date('Y-m-d H:i:s'),
+                if (!empty($response['internal_reference']) && $this->hasColumn('wallet_transactions', 'payos_reference')) {
+                    table('wallet_transactions')->where('id', $transactionId)->update([
+                        'payos_reference' => $response['internal_reference'],
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                }
+            } catch (Throwable $e) {
+                table('wallet_transactions')->where('id',$transactionId)->update([
+                    'status'=>'failed',
+                    'updated_at'=>date('Y-m-d H:i:s'),
                 ]);
+                error_log('PayOS checkout creation failed for ' . $reference . ': ' . $e->getMessage());
+                Response::error('PayOS could not start the checkout. Please verify the PayOS tenant credentials and try again.', 502);
             }
         }
         
@@ -359,32 +349,30 @@ class WalletController {
         ]);
     }
 
-    private function createPayOSCheckout(array $wallet, array $transaction, ?int $requestedCredits): array {
+    private function createPayOSCheckout(array $wallet, array $transaction): array {
         $user = Auth::user();
         $account = table('accounts')->where('user_id', $user['id'])->first();
         $payOS = new PayOSService();
         $reference = $transaction['reference'];
-        $requestedCredits = $requestedCredits ?? $this->getRequestedCreditsFromTransaction($transaction);
 
         $payload = [
-            'tenant_identifier' => env('PAYOS_TENANT_IDENTIFIER', 'sms-ieosuia'),
+            'tenant_identifier' => env('PAYOS_TENANT_IDENTIFIER', 'ieosuia-sms-portal'),
             'external_order_id' => $reference,
             'amount' => round((float) $transaction['amount'], 2),
             'currency' => 'ZAR',
             'customer_name' => $user['name'] ?? 'Customer',
             'customer_email' => $user['email'] ?? null,
             'customer_phone' => $user['phone'] ?? null,
-            'item_name' => 'SMS wallet top-up',
-            'item_description' => 'Wallet top-up for prepaid SMS credits',
+            'item_name' => 'SMS credit purchase',
+            'item_description' => 'Prepaid billable SMS segment credits',
             'source_website' => env('FRONTEND_URL', 'https://sms.ieosuia.com'),
             'return_url' => env('PAYOS_RETURN_URL', env('FRONTEND_URL', 'https://sms.ieosuia.com') . '/payment/success') . '?reference=' . urlencode($reference),
             'cancel_url' => env('PAYOS_CANCEL_URL', env('FRONTEND_URL', 'https://sms.ieosuia.com') . '/payment/failed') . '?cancelled=1&reference=' . urlencode($reference),
             'metadata' => [
-                'platform' => env('PAYOS_TENANT_IDENTIFIER', 'sms-ieosuia'),
+                'platform' => env('PAYOS_TENANT_IDENTIFIER', 'ieosuia-sms-portal'),
                 'wallet_reference' => $reference,
                 'wallet_id' => (int) $wallet['id'],
                 'user_id' => (int) $user['id'],
-                'requested_credits' => $requestedCredits,
                 'checkout_source' => 'web',
                 'account_id' => $account['id'] ?? null,
                 'company_name' => $account['company_name'] ?? null,
@@ -404,20 +392,16 @@ class WalletController {
         $payload['branding'] = $branding;
 
         $response = $payOS->createCheckout($payload);
+        $paymentUrl = $payOS->getCheckoutUrl($response);
+        if ($paymentUrl === null) {
+            throw new RuntimeException('PayOS response did not contain a checkout URL');
+        }
 
         return [
-            'payment_url' => $payOS->getCheckoutUrl($response),
+            'payment_url' => $paymentUrl,
             'internal_reference' => $payOS->getInternalReference($response),
             'raw_response' => $response,
         ];
-    }
-
-    private function getRequestedCreditsFromTransaction(array $transaction): ?int {
-        if (isset($transaction['requested_credits']) && is_numeric($transaction['requested_credits'])) {
-            return (int) $transaction['requested_credits'];
-        }
-
-        return null;
     }
 
     private function hasColumn(string $table, string $column): bool {
@@ -434,5 +418,13 @@ class WalletController {
 
         $cache[$key] = (int) ($stmt->fetch()['count'] ?? 0) > 0;
         return $cache[$key];
+    }
+
+    private function hasTable(string $table): bool {
+        static $cache=[];
+        if(array_key_exists($table,$cache))return $cache[$table];
+        $stmt=db()->prepare('SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=?');
+        $stmt->execute([env('DB_DATABASE'),$table]);
+        return $cache[$table]=(int)$stmt->fetchColumn()>0;
     }
 }

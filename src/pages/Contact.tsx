@@ -49,7 +49,7 @@ const purposeOptions: PurposeOption[] = [
     label: "Sales / Quotes / Partnerships",
     description: "Discuss pricing, volume discounts, or partnerships",
     icon: ShoppingBag,
-    email: "sales@ieosuia.com",
+    email: "hello@ieosuia.com",
   },
 ];
 
@@ -172,7 +172,7 @@ export default function Contact() {
                       <strong>Support:</strong> support@ieosuia.com
                     </p>
                     <p className="text-muted-foreground">
-                      <strong>Sales:</strong> sales@ieosuia.com
+                      <strong>Sales:</strong> hello@ieosuia.com
                     </p>
                     <p className="text-xs text-muted-foreground mt-2 italic">
                       Use the form to ensure your message reaches the right team

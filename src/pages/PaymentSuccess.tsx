@@ -10,7 +10,7 @@ const PaymentSuccess = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
-  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [smsCredits, setSmsCredits] = useState<number | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   
   const reference = searchParams.get('reference');
@@ -20,20 +20,20 @@ const PaymentSuccess = () => {
 
     const fetchWalletBalance = async () => {
       try {
-        const response = await api.get('/wallet') as unknown as { wallet: { balance: number } };
-        if (response?.wallet) {
-          setWalletBalance(response.wallet.balance);
+        const response = await api.get('/wallet') as unknown as { wallet?: { sms_credits: number }; data?: { wallet?: { sms_credits: number } } };
+        const wallet = response.wallet ?? response.data?.wallet;
+        if (wallet) {
+          setSmsCredits(wallet.sms_credits);
         }
       } catch (error) {
         console.error('Failed to fetch wallet balance:', error);
-      } finally {
       }
     };
 
     const syncPaymentStatus = async (attempt = 0) => {
       if (!reference) {
         await fetchWalletBalance();
-        setPaymentStatus('completed');
+        setPaymentStatus('invalid');
         setLoading(false);
         return;
       }
@@ -68,25 +68,28 @@ const PaymentSuccess = () => {
     };
   }, [reference]);
 
-  const isPending = paymentStatus === 'pending';
+  const isComplete = paymentStatus === 'completed';
+  const isPending = loading || paymentStatus === 'pending';
   
   return (
-    <DashboardLayout title={isPending ? 'Payment Processing' : 'Payment Successful'}>
+    <DashboardLayout title={isComplete ? 'Payment Successful' : 'Payment Status'}>
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-full max-w-lg text-center">
           <CardHeader className="pb-4">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
-              {loading || isPending ? (
+              {isPending ? (
                 <Loader2 className="h-12 w-12 text-green-600 animate-spin" />
               ) : (
                 <CheckCircle className="h-12 w-12 text-green-600" />
               )}
             </div>
-            <CardTitle className="text-2xl">{isPending ? 'Payment Received' : 'Payment Successful!'}</CardTitle>
+            <CardTitle className="text-2xl">{isComplete ? 'Payment Successful!' : isPending ? 'Payment Processing' : 'Payment not confirmed'}</CardTitle>
             <CardDescription className="text-base">
-              {isPending
-                ? 'Your checkout returned successfully. We are waiting for the final PayOS callback to confirm your wallet top-up.'
-                : 'Your payment has been processed and credits have been added to your account.'}
+              {isComplete
+                ? 'Your payment was confirmed and your SMS credits are now available.'
+                : isPending
+                  ? 'We are waiting for the signed PayOS callback to confirm your payment.'
+                  : 'This return could not be confirmed as a successful payment. No credits have been promised or added by this page.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -101,11 +104,11 @@ const PaymentSuccess = () => {
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : walletBalance !== null && (
+            ) : smsCredits !== null && (
               <div className="bg-primary/5 rounded-lg p-4 border border-primary/20">
-                <p className="text-sm text-muted-foreground">Current Balance</p>
+                <p className="text-sm text-muted-foreground">Available SMS Credits</p>
                 <p className="text-3xl font-bold text-primary">
-                  {walletBalance.toLocaleString()} <span className="text-lg font-normal">credits</span>
+                  {smsCredits.toLocaleString()} <span className="text-lg font-normal">credits</span>
                 </p>
               </div>
             )}
@@ -127,7 +130,7 @@ const PaymentSuccess = () => {
               
               <Button 
                 variant="ghost" 
-                onClick={() => navigate('/sms/campaigns')}
+                onClick={() => navigate('/sms-campaigns')}
                 className="w-full"
               >
                 Start Sending SMS
@@ -136,9 +139,9 @@ const PaymentSuccess = () => {
             </div>
             
             <p className="text-sm text-muted-foreground">
-              {isPending
-                ? 'If this stays pending, refresh this page or check your payment history in a moment.'
-                : 'A confirmation email has been sent to your registered email address.'}
+              {isComplete
+                ? 'A payment confirmation email is sent separately. Check Payment History if it does not arrive.'
+                : 'Check Payment History before trying again. A checkout return alone is not proof of payment.'}
             </p>
           </CardContent>
         </Card>

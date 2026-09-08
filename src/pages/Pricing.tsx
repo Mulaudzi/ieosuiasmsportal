@@ -20,13 +20,13 @@ import { cn } from "@/lib/utils";
 
 const plans = [
   {
-    name: "Free",
+    name: "Platform Access",
     price: "R0",
-    description: "Try our Free plan and get started instantly. Perfect for exploring all the SMS Portal features.",
+    description: "Create and configure your account. SMS sending requires prepaid SMS credits.",
     features: [
-      "27 Free SMS",
+      "Purchase credits when needed",
       "IEOSUIA branding included",
-      "Test the platform risk-free",
+      "SMS sending requires SMS credits",
       "No credit card required",
       "Basic contact management",
       "Basic dashboard",
@@ -38,13 +38,13 @@ const plans = [
   },
   {
     name: "Pro",
-    price: "R0.18",
-    period: "/SMS",
-    description: "Send SMS Pay-as-you-Go, starting from R0.18 per message. No subscriptions, no contracts.",
+    price: "R0.35",
+    period: "/segment",
+    description: "Pay R0.35 including VAT for each billable SMS segment. No subscription required.",
     features: [
       "Pay-as-you-Go pricing",
       "No subscriptions or contracts",
-      "Volume discounts available",
+      "Server-calculated segment pricing",
       "SMS & Email sending",
       "Priority support",
       "No watermark",
@@ -81,13 +81,7 @@ const plans = [
 ];
 
 const smsPricing = [
-  { volume: "500 – 1,000", price: 0.27, priceDisplay: "R0.27" },
-  { volume: "1,001 – 5,000", price: 0.25, priceDisplay: "R0.25" },
-  { volume: "5,001 – 10,000", price: 0.23, priceDisplay: "R0.23" },
-  { volume: "10,001 – 50,000", price: 0.20, priceDisplay: "R0.20" },
-  { volume: "50,001 – 250,000", price: 0.19, priceDisplay: "R0.19" },
-  { volume: "250,001 – 500,000", price: 0.18, priceDisplay: "R0.18" },
-  { volume: "500,000+", price: null, priceDisplay: "Contact Sales" },
+  { volume: "All prepaid volumes", price: 0.35, priceDisplay: "R0.35 per segment" },
 ];
 
 const emailPricing = [
@@ -102,7 +96,7 @@ const emailPricing = [
 ];
 
 const featureComparison = [
-  { feature: "SMS Sending", free: "27 messages", pro: "Unlimited", enterprise: "Unlimited" },
+  { feature: "SMS Sending", free: "Requires SMS credits", pro: "1 credit/segment", enterprise: "Quoted" },
   { feature: "Email Sending", free: "—", pro: "Unlimited", enterprise: "Unlimited" },
   { feature: "IEOSUIA Branding", free: "Yes", pro: "No", enterprise: "No" },
   { feature: "Contact Management", free: "Basic", pro: "Advanced", enterprise: "Advanced" },
@@ -121,19 +115,19 @@ const featureComparison = [
 const faqs = [
   {
     question: "How does the Pay-as-you-Go pricing work?",
-    answer: "You only pay for what you send. Buy credits in advance and use them whenever you need. No monthly subscriptions or contracts required. The more you send, the lower your per-message cost.",
+    answer: "Add ZAR funds to your wallet and pay R0.35 including VAT for each billable SMS segment. Longer or Unicode messages may use multiple segments.",
   },
   {
     question: "Are there any hidden fees?",
     answer: "No hidden fees. The prices shown include carrier costs. VAT/BST/Tax may be added at checkout depending on your location.",
   },
   {
-    question: "What's included in the Free plan?",
-    answer: "The Free plan includes 27 SMS credits to test the platform. Free plan messages include IEOSUIA branding. No credit card required to start.",
+    question: "When can I start sending SMS?",
+    answer: "Purchase SMS credits, create your campaign, and review its exact credit requirement before queueing it.",
   },
   {
-    question: "How do volume discounts work?",
-    answer: "As your sending volume increases, your per-message cost decreases. For example, SMS costs R0.27 for 500-1,000 messages, but drops to R0.18 for 250,001-500,000 messages.",
+    question: "Is volume pricing available?",
+    answer: "The launch rate is R0.35 per segment for all prepaid volumes. Enterprise pricing requires an approved quotation.",
   },
   {
     question: "Do credits expire?",
@@ -149,7 +143,7 @@ const faqs = [
   },
   {
     question: "Is there a minimum purchase amount?",
-    answer: "Yes, the minimum purchase is 500 credits. This ensures you get the best value and can test the platform thoroughly.",
+    answer: "The current minimum SMS credit purchase is R10.",
   },
   {
     question: "Can I get a refund on unused credits?",
@@ -168,14 +162,7 @@ export default function Pricing() {
 
   const calculateSmsPrice = (volume: number): { price: number; tier: string } => {
     if (volume <= 0) return { price: 0, tier: "Enter volume" };
-    if (volume < 500) return { price: volume * 0.27, tier: "Minimum 500" };
-    if (volume <= 1000) return { price: volume * 0.27, tier: "R0.27/SMS" };
-    if (volume <= 5000) return { price: volume * 0.25, tier: "R0.25/SMS" };
-    if (volume <= 10000) return { price: volume * 0.23, tier: "R0.23/SMS" };
-    if (volume <= 50000) return { price: volume * 0.20, tier: "R0.20/SMS" };
-    if (volume <= 250000) return { price: volume * 0.19, tier: "R0.19/SMS" };
-    if (volume <= 500000) return { price: volume * 0.18, tier: "R0.18/SMS" };
-    return { price: 0, tier: "Contact Sales" };
+    return { price: volume * 0.35, tier: "R0.35/segment" };
   };
 
   const calculateEmailPrice = (volume: number): { price: number; tier: string } => {
@@ -371,7 +358,7 @@ export default function Pricing() {
         <div className="container mx-auto max-w-6xl">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-foreground mb-4">
-              Volume Discount Tiers
+                    Standard Segment Price
             </h2>
             <p className="text-lg text-muted-foreground">
               The more you send, the less you pay per message.
@@ -417,7 +404,7 @@ export default function Pricing() {
                   </tbody>
                 </table>
                 <div className="p-4 bg-muted/30 text-sm text-muted-foreground">
-                  * Free plan SMS include IEOSUIA branding. Minimum purchase: 500 SMS.
+                  * SMS sending requires sufficient prepaid SMS credits.
                 </div>
               </div>
             </TabsContent>
@@ -474,7 +461,7 @@ export default function Pricing() {
               <thead>
                 <tr className="bg-muted/50">
                   <th className="text-left py-4 px-6 font-semibold text-foreground">Feature</th>
-                  <th className="text-center py-4 px-6 font-semibold text-foreground">Free</th>
+                  <th className="text-center py-4 px-6 font-semibold text-foreground">Platform Access</th>
                   <th className="text-center py-4 px-6 font-semibold text-primary bg-primary/5">Pro</th>
                   <th className="text-center py-4 px-6 font-semibold text-foreground">Enterprise</th>
                 </tr>
@@ -545,12 +532,12 @@ export default function Pricing() {
             Ready to Get Started?
           </h2>
           <p className="text-lg text-muted-foreground mb-8">
-            Sign up now and get 27 free SMS credits to test the platform.
+              Create an account, purchase SMS credits, and review the exact credit requirement before sending.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/register">
               <Button size="lg" className="gap-2 text-lg px-8">
-                Get Started Free
+                Create Account
               </Button>
             </Link>
             <Link to="/contact">

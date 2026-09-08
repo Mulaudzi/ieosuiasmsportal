@@ -3,44 +3,15 @@
  * Dashboard Controller
  */
 
+require_once __DIR__.'/../domain/SmsReportingService.php';
+
 class DashboardController {
     public function stats(): void {
         $userId = Auth::id();
+        $range=(string)Request::query('range','7d');try{$sms=SmsReportingService::summary((int)$userId,$range);}catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}
         
-        // Campaign counts
-        $totalCampaigns = table('campaigns')->where('user_id', $userId)->count();
-        $activeCampaigns = table('campaigns')
-            ->where('user_id', $userId)
-            ->whereIn('status', ['Sending', 'Scheduled'])
-            ->count();
-        
-        // Message stats
-        $campaigns = table('campaigns')
-            ->select('id')
-            ->where('user_id', $userId)
-            ->get();
-        $campaignIds = array_column($campaigns, 'id');
-        
-        $totalSent = 0;
-        $totalDelivered = 0;
-        $totalFailed = 0;
-        
-        if (!empty($campaignIds)) {
-            $totalSent = table('messages')
-                ->whereIn('campaign_id', $campaignIds)
-                ->whereIn('status', ['Sent', 'Awaiting DLR', 'Delivered'])
-                ->count();
-            
-            $totalDelivered = table('messages')
-                ->whereIn('campaign_id', $campaignIds)
-                ->where('status', 'Delivered')
-                ->count();
-            
-            $totalFailed = table('messages')
-                ->whereIn('campaign_id', $campaignIds)
-                ->where('status', 'Failed')
-                ->count();
-        }
+        $pdo=db();$campaignStatement=$pdo->prepare("SELECT COUNT(*) total,SUM(state IN ('scheduled','queued','processing')) active FROM sms_campaigns WHERE user_id=?");$campaignStatement->execute([$userId]);$campaignMetrics=$campaignStatement->fetch()?:[];
+        $totalCampaigns=(int)($campaignMetrics['total']??0);$activeCampaigns=(int)($campaignMetrics['active']??0);$totalSent=$sms['total_messages'];$totalDelivered=$sms['delivered'];$totalFailed=$sms['failed'];
         
         // Contacts
         $totalContacts = table('contacts')->where('user_id', $userId)->count();
@@ -58,7 +29,11 @@ class DashboardController {
             'total_sent' => $totalSent,
             'total_delivered' => $totalDelivered,
             'total_failed' => $totalFailed,
-            'delivery_rate' => $deliveryRate,
+            'total_pending' => $sms['pending'],
+            'total_awaiting_delivery' => $sms['awaiting_delivery'],
+            'total_dlr_unavailable' => $sms['dlr_unavailable'],
+            'delivery_rate' => $sms['delivery_rate'],
+            'reporting_range'=>$range,'reporting_start'=>$sms['start'],'reporting_end'=>$sms['end'],
             'total_contacts' => $totalContacts,
             'wallet_balance' => $balance,
         ]);
@@ -66,26 +41,7 @@ class DashboardController {
     
     public function chart(): void {
         $userId = Auth::id();
-        $days = (int) Request::query('days', 30);
-        
-        $startDate = date('Y-m-d', strtotime("-$days days"));
-        
-        $pdo = db();
-        $stmt = $pdo->prepare("
-            SELECT 
-                DATE(m.sent_at) as date,
-                COUNT(*) as sent,
-                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as failed
-            FROM messages m
-            JOIN campaigns c ON m.campaign_id = c.id
-            WHERE c.user_id = ?
-            AND m.sent_at >= ?
-            GROUP BY DATE(m.sent_at)
-            ORDER BY date ASC
-        ");
-        $stmt->execute([$userId, $startDate]);
-        $data = $stmt->fetchAll();
+        $range=(string)Request::query('range',Request::query('days','7')==='30'?'30d':'7d');try{$rows=SmsReportingService::daily((int)$userId,$range);}catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}$data=array_map(static fn($row)=>['date'=>$row['date'],'sent'=>(int)$row['total_messages'],'delivered'=>(int)$row['delivered'],'failed'=>(int)$row['failed'],'pending'=>(int)$row['pending']],$rows);
         
         Response::success(['chart' => $data]);
     }
@@ -93,7 +49,7 @@ class DashboardController {
     public function recentCampaigns(): void {
         $userId = Auth::id();
         
-        $campaigns = table('campaigns')
+        $campaigns = table('sms_campaigns')
             ->where('user_id', $userId)
             ->orderBy('created_at', 'DESC')
             ->limit(5)
@@ -101,20 +57,8 @@ class DashboardController {
         
         // Add message counts
         foreach ($campaigns as &$campaign) {
-            $campaign['sent_count'] = table('messages')
-                ->where('campaign_id', $campaign['id'])
-                ->whereIn('status', ['Sent', 'Awaiting DLR', 'Delivered'])
-                ->count();
-            
-            $campaign['delivered_count'] = table('messages')
-                ->where('campaign_id', $campaign['id'])
-                ->where('status', 'Delivered')
-                ->count();
-            
-            $campaign['failed_count'] = table('messages')
-                ->where('campaign_id', $campaign['id'])
-                ->where('status', 'Failed')
-                ->count();
+            $campaign['status']=$campaign['state'];
+            $campaign['total_recipients']=(int)$campaign['recipient_count'];
         }
         
         Response::success(['campaigns' => $campaigns]);
@@ -136,17 +80,15 @@ class DashboardController {
                 HOUR(m.sent_at) as hour,
                 DAYOFWEEK(m.sent_at) as day_of_week,
                 COUNT(*) as total_count,
-                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered_count
-            FROM messages m
-            JOIN campaigns c ON m.campaign_id = c.id
-            WHERE c.user_id = ?
-            AND c.type = ?
+                SUM(m.state='delivered') as delivered_count
+            FROM sms_messages m
+            WHERE m.user_id = ?
             AND m.sent_at >= ?
             AND m.sent_at IS NOT NULL
             GROUP BY HOUR(m.sent_at), DAYOFWEEK(m.sent_at)
             HAVING total_count >= 5
         ");
-        $stmt->execute([$userId, $type, $thirtyDaysAgo]);
+        $stmt->execute([$userId, $thirtyDaysAgo]);
         $stats = $stmt->fetchAll();
         
         if (empty($stats)) {
@@ -156,16 +98,14 @@ class DashboardController {
                     HOUR(m.sent_at) as hour,
                     DAYOFWEEK(m.sent_at) as day_of_week,
                     COUNT(*) as total_count,
-                    SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered_count
-                FROM messages m
-                JOIN campaigns c ON m.campaign_id = c.id
-                WHERE c.type = ?
-                AND m.sent_at >= ?
+                    SUM(m.state='delivered') as delivered_count
+                FROM sms_messages m
+                WHERE m.sent_at >= ?
                 AND m.sent_at IS NOT NULL
                 GROUP BY HOUR(m.sent_at), DAYOFWEEK(m.sent_at)
                 HAVING total_count >= 10
             ");
-            $stmt->execute([$type, $thirtyDaysAgo]);
+            $stmt->execute([$thirtyDaysAgo]);
             $stats = $stmt->fetchAll();
         }
         

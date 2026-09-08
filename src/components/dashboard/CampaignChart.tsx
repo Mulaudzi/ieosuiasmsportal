@@ -18,20 +18,21 @@ interface ChartDataPoint {
   email: number;
 }
 
-export function CampaignChart() {
+export function CampaignChart({ range = "7d" }: { range?: string }) {
   const [data, setData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadChartData();
-  }, []);
+    void loadChartData();const timer=window.setInterval(()=>void loadChartData(false),30000);return()=>window.clearInterval(timer);
+  }, [range]);
 
-  const loadChartData = async () => {
+  const loadChartData = async (showLoading=true) => {
     try {
-      const response = await api.get<{ chart: any[] }>("/dashboard/chart", { days: "7" });
-      if (response.success && response.data?.chart) {
+      const response = await api.get<{ chart: any[] }>("/dashboard/chart", { range });
+      const payload=(response.data??response) as unknown as {chart:any[]};
+      if (response.success && payload.chart) {
         // Transform API data to chart format
-        const chartData = response.data.chart.map((item: any) => {
+        const chartData = payload.chart.map((item: any) => {
           const date = new Date(item.date);
           const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
           return {
@@ -50,7 +51,7 @@ export function CampaignChart() {
       console.error("Failed to load chart data:", error);
       setData([]);
     } finally {
-      setLoading(false);
+      if(showLoading)setLoading(false);
     }
   };
 
@@ -67,7 +68,7 @@ export function CampaignChart() {
       <div className="metric-card h-[400px]">
         <div className="mb-6">
           <h3 className="text-lg font-semibold text-foreground">Message Volume</h3>
-          <p className="text-sm text-muted-foreground">SMS and Email sends over the past week</p>
+          <p className="text-sm text-muted-foreground">SMS activity for the selected period</p>
         </div>
         <div className="flex items-center justify-center h-[300px] text-muted-foreground">
           <div className="text-center">
@@ -84,7 +85,7 @@ export function CampaignChart() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-foreground">Message Volume</h3>
-          <p className="text-sm text-muted-foreground">SMS and Email sends over the past week</p>
+          <p className="text-sm text-muted-foreground">SMS activity for the selected period</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">

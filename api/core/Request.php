@@ -33,6 +33,10 @@ class Request {
         
         return self::$input[$key] ?? $default;
     }
+
+    public static function all(): array {
+        return self::input();
+    }
     
     public static function query(?string $key = null, $default = null) {
         if ($key === null) {
@@ -109,22 +113,17 @@ class Request {
                 if (is_string($value) && strlen($value) < $min) {
                     return "$label must be at least $min characters";
                 }
-                if (is_numeric($value) && $value < $min) {
+                if (!is_string($value) && is_numeric($value) && $value < $min) {
                     return "$label must be at least $min";
                 }
                 break;
                 
             case 'max':
                 $max = (int) $params[0];
-                // Force string-only handling for specific fields (e.g., phone)
-                $stringFields = ['phone', 'other_string_field'];  // Add more fields as needed
-                $treatAsStringOnly = in_array($field, $stringFields);
-                
                 if (is_string($value) && strlen($value) > $max) {
                     return "$label must not exceed $max characters";
                 }
-                // Skip numeric check for string-only fields
-                if (!$treatAsStringOnly && is_numeric($value) && $value > $max) {
+                if (!is_string($value) && is_numeric($value) && $value > $max) {
                     return "$label must not exceed $max";
                 }
                 break;

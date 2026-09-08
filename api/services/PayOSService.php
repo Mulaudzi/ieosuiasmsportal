@@ -3,8 +3,8 @@
 class PayOSService {
     public function createCheckout(array $payload): array {
         $url = $this->getCreateUrl();
-        $publicKey = env('PAYOS_PUBLIC_KEY', '');
-        $secret = env('PAYOS_SECRET', '');
+        $publicKey = trim((string) env('PAYOS_PUBLIC_KEY', ''));
+        $secret = trim((string) env('PAYOS_API_SECRET', ''));
 
         if ($url === '' || $publicKey === '' || $secret === '') {
             throw new Exception('PayOS is not configured');
@@ -15,7 +15,11 @@ class PayOSService {
             throw new Exception('Unable to encode PayOS checkout payload');
         }
 
-        $signature = hash_hmac('sha256', $body, $secret);
+        $timestamp = (string) time();
+        $nonce = bin2hex(random_bytes(16));
+        $path = (string) parse_url($url, PHP_URL_PATH);
+        $canonical = implode("\n", ['POST', $path, $timestamp, $nonce, $body]);
+        $signature = hash_hmac('sha256', $canonical, $secret);
 
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -26,10 +30,24 @@ class PayOSService {
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/json',
                 'X-Payos-Key: ' . $publicKey,
+                'X-Payos-Timestamp: ' . $timestamp,
+                'X-Payos-Nonce: ' . $nonce,
                 'X-Payos-Signature: ' . $signature,
             ],
+            CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_TIMEOUT => 30,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
         ]);
+
+        $caBundle = trim((string) env('PAYOS_CA_BUNDLE', ''));
+        if ($caBundle !== '') {
+            if (!is_file($caBundle) || !is_readable($caBundle)) {
+                curl_close($ch);
+                throw new RuntimeException('Configured PayOS CA bundle is not readable');
+            }
+            curl_setopt($ch, CURLOPT_CAINFO, $caBundle);
+        }
 
         $response = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -45,7 +63,7 @@ class PayOSService {
             throw new Exception('Invalid PayOS response');
         }
 
-        if ($httpCode >= 400 || empty($decoded['success'])) {
+        if ($httpCode >= 400 || (array_key_exists('success', $decoded) && !$decoded['success'])) {
             $message = $decoded['message'] ?? $decoded['error'] ?? 'PayOS checkout creation failed';
             throw new Exception($message);
         }
@@ -110,9 +128,9 @@ class PayOSService {
     }
 
     private function getCreateUrl(): string {
-        $explicit = env('PAYOS_CREATE_URL', '');
+        $explicit = trim((string) env('PAYOS_CREATE_URL', ''));
         if ($explicit !== '') {
-            return $explicit;
+            return $this->validateHttpsUrl($explicit);
         }
 
         $baseUrl = rtrim(env('PAYOS_BASE_URL', 'https://payos.ieosuia.com'), '/');
@@ -120,6 +138,13 @@ class PayOSService {
             return '';
         }
 
-        return $baseUrl . '/api/v1/payments/create';
+        return $this->validateHttpsUrl($baseUrl . '/api/v1/payments/create');
+    }
+
+    private function validateHttpsUrl(string $url): string {
+        if (!filter_var($url, FILTER_VALIDATE_URL) || strtolower((string) parse_url($url, PHP_URL_SCHEME)) !== 'https') {
+            throw new RuntimeException('PayOS checkout URL must be a valid HTTPS URL');
+        }
+        return $url;
     }
 }

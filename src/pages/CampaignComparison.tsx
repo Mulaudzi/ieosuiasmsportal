@@ -86,9 +86,10 @@ export default function CampaignComparison() {
     setLoadingCampaigns(true);
     try {
       const res = await api.get<{ campaigns: CampaignOption[] }>("/reports/campaigns?start_date=2020-01-01");
-      if (res.success && res.data?.campaigns) {
+      const payload = (res.data ?? res) as { campaigns?: CampaignOption[] };
+      if (res.success && payload.campaigns) {
         // Only show completed campaigns with sent messages
-        const completed = res.data.campaigns.filter(c => c.sent_count > 0);
+        const completed = payload.campaigns.filter((c: CampaignOption) => c.sent_count > 0);
         setAvailableCampaigns(completed);
       }
     } catch (error) {
@@ -125,8 +126,8 @@ export default function CampaignComparison() {
     setLoading(true);
     try {
       const res = await api.get<ComparisonData>(`/reports/compare?ids=${selectedIds.join(",")}`);
-      if (res.success && res.data) {
-        setComparisonData(res.data);
+      if (res.success) {
+        setComparisonData((res.data ?? res) as unknown as ComparisonData);
       }
     } catch (error) {
       handleApiError(error);
@@ -174,7 +175,6 @@ export default function CampaignComparison() {
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="sms">SMS</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
               </SelectContent>
             </Select>
             <Button 
@@ -413,7 +413,7 @@ export default function CampaignComparison() {
                     </td>
                     {comparisonData.campaigns.map((c) => (
                       <td key={c.id} className="px-4 py-3 text-center font-medium text-foreground">
-                        R{(c.actual_cost || 0).toFixed(2)}
+                        R{Number(c.actual_cost || 0).toFixed(2)}
                       </td>
                     ))}
                   </tr>

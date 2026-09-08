@@ -36,11 +36,7 @@ const VARIABLE_SUGGESTIONS = [
   { name: "{{name}}", description: "Contact's name" },
   { name: "{{phone}}", description: "Contact's phone number" },
   { name: "{{email}}", description: "Contact's email" },
-  { name: "{{order_id}}", description: "Order ID" },
-  { name: "{{tracking_url}}", description: "Tracking URL" },
-  { name: "{{link}}", description: "Custom link" },
   { name: "{{date}}", description: "Current date" },
-  { name: "{{company}}", description: "Your company name" },
 ];
 
 export function TemplateModal({ open, onOpenChange, template, onSave }: TemplateModalProps) {
@@ -129,7 +125,7 @@ export function TemplateModal({ open, onOpenChange, template, onSave }: Template
             description: `"${name}" has been saved.`,
           });
           // Call onSave to trigger parent's loadTemplates() refetch
-          onSave?.();
+          onSave?.((response.template as Template | undefined) || (response.data as { template?: Template } | undefined)?.template || { name, type, content, subject });
           onOpenChange(false);
         }
       }

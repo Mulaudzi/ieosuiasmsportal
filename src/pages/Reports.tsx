@@ -36,12 +36,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { getReportStats, getReportChartData, getDeliveryBreakdown, exportReport, handleApiError } from "@/lib/api";
+import { getReportStats, getReportChartData, getDeliveryBreakdown, exportReport, emailReport, handleApiError } from "@/lib/api";
 
 interface ReportStats {
   total_messages: number;
   delivered: number;
   failed: number;
+  pending: number;
   avg_delivery_time: string;
   delivery_rate: number;
 }
@@ -64,25 +65,22 @@ interface SmsStats {
   delivered: number;
   failed: number;
   pending: number;
+  awaiting_delivery: number;
+  dlr_unavailable: number;
   credits_used: number;
-}
-
-interface EmailStats {
-  total_sent: number;
-  delivered: number;
-  opened: number;
-  clicked: number;
-  bounced: number;
 }
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState("7d");
   const [loading, setLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportFormat,setExportFormat]=useState<'csv'|'excel'|'pdf'>('pdf');
+  const [isEmailing,setIsEmailing]=useState(false);
   const [stats, setStats] = useState<ReportStats>({
     total_messages: 0,
     delivered: 0,
     failed: 0,
+    pending: 0,
     avg_delivery_time: "0s",
     delivery_rate: 0,
   });
@@ -93,18 +91,13 @@ export default function Reports() {
     delivered: 0,
     failed: 0,
     pending: 0,
+    awaiting_delivery: 0,
+    dlr_unavailable: 0,
     credits_used: 0,
   });
-  const [emailStats, setEmailStats] = useState<EmailStats>({
-    total_sent: 0,
-    delivered: 0,
-    opened: 0,
-    clicked: 0,
-    bounced: 0,
-  });
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [statsRes, chartRes, deliveryRes] = await Promise.all([
         getReportStats(dateRange),
@@ -112,23 +105,25 @@ export default function Reports() {
         getDeliveryBreakdown(dateRange),
       ]);
 
-      if (statsRes.success && statsRes.data) {
-        setStats(statsRes.data.summary || stats);
-        setSmsStats(statsRes.data.sms || smsStats);
-        setEmailStats(statsRes.data.email || emailStats);
+      if (statsRes.success) {
+        const payload = statsRes.data ?? statsRes;
+        if (payload.summary) setStats(payload.summary);
+        if (payload.sms) setSmsStats(payload.sms);
       }
 
-      if (chartRes.success && chartRes.data) {
-        setChartData(chartRes.data.chart || []);
+      if (chartRes.success) {
+        const payload = chartRes.data ?? chartRes;
+        setChartData(payload.chart || []);
       }
 
-      if (deliveryRes.success && deliveryRes.data) {
-        setDeliveryData(deliveryRes.data.breakdown || []);
+      if (deliveryRes.success) {
+        const payload = deliveryRes.data ?? deliveryRes;
+        setDeliveryData(payload.breakdown || []);
       }
     } catch (error) {
       handleApiError(error);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [dateRange]);
 
@@ -136,10 +131,15 @@ export default function Reports() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => void loadData(false), 30000);
+    return () => window.clearInterval(timer);
+  }, [loadData]);
+
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const response = await exportReport("campaigns");
+      const response = await exportReport("campaigns",exportFormat,dateRange);
       if (response.success) {
         toast({
           title: "Report exported",
@@ -153,13 +153,15 @@ export default function Reports() {
     }
   };
 
+  const handleEmail=async()=>{setIsEmailing(true);try{await emailReport(dateRange);toast({title:"Report emailed",description:"The SMS report was sent to your registered email address."});}catch(error){handleApiError(error);}finally{setIsEmailing(false)}};
+
   return (
     <DashboardLayout
       title="Reports"
       subtitle="Analytics and delivery reports for all your campaigns"
       actions={
-        <div className="flex gap-3">
-          <Button variant="outline" size="icon" onClick={loadData} disabled={loading}>
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" size="icon" onClick={() => void loadData()} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
           <Link to="/reports/compare">
@@ -180,10 +182,12 @@ export default function Reports() {
               <SelectItem value="90d">Last 90 days</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={exportFormat} onValueChange={value=>setExportFormat(value as 'csv'|'excel'|'pdf')}><SelectTrigger className="w-28"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="pdf">PDF</SelectItem><SelectItem value="csv">CSV</SelectItem><SelectItem value="excel">Excel</SelectItem></SelectContent></Select>
           <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting}>
             {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export Report
           </Button>
+          <Button variant="outline" className="gap-2" onClick={handleEmail} disabled={isEmailing}>{isEmailing?<Loader2 className="h-4 w-4 animate-spin"/>:<Mail className="h-4 w-4"/>}Email Report</Button>
         </div>
       }
     >
@@ -194,7 +198,7 @@ export default function Reports() {
       ) : (
         <>
           {/* Summary Stats */}
-          <div className="grid gap-6 md:grid-cols-4">
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
             <MetricCard
               title="Total Messages"
               value={stats.total_messages}
@@ -220,6 +224,14 @@ export default function Reports() {
               iconColor="destructive"
             />
             <MetricCard
+              title="Pending"
+              value={stats.pending}
+              change={`${((stats.pending / stats.total_messages) * 100 || 0).toFixed(1)}% pending`}
+              changeType="neutral"
+              icon={Clock}
+              iconColor="info"
+            />
+            <MetricCard
               title="Avg. Delivery Time"
               value={stats.avg_delivery_time}
               change="Average speed"
@@ -241,7 +253,7 @@ export default function Reports() {
                 <div className="mb-6 flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-foreground">Daily Message Volume</h3>
-                    <p className="text-sm text-muted-foreground">SMS and Email messages sent per day</p>
+                    <p className="text-sm text-muted-foreground">SMS messages sent per day</p>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
@@ -360,7 +372,19 @@ export default function Reports() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Credits Used</span>
+                  <span className="text-muted-foreground">Awaiting delivery report</span>
+                  <span className="font-semibold text-warning">
+                    {smsStats.awaiting_delivery.toLocaleString()} ({smsStats.total_sent > 0 ? ((smsStats.awaiting_delivery / smsStats.total_sent) * 100).toFixed(1) : 0}%)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Provider DLR unavailable</span>
+                  <span className="font-semibold text-destructive">
+                    {smsStats.dlr_unavailable.toLocaleString()} ({smsStats.total_sent > 0 ? ((smsStats.dlr_unavailable / smsStats.total_sent) * 100).toFixed(1) : 0}%)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">SMS Credits Used</span>
                   <span className="font-semibold text-foreground">{smsStats.credits_used.toLocaleString()}</span>
                 </div>
               </div>
@@ -374,39 +398,13 @@ export default function Reports() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Email Performance</h3>
-                  <p className="text-sm text-muted-foreground">Last {dateRange === "24h" ? "24 hours" : dateRange === "7d" ? "7 days" : dateRange === "30d" ? "30 days" : "90 days"}</p>
+                  <p className="text-sm text-muted-foreground">Coming soon</p>
                 </div>
               </div>
 
-              <div className="mt-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Total Sent</span>
-                  <span className="font-semibold text-foreground">{emailStats.total_sent.toLocaleString()}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Delivered</span>
-                  <span className="font-semibold text-success">
-                    {emailStats.delivered.toLocaleString()} ({emailStats.total_sent > 0 ? ((emailStats.delivered / emailStats.total_sent) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Opened</span>
-                  <span className="font-semibold text-info">
-                    {emailStats.opened.toLocaleString()} ({emailStats.delivered > 0 ? ((emailStats.opened / emailStats.delivered) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Clicked</span>
-                  <span className="font-semibold text-primary">
-                    {emailStats.clicked.toLocaleString()} ({emailStats.opened > 0 ? ((emailStats.clicked / emailStats.opened) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Bounced</span>
-                  <span className="font-semibold text-destructive">
-                    {emailStats.bounced.toLocaleString()} ({emailStats.total_sent > 0 ? ((emailStats.bounced / emailStats.total_sent) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
+              <div className="mt-6 rounded-lg border border-dashed p-6 text-center">
+                <p className="font-medium">Email reporting is coming soon</p>
+                <p className="mt-2 text-sm text-muted-foreground">This release reports only canonical SMS campaign activity.</p>
               </div>
             </div>
           </div>

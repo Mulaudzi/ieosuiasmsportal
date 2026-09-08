@@ -11,7 +11,6 @@ import {
   TrendingUp,
   ArrowUpRight,
   ArrowDownLeft,
-  Download,
   Clock,
   CheckCircle,
   Loader2,
@@ -21,8 +20,7 @@ import {
   History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { toast } from "@/hooks/use-toast";
-import { getTransactions, getCreditPackages, handleApiError } from "@/lib/api";
+import { getTransactions } from "@/lib/api";
 import { useWalletStats } from "@/hooks/useWallet";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
@@ -36,21 +34,13 @@ interface Transaction {
   status: "completed" | "pending" | "failed";
 }
 
-interface CreditPackage {
-  credits: number;
-  price: number;
-  popular?: boolean;
-}
-
 export default function Wallet() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [isExporting, setIsExporting] = useState(false);
   const [showBuyModal, setShowBuyModal] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<{ credits: number; price: number } | null>(null);
 
   // Use the shared wallet stats hook
-  const { balance, usedThisMonth, totalSpent, isLoading: statsLoading, refetch: refetchStats } = useWalletStats();
+  const { balance, usedThisMonth, totalSpent, smsCredits, pricePerCredit, isLoading: statsLoading, refetch: refetchStats } = useWalletStats();
 
   // Transactions query
   const { data: transactionsData, isLoading: transactionsLoading, refetch: refetchTransactions } = useQuery({
@@ -59,21 +49,6 @@ export default function Wallet() {
       const res = await getTransactions({ limit: 10 });
       return res.data?.transactions || [];
     },
-  });
-
-  // Packages query
-  const { data: packages = [] } = useQuery({
-    queryKey: ["credit-packages"],
-    queryFn: async () => {
-      const res = await getCreditPackages();
-      return res.data?.packages || [
-        { credits: 1000, price: 270, popular: false },
-        { credits: 5000, price: 1350, popular: true },
-        { credits: 10000, price: 2700, popular: false },
-        { credits: 25000, price: 6750, popular: false },
-      ];
-    },
-    staleTime: 5 * 60 * 1000, // Cache packages for 5 minutes
   });
 
   const transactions = transactionsData || [];
@@ -85,23 +60,6 @@ export default function Wallet() {
     // Also invalidate the sidebar wallet query
     queryClient.invalidateQueries({ queryKey: ["wallet"] });
   }, [refetchStats, refetchTransactions, queryClient]);
-
-  const handleBuyCredits = (credits: number, price: number) => {
-    setSelectedPackage({ credits, price });
-    setShowBuyModal(true);
-  };
-
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      // TODO: Implement transaction export
-      toast({ title: "Export ready", description: "Your transaction history has been exported." });
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   const formatDate = (dateString: string) => {
     try {
@@ -118,16 +76,12 @@ export default function Wallet() {
 
   return (
     <DashboardLayout
-      title="Wallet"
-      subtitle="Manage your credits and view transaction history"
+      title="SMS Credits"
+      subtitle="Buy SMS credits and view your transaction history"
       actions={
         <div className="flex gap-3">
           <Button variant="outline" size="icon" onClick={refreshAll} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          </Button>
-          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting}>
-            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Export
           </Button>
           <Button className="gap-2" onClick={() => setShowBuyModal(true)}>
             <ShoppingCart className="h-4 w-4" />
@@ -140,8 +94,6 @@ export default function Wallet() {
         open={showBuyModal} 
         onOpenChange={(open) => { setShowBuyModal(open); if (!open) refreshAll(); }} 
         onPurchaseComplete={refreshAll}
-        selectedCredits={selectedPackage?.credits} 
-        selectedPrice={selectedPackage?.price} 
       />
 
       {loading ? (
@@ -151,17 +103,17 @@ export default function Wallet() {
       ) : (
         <>
           <div className="grid gap-6 md:grid-cols-3">
-            <MetricCard title="Available Credits" value={balance} icon={WalletIcon} iconColor="primary" />
+            <MetricCard title="Available SMS Credits" value={smsCredits.toLocaleString()} change={`1 credit = 1 segment · R${pricePerCredit.toFixed(2)}`} changeType="neutral" icon={WalletIcon} iconColor="primary" />
             <MetricCard 
-              title="Credits Used This Month" 
-              value={usedThisMonth} 
-              change={balance > 0 ? `${((usedThisMonth / (balance + usedThisMonth)) * 100).toFixed(0)}% of total` : "0%"} 
+              title="SMS Credits Used This Month"
+              value={Math.floor(usedThisMonth).toLocaleString()}
+              change="Billable segments sent this month"
               changeType="neutral" 
               icon={TrendingUp} 
               iconColor="accent" 
             />
             <MetricCard 
-              title="Total Spent" 
+              title="Total Payments" 
               value={`R ${totalSpent.toLocaleString()}`} 
               change="Lifetime value" 
               changeType="neutral" 
@@ -171,38 +123,10 @@ export default function Wallet() {
           </div>
 
           <div className="mt-8" id="buy-credits">
-            <h2 className="mb-4 text-lg font-semibold text-foreground">Buy Credits</h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {packages.map((pkg) => (
-                <div 
-                  key={pkg.credits} 
-                  className={cn(
-                    "relative rounded-xl border-2 bg-card p-6 transition-all hover:shadow-lg", 
-                    pkg.popular ? "border-primary shadow-md" : "border-border hover:border-primary/50"
-                  )}
-                >
-                  {pkg.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
-                        Most Popular
-                      </span>
-                    </div>
-                  )}
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-foreground">{pkg.credits.toLocaleString()}</p>
-                    <p className="text-sm text-muted-foreground">credits</p>
-                    <p className="mt-4 text-2xl font-bold text-primary">R{pkg.price}</p>
-                    <p className="text-xs text-muted-foreground">R{(pkg.price / pkg.credits).toFixed(2)} per SMS</p>
-                    <Button 
-                      className={cn("mt-4 w-full")} 
-                      variant={pkg.popular ? "default" : "outline"} 
-                      onClick={() => handleBuyCredits(pkg.credits, pkg.price)}
-                    >
-                      Buy Now
-                    </Button>
-                  </div>
-                </div>
-              ))}
+            <h2 className="mb-4 text-lg font-semibold text-foreground">Buy SMS Credits</h2>
+            <div className="rounded-xl border bg-card p-6">
+              <p className="text-sm text-muted-foreground">Choose a ZAR payment amount. Each R{pricePerCredit.toFixed(2)} purchases one SMS credit, and one credit sends one billable segment.</p>
+              <Button className="mt-4" onClick={() => setShowBuyModal(true)}>Buy SMS credits</Button>
             </div>
           </div>
 
@@ -214,7 +138,6 @@ export default function Wallet() {
                   <History className="h-4 w-4 mr-2" />
                   Payment History
                 </Button>
-                <Button variant="outline" size="sm">View All</Button>
               </div>
             </div>
             <div className="rounded-xl border border-border bg-card overflow-hidden">

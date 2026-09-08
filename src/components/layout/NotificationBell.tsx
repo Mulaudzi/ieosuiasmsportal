@@ -27,15 +27,16 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
 
   const loadNotifications = useCallback(async () => {
+    if (!navigator.onLine) return;
     try {
       const response = await api.get<{ notifications: Notification[]; unread_count: number }>("/notifications");
-      if (response.success && response.data) {
-        setNotifications(response.data.notifications || []);
-        setUnreadCount(response.data.unread_count || 0);
+      if (response.success) {
+        const payload = (response.data ?? response) as { notifications?: Notification[]; unread_count?: number };
+        setNotifications(payload.notifications || []);
+        setUnreadCount(payload.unread_count || 0);
       }
-    } catch (error) {
+    } catch {
       // Silently fail - notifications are not critical
-      console.error("Failed to load notifications:", error);
     }
   }, []);
 
@@ -43,7 +44,11 @@ export function NotificationBell() {
   useEffect(() => {
     loadNotifications();
     const interval = setInterval(loadNotifications, 30000);
-    return () => clearInterval(interval);
+    window.addEventListener("online", loadNotifications);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("online", loadNotifications);
+    };
   }, [loadNotifications]);
 
   const markAsRead = async (id: string) => {

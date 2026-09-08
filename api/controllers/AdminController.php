@@ -37,13 +37,13 @@ class AdminController
         $pendingSenderIds = 0;
         
         // Total campaigns
-        $totalCampaigns = table('campaigns')->count();
+        $totalCampaigns = table('sms_campaigns')->count();
         
         // Total messages
-        $totalMessages = table('messages')->count();
+        $totalMessages = table('sms_messages')->count();
         
         // Total revenue (sum of credits purchased)
-        $stmt = $pdo->query("SELECT COALESCE(SUM(amount), 0) as total FROM wallet_transactions WHERE type = 'credit' AND status = 'completed'");
+        $stmt = $pdo->query("SELECT COALESCE(SUM(amount),0) total FROM payments WHERE status='completed' AND currency='ZAR'");
         $revenue = $stmt->fetch()['total'] ?? 0;
         
         Response::success([
@@ -224,14 +224,12 @@ class AdminController
         $user['wallet'] = $wallet;
         
         // Get campaign count
-        $user['campaign_count'] = table('campaigns')->where('user_id', $params['id'])->count();
+        $user['campaign_count'] = table('sms_campaigns')->where('user_id', $params['id'])->count();
         
         // Get message count
         $pdo = db();
         $stmt = $pdo->prepare("
-            SELECT COUNT(*) as count FROM messages m
-            JOIN campaigns c ON m.campaign_id = c.id
-            WHERE c.user_id = ?
+            SELECT COUNT(*) as count FROM sms_messages WHERE user_id = ?
         ");
         $stmt->execute([$params['id']]);
         $user['message_count'] = $stmt->fetch()['count'] ?? 0;
@@ -443,7 +441,7 @@ class AdminController
             
             // Get some stats
             $userCount = table('users')->count();
-            $messageCount = table('messages')->count();
+            $messageCount = table('sms_messages')->count();
             
             return [
                 'status' => $responseTime < 100 ? 'healthy' : ($responseTime < 500 ? 'warning' : 'error'),
@@ -590,7 +588,7 @@ class AdminController
                 HOUR(created_at) as hour,
                 DAYOFWEEK(created_at) as day_of_week,
                 COUNT(*) as count
-            FROM campaigns
+            FROM sms_campaigns
             WHERE created_at >= ?
             GROUP BY HOUR(created_at), DAYOFWEEK(created_at)
         ");
@@ -603,7 +601,7 @@ class AdminController
                 HOUR(sent_at) as hour,
                 DAYOFWEEK(sent_at) as day_of_week,
                 COUNT(*) as count
-            FROM messages
+            FROM sms_messages
             WHERE sent_at >= ? AND sent_at IS NOT NULL
             GROUP BY HOUR(sent_at), DAYOFWEEK(sent_at)
         ");
@@ -616,8 +614,8 @@ class AdminController
                 HOUR(sent_at) as hour,
                 DAYOFWEEK(sent_at) as day_of_week,
                 COUNT(*) as count
-            FROM messages
-            WHERE sent_at >= ? AND sent_at IS NOT NULL AND status = 'Delivered'
+            FROM sms_messages
+            WHERE sent_at >= ? AND sent_at IS NOT NULL AND state = 'delivered'
             GROUP BY HOUR(sent_at), DAYOFWEEK(sent_at)
         ");
         $stmt->execute([$thirtyDaysAgo]);
@@ -629,8 +627,8 @@ class AdminController
                 HOUR(sent_at) as hour,
                 DAYOFWEEK(sent_at) as day_of_week,
                 COUNT(*) as count
-            FROM messages
-            WHERE sent_at >= ? AND sent_at IS NOT NULL AND status = 'Failed'
+            FROM sms_messages
+            WHERE sent_at >= ? AND sent_at IS NOT NULL AND state = 'failed'
             GROUP BY HOUR(sent_at), DAYOFWEEK(sent_at)
         ");
         $stmt->execute([$thirtyDaysAgo]);
@@ -747,9 +745,9 @@ class AdminController
                 HOUR(m.sent_at) as hour,
                 DAYOFWEEK(m.sent_at) as day_of_week,
                 COUNT(*) as total_sent,
-                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as failed
-            FROM messages m
+                SUM(CASE WHEN m.state = 'delivered' THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN m.state = 'failed' THEN 1 ELSE 0 END) as failed
+            FROM sms_messages m
             WHERE m.sent_at >= ? AND m.sent_at IS NOT NULL
             GROUP BY HOUR(m.sent_at), DAYOFWEEK(m.sent_at)
             ORDER BY day_of_week, hour
@@ -777,7 +775,7 @@ class AdminController
                 HOUR(created_at) as hour,
                 DAYOFWEEK(created_at) as day_of_week,
                 COUNT(*) as count
-            FROM campaigns
+            FROM sms_campaigns
             WHERE created_at >= ?
             GROUP BY HOUR(created_at), DAYOFWEEK(created_at)
             ORDER BY day_of_week, hour

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { getCampaign } from '@/lib/api';
+import { getSmsCampaign } from '@/lib/api';
 
 interface UseDlrPollingOptions {
   campaignId: string;
@@ -24,9 +24,9 @@ export function useDlrPolling({
     
     isPollingRef.current = true;
     try {
-      const response = await getCampaign(campaignId);
-      if (response.success && response.data) {
-        onUpdate?.(response.data);
+      const response = await getSmsCampaign(campaignId);
+      if (response.success) {
+        onUpdate?.(response.data ?? response);
       }
     } catch (error) {
       onError?.(error as Error);

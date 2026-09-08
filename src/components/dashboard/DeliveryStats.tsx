@@ -13,35 +13,44 @@ interface DashboardStats {
   total_sent: number;
   total_delivered: number;
   total_failed: number;
+  total_pending: number;
+  total_awaiting_delivery: number;
+  total_dlr_unavailable: number;
   delivery_rate: number;
 }
 
-export function DeliveryStats() {
+export function DeliveryStats({ range = "7d" }: { range?: string }) {
   const [data, setData] = useState<DeliveryData[]>([]);
   const [successRate, setSuccessRate] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadDeliveryStats();
-  }, []);
+    void loadDeliveryStats();const timer=window.setInterval(()=>void loadDeliveryStats(false),30000);return()=>window.clearInterval(timer);
+  }, [range]);
 
-  const loadDeliveryStats = async () => {
+  const loadDeliveryStats = async (showLoading=true) => {
     try {
-      const response = await api.get<DashboardStats>("/dashboard/stats");
-      if (response.success && response.data) {
-        const stats = response.data;
+      const response = await api.get<DashboardStats>("/dashboard/stats", { range });
+      if (response.success) {
+        const stats = (response.data??response) as unknown as DashboardStats;
         const total = stats.total_sent || 1;
         const delivered = stats.total_delivered || 0;
         const failed = stats.total_failed || 0;
-        const pending = Math.max(0, total - delivered - failed);
+        const awaiting = stats.total_awaiting_delivery || 0;
+        const unavailable = stats.total_dlr_unavailable || 0;
+        const pending = stats.total_pending || 0;
 
         const deliveredPct = Math.round((delivered / total) * 100);
         const failedPct = Math.round((failed / total) * 100);
-        const pendingPct = Math.max(0, 100 - deliveredPct - failedPct);
+        const pendingPct = Math.round((pending / total) * 100);
+        const awaitingPct = Math.round((awaiting / total) * 100);
+        const unavailablePct = Math.round((unavailable / total) * 100);
 
         setData([
           { name: "Delivered", value: deliveredPct, color: "hsl(160, 84%, 39%)" },
-          { name: "Pending", value: pendingPct, color: "hsl(38, 92%, 50%)" },
+          { name: "Pending dispatch", value: Math.max(0,pendingPct-awaitingPct-unavailablePct), color: "hsl(38, 92%, 50%)" },
+          { name: "Awaiting DLR", value: awaitingPct, color: "hsl(38, 92%, 50%)" },
+          { name: "DLR unavailable", value: unavailablePct, color: "hsl(0, 72%, 51%)" },
           { name: "Failed", value: failedPct, color: "hsl(0, 72%, 51%)" },
         ].filter(d => d.value > 0));
         
@@ -51,7 +60,7 @@ export function DeliveryStats() {
       console.error("Failed to load delivery stats:", error);
       setData([]);
     } finally {
-      setLoading(false);
+      if(showLoading)setLoading(false);
     }
   };
 

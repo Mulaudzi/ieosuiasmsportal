@@ -63,7 +63,7 @@ class ContactFormController
         $purposeEmails = [
             'general' => 'hello@ieosuia.com',
             'support' => 'support@ieosuia.com',
-            'sales' => 'sales@ieosuia.com',
+            'sales' => 'hello@ieosuia.com',
         ];
         
         $purpose = $data['purpose'];
@@ -250,7 +250,7 @@ HTML;
     {
         // Check if user is admin
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }
@@ -310,7 +310,7 @@ HTML;
     public static function stats(): void
     {
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }
@@ -408,7 +408,7 @@ HTML;
     public static function trends(): void
     {
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }
@@ -481,7 +481,7 @@ HTML;
     public static function exportCsv(): void
     {
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }
@@ -581,7 +581,7 @@ HTML;
     public static function exportReport(): void
     {
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }
@@ -769,7 +769,7 @@ HTML;
     public static function show(array $params): void
     {
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }
@@ -807,7 +807,7 @@ HTML;
     public static function markReplied(array $params): void
     {
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }
@@ -837,7 +837,7 @@ HTML;
     public static function addNote(array $params): void
     {
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }

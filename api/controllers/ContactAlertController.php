@@ -11,10 +11,9 @@ class ContactAlertController
      */
     private static function requireAdmin(): void
     {
-        $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
-            exit;
+            return;
         }
     }
     

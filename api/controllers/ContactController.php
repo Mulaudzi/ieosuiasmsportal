@@ -2,6 +2,7 @@
 /**
  * Contact Controller
  */
+require_once __DIR__ . '/../domain/PhoneNumber.php';
 
 class ContactController {
     public function index(): void {
@@ -115,7 +116,7 @@ class ContactController {
             'phone' => 'max:50',  // Increased for international numbers with country codes
             'email' => 'email|max:255',
             'country_code' => 'max:10',
-            'group_id' => 'exists:contact_groups,id',
+            'group_id' => '',
         ]);
         
         // Set defaults
@@ -130,12 +131,15 @@ class ContactController {
         
         // Clean and validate phone if provided
         if ($phone) {
-            // Remove any non-numeric characters except + at start
-            $phone = preg_replace('/[^0-9+]/', '', $phone);
-            // Ensure it starts with + for E.164 format
-            if ($phone && $phone[0] !== '+' && !empty($data['country_code'])) {
-                $phone = $data['country_code'] . ltrim($phone, '0');
-            }
+            try { $phone = PhoneNumber::normalize($phone); }
+            catch (InvalidArgumentException $e) { Response::error($e->getMessage(), 422); }
+        }
+        if (!empty($data['group_id'])) {
+            $group = table('contact_groups')->where('id',$data['group_id'])->where('user_id',Auth::id())->first();
+            if (!$group) Response::error('Contact group not found',404);
+        }
+        if ($phone && table('contacts')->where('user_id',Auth::id())->where('phone_normalized',$phone)->first()) {
+            Response::error('A contact with this phone number already exists',409);
         }
         
         try {
@@ -147,6 +151,8 @@ class ContactController {
                 'name' => $name,
                 'surname' => $data['surname'] ?? null,
                 'phone' => $phone,
+                'phone_normalized' => $phone,
+                'phone_original' => $data['phone'] ?? null,
                 'email' => $email,
                 'country_code' => $data['country_code'] ?? '+27',
                 'subscription_status' => 'subscribed',
@@ -177,7 +183,8 @@ class ContactController {
                 $pdo->rollBack();
             }
             error_log('Contact store error: ' . $e->getMessage());
-            Response::error('Failed to create contact: ' . $e->getMessage(), 500);
+            error_log('Contact creation failed: '.$e->getMessage());
+            Response::error('Failed to create contact', 500);
         }
     }
     
@@ -233,15 +240,23 @@ class ContactController {
             'name' => 'max:100',
             'phone' => 'max:50',  // Increased for international numbers
             'email' => 'email|max:255',
-            'group_id' => 'exists:contact_groups,id',  // NEW: Validate group_id
+            'group_id' => '',
         ]);
         
+        if (isset($data['phone'])) {
+            try { $data['phone_original']=$data['phone']; $data['phone_normalized']=PhoneNumber::normalize($data['phone']); $data['phone']=$data['phone_normalized']; }
+            catch(InvalidArgumentException $e){Response::error($e->getMessage(),422);}
+            $duplicate=table('contacts')->where('user_id',Auth::id())->where('phone_normalized',$data['phone_normalized'])->first();
+            if($duplicate && (int)$duplicate['id']!==(int)$params['id'])Response::error('A contact with this phone number already exists',409);
+        }
+        if (!empty($data['group_id']) && !table('contact_groups')->where('id',$data['group_id'])->where('user_id',Auth::id())->first()) Response::error('Contact group not found',404);
         $data['updated_at'] = date('Y-m-d H:i:s');
+        $groupIdForUpdate=$data['group_id']??null; unset($data['group_id']);
         
         table('contacts')->where('id', $params['id'])->update($data);
         
         // NEW: Handle group assignment
-        if (isset($data['group_id'])) {
+        if ($groupIdForUpdate !== null) {
             try {
                 $pdo = db();
                 $pdo->beginTransaction();
@@ -250,9 +265,9 @@ class ContactController {
                 table('group_contacts')->where('contact_id', $params['id'])->delete();
                 
                 // Add new group assignment if provided
-                if ($data['group_id']) {
+                if ($groupIdForUpdate) {
                     table('group_contacts')->insert([
-                        'group_id' => $data['group_id'],
+                        'group_id' => $groupIdForUpdate,
                         'contact_id' => $params['id'],
                         'created_at' => date('Y-m-d H:i:s'),
                     ]);
@@ -264,7 +279,8 @@ class ContactController {
                     $pdo->rollBack();
                 }
                 error_log('Group assignment error: ' . $e->getMessage());
-                Response::error('Failed to update group assignment: ' . $e->getMessage(), 500);
+                error_log('Contact group assignment update failed: '.$e->getMessage());
+                Response::error('Failed to update group assignment', 500);
                 return;
             }
         }
@@ -324,10 +340,12 @@ class ContactController {
             }
             
             $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            if (!in_array($extension, ['csv', 'txt', 'xlsx', 'xls'])) {
-                Response::error('Only CSV and Excel files are allowed', 400);
+            if (!in_array($extension, ['csv', 'txt'])) {
+                Response::error('Only CSV files are supported', 400);
                 return;
             }
+            $maxBytes=(int)env('UPLOAD_MAX_BYTES',5242880);
+            if((int)$file['size']>$maxBytes){Response::error('Import file exceeds the configured size limit',413);return;}
             
             $handle = fopen($file['tmp_name'], 'r');
             if (!$handle) {
@@ -409,10 +427,7 @@ class ContactController {
                 
                 // Clean phone number
                 if ($phone) {
-                    $phone = preg_replace('/[^0-9+]/', '', $phone);
-                    if (empty($phone)) {
-                        $phone = null;
-                    }
+                    try{$phone=PhoneNumber::normalize($phone);}catch(InvalidArgumentException){$failed++;continue;}
                 }
                 
                 // VALIDATION: Phone is required (mandatory field)
@@ -438,7 +453,7 @@ class ContactController {
                 if ($skipDuplicates && $phone) {
                     $existing = table('contacts')
                         ->where('user_id', $userId)
-                        ->where('phone', $phone)
+                        ->where('phone_normalized', $phone)
                         ->first();
                     
                     if ($existing) {
@@ -453,6 +468,8 @@ class ContactController {
                         'name' => !empty($name) ? $name : '',
                         'surname' => !empty($surname) ? $surname : '',
                         'phone' => $phone ?: null,
+                        'phone_normalized' => $phone ?: null,
+                        'phone_original' => $phone ?: null,
                         'email' => $email ?: null,
                         'country_code' => $countryCode,
                         'subscription_status' => 'subscribed',
@@ -527,13 +544,13 @@ class ContactController {
             
             foreach ($contacts as $contact) {
                 fputcsv($output, [
-                    $contact['name'],
-                    $contact['surname'] ?? '',
-                    $contact['phone'] ?? '',
-                    $contact['email'] ?? '',
-                    $contact['country_code'] ?? '+27',
-                    $contact['subscription_status'] ?? 'subscribed',
-                    $contact['created_at'],
+                    $this->csvCell($contact['name']),
+                    $this->csvCell($contact['surname'] ?? ''),
+                    $this->csvCell($contact['phone'] ?? ''),
+                    $this->csvCell($contact['email'] ?? ''),
+                    $this->csvCell($contact['country_code'] ?? '+27'),
+                    $this->csvCell($contact['subscription_status'] ?? 'subscribed'),
+                    $this->csvCell($contact['created_at']),
                 ]);
             }
             
@@ -554,8 +571,14 @@ class ContactController {
             exit;
         } catch (Exception $e) {
             error_log('Export contacts error: ' . $e->getMessage());
-            Response::error('Failed to export contacts: ' . $e->getMessage(), 500);
+            error_log('Contact export failed: '.$e->getMessage());
+            Response::error('Failed to export contacts', 500);
         }
+    }
+
+    private function csvCell(mixed $value): string {
+        $text = (string) $value;
+        return preg_match('/^[=+\-@]/', $text) ? "'" . $text : $text;
     }
     
     public function groups(): void {
@@ -758,5 +781,30 @@ class ContactController {
             error_log('Contact bulk delete error: ' . $e->getMessage());
             Response::error('Failed to delete contacts', 500);
         }
+    }
+
+    public function bulkAddToGroup(): void {
+        $data=Request::validate(['ids'=>'required','group_id'=>'required|numeric']);
+        $ids=$data['ids'];
+        if(!is_array($ids)||empty($ids))Response::error('Invalid contact IDs',400);
+        $ids=array_values(array_unique(array_map('intval',$ids)));
+        if(in_array(0,$ids,true))Response::error('Invalid contact ID in list',400);
+
+        $userId=(int)Auth::id();$groupId=(int)$data['group_id'];
+        $group=table('contact_groups')->where('id',$groupId)->where('user_id',$userId)->first();
+        if(!$group)Response::error('Contact group not found',404);
+
+        $pdo=db();$pdo->beginTransaction();
+        try{
+            $insert=$pdo->prepare('INSERT IGNORE INTO group_contacts(group_id,contact_id,created_at) SELECT ?,c.id,NOW() FROM contacts c WHERE c.id=? AND c.user_id=?');
+            $added=0;$matched=0;
+            foreach($ids as $id){
+                $exists=$pdo->prepare('SELECT id FROM contacts WHERE id=? AND user_id=?');$exists->execute([$id,$userId]);
+                if(!$exists->fetchColumn())continue;
+                $matched++;$insert->execute([$groupId,$id,$userId]);$added+=$insert->rowCount();
+            }
+            $pdo->commit();
+            Response::success(['added'=>$added,'matched'=>$matched,'already_present'=>$matched-$added,'group_id'=>$groupId]);
+        }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
     }
 }

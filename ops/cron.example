@@ -1,0 +1,7 @@
+# System crontab format (includes the service account column).
+* * * * * www-data /usr/bin/flock -n /tmp/ieosuia-sms-scheduler.lock /usr/bin/php /path/to/public_html/sms/api/bin/sms-scheduler.php >> /var/log/ieosuia-sms-scheduler.log 2>&1
+* * * * * www-data /usr/bin/flock -n /tmp/ieosuia-sms-dlr-poller.lock /usr/bin/php /path/to/public_html/sms/api/bin/sms-dlr-poller.php >> /var/log/ieosuia-sms-dlr-poller.log 2>&1
+
+# Shared-hosting/cPanel format (no service account column). Replace /path/to.
+# * * * * * /usr/local/bin/php /path/to/public_html/sms/api/bin/payment-receipt-worker.php
+# * * * * * /usr/bin/flock -n /tmp/ieosuia-sms-dlr-poller.lock /usr/bin/php /path/to/public_html/sms/api/bin/sms-dlr-poller.php >> /path/to/logs/ieosuia-sms-dlr-poller.log 2>&1

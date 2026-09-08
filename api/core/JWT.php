@@ -5,7 +5,11 @@
 
 class JWT {
     private static function getSecret(): string {
-        return env('JWT_SECRET', env('APP_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3NjgwMTE4Mzh9.k_Q1cCZEleniwUFFB2hk6AOrjIi0g-pqHWQS8CWENws'));
+        $secret = trim((string) env('JWT_SECRET', ''));
+        if (strlen($secret) < 32) {
+            throw new RuntimeException('JWT_SECRET must be configured with at least 32 characters');
+        }
+        return $secret;
     }
     
     public static function encode(array $payload): string {

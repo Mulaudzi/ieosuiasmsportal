@@ -63,7 +63,6 @@ import {
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { useAdminSession } from "@/hooks/useAdminSession";
 import { api } from "@/lib/api";
 
 interface AdminUser {
@@ -78,7 +77,6 @@ interface AdminUser {
 export default function AdminManagement() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  useAdminSession();
 
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,6 +93,7 @@ export default function AdminManagement() {
   const [resetPasswordAdmin, setResetPasswordAdmin] = useState<AdminUser | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [newPin, setNewPin] = useState("");
   const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   // Delete confirmation state
@@ -111,15 +110,14 @@ export default function AdminManagement() {
   const [createForm, setCreateForm] = useState({
     name: "",
     email: "",
-    password_1: "",
-    password_2: "",
-    password_3: "",
+    password: "",
+    pin: "",
     setup_key: "",
   });
 
   // Check admin access
   useEffect(() => {
-    if (user && user.account_type !== "admin") {
+    if (user && user.role !== "admin") {
       navigate("/dashboard");
     }
   }, [user, navigate]);
@@ -130,7 +128,7 @@ export default function AdminManagement() {
 
     try {
       const response = await api.get<{ admins: AdminUser[] }>("/admin-users");
-      setAdmins(response.data?.admins || []);
+      setAdmins(((response.data ?? response) as { admins?: AdminUser[] }).admins || []);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -195,16 +193,17 @@ export default function AdminManagement() {
     setResetPasswordAdmin(admin);
     setNewPassword("");
     setConfirmPassword("");
+    setNewPin("");
     setResetPasswordModalOpen(true);
   };
 
   const handleResetPasswordSubmit = async () => {
     if (!resetPasswordAdmin) return;
 
-    if (newPassword.length < 12) {
+    if (newPassword.length < 8) {
       toast({
         title: "Validation Error",
-        description: "Password must be at least 12 characters",
+        description: "Password must be at least 8 characters",
         variant: "destructive",
       });
       return;
@@ -218,12 +217,17 @@ export default function AdminManagement() {
       });
       return;
     }
+    if (newPin && !/^\d{4,12}$/.test(newPin)) {
+      toast({ title: "Validation Error", description: "PIN must contain 4 to 12 digits", variant: "destructive" });
+      return;
+    }
 
     setIsResettingPassword(true);
     try {
       await api.post("/admin-users/reset-password", {
         id: resetPasswordAdmin.id,
         new_password: newPassword,
+        new_pin: newPin || undefined,
       });
 
       toast({
@@ -250,7 +254,8 @@ export default function AdminManagement() {
         id: admin.id,
       });
 
-      const action = response.data?.is_active ? "activated" : "deactivated";
+      const payload = (response.data ?? response) as { is_active?: number };
+      const action = payload.is_active ? "activated" : "deactivated";
       toast({
         title: "Success",
         description: `Admin user ${action} successfully`,
@@ -301,8 +306,7 @@ export default function AdminManagement() {
   };
 
   const handleCreateAdmin = async () => {
-    if (!createForm.name || !createForm.email || !createForm.password_1 || 
-        !createForm.password_2 || !createForm.password_3 || !createForm.setup_key) {
+    if (!createForm.name || !createForm.email || !createForm.password || !createForm.pin || !createForm.setup_key) {
       toast({
         title: "Missing fields",
         description: "Please fill in all required fields",
@@ -311,10 +315,10 @@ export default function AdminManagement() {
       return;
     }
 
-    if (createForm.password_1.length < 12 || createForm.password_2.length < 12 || createForm.password_3.length < 12) {
+    if (createForm.password.length < 8 || !/^\d{4,12}$/.test(createForm.pin)) {
       toast({
-        title: "Weak passwords",
-        description: "Each password must be at least 12 characters",
+        title: "Invalid credentials",
+        description: "Password must be at least 8 characters and PIN must contain 4 to 12 digits",
         variant: "destructive",
       });
       return;
@@ -333,9 +337,8 @@ export default function AdminManagement() {
       setCreateForm({
         name: "",
         email: "",
-        password_1: "",
-        password_2: "",
-        password_3: "",
+        password: "",
+        pin: "",
         setup_key: "",
       });
       fetchAdmins(true);
@@ -350,7 +353,7 @@ export default function AdminManagement() {
     }
   };
 
-  if (user?.account_type !== "admin") {
+  if (user?.role !== "admin") {
     return null;
   }
 
@@ -550,7 +553,7 @@ export default function AdminManagement() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="new-password">New Password (min 12 characters)</Label>
+              <Label htmlFor="new-password">New Password (min 8 characters)</Label>
               <Input
                 id="new-password"
                 type="password"
@@ -568,6 +571,10 @@ export default function AdminManagement() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••••••"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-pin">New PIN (optional)</Label>
+              <Input id="new-pin" type="password" inputMode="numeric" maxLength={12} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))} placeholder="4 to 12 digits" />
             </div>
           </div>
           <DialogFooter>
@@ -624,7 +631,7 @@ export default function AdminManagement() {
           <DialogHeader>
             <DialogTitle>Create Admin User</DialogTitle>
             <DialogDescription>
-              Admin users require 3 separate passwords for enhanced security
+              Admin users authenticate with one password and a numeric PIN
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
@@ -648,27 +655,21 @@ export default function AdminManagement() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Password 1 (min 12 chars)</Label>
+              <Label>Password (min 8 chars)</Label>
               <Input
                 type="password"
-                value={createForm.password_1}
-                onChange={(e) => setCreateForm({ ...createForm, password_1: e.target.value })}
+                value={createForm.password}
+                onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label>Password 2 (min 12 chars)</Label>
+              <Label>PIN (4 to 12 digits)</Label>
               <Input
                 type="password"
-                value={createForm.password_2}
-                onChange={(e) => setCreateForm({ ...createForm, password_2: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Password 3 (min 12 chars)</Label>
-              <Input
-                type="password"
-                value={createForm.password_3}
-                onChange={(e) => setCreateForm({ ...createForm, password_3: e.target.value })}
+                inputMode="numeric"
+                maxLength={12}
+                value={createForm.pin}
+                onChange={(e) => setCreateForm({ ...createForm, pin: e.target.value.replace(/\D/g, "") })}
               />
             </div>
             <div className="space-y-2 border-t pt-4">

@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RefreshCw, CreditCard, Download, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
-import { api, handleApiError } from '@/lib/api';
+import { api, handleApiError, exportPaymentHistory, downloadPaymentReceipt } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -21,10 +21,11 @@ interface Payment {
   status: 'pending' | 'completed' | 'failed' | 'cancelled' | 'refunded';
   gateway_status: string | null;
   payment_method: string | null;
-  credits_added: number;
   created_at: string;
   processed_at: string | null;
   error_message: string | null;
+  receipt_email_status: 'pending' | 'processing' | 'sent' | 'failed' | null;
+  receipt_email_sent_at: string | null;
 }
 
 const PaymentHistory = () => {
@@ -112,16 +113,26 @@ const PaymentHistory = () => {
     return labels[gateway];
   };
 
-  const handleExport = () => {
-    toast.info('Export functionality coming soon');
+  const getReceiptStatusBadge = (payment: Payment) => {
+    if (payment.status !== 'completed') {
+      return <span className="text-sm text-muted-foreground">Not applicable</span>;
+    }
+
+    const status = payment.receipt_email_status;
+    if (status === 'sent') return <Badge variant="default">Email sent</Badge>;
+    if (status === 'failed') return <Badge variant="destructive">Retry scheduled</Badge>;
+    if (status === 'processing') return <Badge variant="secondary">Sending</Badge>;
+    return <Badge variant="secondary">Queued</Badge>;
+  };
+
+  const handleExport = async () => {
+    try { await exportPaymentHistory(statusFilter,gatewayFilter); toast.success('Payment history exported'); }
+    catch(error){ handleApiError(error); }
   };
   
   const handleDownloadReceipt = async (paymentId: number, reference: string) => {
     try {
-      // Open receipt in new window for printing/saving
-      const baseUrl = import.meta.env.VITE_API_URL || '/api';
-      const token = localStorage.getItem('auth_token');
-      window.open(`${baseUrl}/wallet/receipt?id=${paymentId}&token=${token}`, '_blank');
+      await downloadPaymentReceipt(paymentId,reference);
     } catch (error) {
       toast.error('Failed to download receipt');
     }
@@ -227,8 +238,8 @@ const PaymentHistory = () => {
                         <TableHead>Reference</TableHead>
                         <TableHead>Gateway</TableHead>
                         <TableHead>Amount</TableHead>
-                        <TableHead>Credits</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Receipt</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -245,16 +256,8 @@ const PaymentHistory = () => {
                           <TableCell className="font-medium">
                             {formatAmount(payment.amount, payment.currency)}
                           </TableCell>
-                          <TableCell>
-                            {payment.credits_added > 0 ? (
-                              <span className="text-green-600 font-medium">
-                                +{payment.credits_added.toLocaleString()}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
                           <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                          <TableCell>{getReceiptStatusBadge(payment)}</TableCell>
                           <TableCell className="text-right">
                             {payment.status === 'completed' && (
                               <Button

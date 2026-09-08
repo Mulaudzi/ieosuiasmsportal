@@ -1,31 +1,32 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
-const ADMIN_SESSION_KEY = "admin_session";
 const ADMIN_SESSION_TIMESTAMP_KEY = "admin_session_timestamp";
-const ADMIN_SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes of inactivity
+const ADMIN_SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "scroll", "touchstart"];
 
 export function useAdminSession() {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
 
   const clearAdminSession = useCallback(() => {
-    sessionStorage.removeItem(ADMIN_SESSION_KEY);
     sessionStorage.removeItem(ADMIN_SESSION_TIMESTAMP_KEY);
   }, []);
 
   const handleSessionTimeout = useCallback(() => {
     clearAdminSession();
+    void logout();
     toast({
       title: "Session Expired",
       description: "Your admin session has expired due to inactivity. Please log in again.",
       variant: "destructive",
     });
-    navigate("/login", { replace: true });
-  }, [clearAdminSession, navigate]);
+    navigate("/guymhan/login", { replace: true });
+  }, [clearAdminSession, logout, navigate]);
 
   const resetTimeout = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -41,33 +42,31 @@ export function useAdminSession() {
   }, [handleSessionTimeout]);
 
   const isSessionValid = useCallback(() => {
-    const adminSession = sessionStorage.getItem(ADMIN_SESSION_KEY);
     const timestamp = sessionStorage.getItem(ADMIN_SESSION_TIMESTAMP_KEY);
 
-    if (!adminSession) {
+    if (user?.role !== "admin") {
       return false;
     }
 
     if (timestamp) {
       const lastActivity = parseInt(timestamp, 10);
+      const tokenIssuedAt = parseInt(localStorage.getItem("auth_token_issued") || "0", 10);
       const now = Date.now();
+      if (tokenIssuedAt > lastActivity && now - tokenIssuedAt <= ADMIN_SESSION_TIMEOUT_MS) {
+        sessionStorage.setItem(ADMIN_SESSION_TIMESTAMP_KEY, tokenIssuedAt.toString());
+        return true;
+      }
       if (now - lastActivity > ADMIN_SESSION_TIMEOUT_MS) {
         clearAdminSession();
         return false;
       }
     }
 
-    try {
-      const decoded = atob(adminSession);
-      return decoded.includes("-admin");
-    } catch {
-      return false;
-    }
-  }, [clearAdminSession]);
+    return true;
+  }, [clearAdminSession, user]);
 
   useEffect(() => {
-    const adminSession = sessionStorage.getItem(ADMIN_SESSION_KEY);
-    if (!adminSession) {
+    if (user?.role !== "admin") {
       return;
     }
 
@@ -102,7 +101,7 @@ export function useAdminSession() {
         window.removeEventListener(event, handleActivity);
       });
     };
-  }, [resetTimeout, isSessionValid, handleSessionTimeout]);
+  }, [user, resetTimeout, isSessionValid, handleSessionTimeout]);
 
   return {
     isSessionValid,

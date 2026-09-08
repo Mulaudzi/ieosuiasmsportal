@@ -5,6 +5,7 @@ import { CampaignChart } from "@/components/dashboard/CampaignChart";
 import { RecentCampaigns } from "@/components/dashboard/RecentCampaigns";
 import { DeliveryStats } from "@/components/dashboard/DeliveryStats";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   MetricCardSkeleton, 
   ChartSkeleton, 
@@ -39,6 +40,7 @@ interface DashboardData {
 }
 
 export default function Dashboard() {
+  const [dateRange, setDateRange] = useState("7d");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData>({
@@ -55,20 +57,22 @@ export default function Dashboard() {
   const { showTutorial, completeTutorial } = useDashboardTutorial();
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    void loadDashboardData();
+    const timer=window.setInterval(()=>void loadDashboardData(false),30000);
+    return()=>window.clearInterval(timer);
+  }, [dateRange]);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (showLoading=true) => {
     try {
       setError(null);
-      setLoading(true);
-      console.log("Loading dashboard data...");
+      if(showLoading)setLoading(true);
+      const response = await getDashboardStats(dateRange);
       
-      const response = await getDashboardStats();
-      console.log("Dashboard response:", response);
-      
-      if (response.success && response.data) {
-        const stats = response.data as any;
+      if (response.success) {
+        // Response::success merges associative PHP arrays into the top level.
+        // Accept a nested payload too so this remains compatible if the API is
+        // normalised in the future.
+        const stats = (response.data ?? response) as any;
         setData({
           smsSent: stats.total_sent || 0,
           emailsSent: stats.emails_sent || 0,
@@ -97,7 +101,7 @@ export default function Dashboard() {
       console.error("Dashboard error:", err);
       setError("Failed to load dashboard data. Please refresh the page.");
     } finally {
-      setLoading(false);
+      if(showLoading)setLoading(false);
     }
   };
 
@@ -109,7 +113,16 @@ export default function Dashboard() {
         title="Dashboard"
         subtitle="Welcome back! Here's an overview of your messaging performance."
         actions={
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <Select value={dateRange} onValueChange={setDateRange}>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="24h">Last 24 hours</SelectItem>
+                <SelectItem value="7d">Last 7 days</SelectItem>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="90d">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
             <Link to="/sms-campaigns/new">
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
@@ -214,7 +227,7 @@ export default function Dashboard() {
                 side="bottom"
                 className="lg:col-span-2"
               >
-                <CampaignChart />
+                <CampaignChart range={dateRange} />
               </FeatureTooltip>
               <FeatureTooltip
                 title="Delivery Breakdown"
@@ -222,7 +235,7 @@ export default function Dashboard() {
                 tip="Investigate failed messages to improve future delivery rates."
                 side="left"
               >
-                <DeliveryStats />
+                <DeliveryStats range={dateRange} />
               </FeatureTooltip>
             </>
           )}

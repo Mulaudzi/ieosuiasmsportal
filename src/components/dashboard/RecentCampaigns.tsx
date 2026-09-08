@@ -26,6 +26,11 @@ const statusConfig: Record<string, { label: string; class: string }> = {
   Draft: { label: "Draft", class: "status-queued" },
   Failed: { label: "Failed", class: "status-failed" },
   Cancelled: { label: "Cancelled", class: "status-failed" },
+  completed: { label: "Dispatch complete", class: "status-delivered" },
+  partially_failed: { label: "Partially failed", class: "status-failed" },
+  processing: { label: "Processing", class: "status-pending" },
+  scheduled: { label: "Scheduled", class: "status-queued" },
+  draft: { label: "Draft", class: "status-queued" },
 };
 
 export function RecentCampaigns() {
@@ -33,20 +38,21 @@ export function RecentCampaigns() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadCampaigns();
+    void loadCampaigns();const timer=window.setInterval(()=>void loadCampaigns(false),30000);return()=>window.clearInterval(timer);
   }, []);
 
-  const loadCampaigns = async () => {
+  const loadCampaigns = async (showLoading=true) => {
     try {
       const response = await api.get<{ campaigns: Campaign[] }>("/dashboard/recent-campaigns");
-      if (response.success && response.data?.campaigns) {
-        setCampaigns(response.data.campaigns);
+      const payload=(response.data??response) as unknown as {campaigns:Campaign[]};
+      if (response.success && payload.campaigns) {
+        setCampaigns(payload.campaigns);
       }
     } catch (error) {
       console.error("Failed to load recent campaigns:", error);
       setCampaigns([]);
     } finally {
-      setLoading(false);
+      if(showLoading)setLoading(false);
     }
   };
 

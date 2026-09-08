@@ -78,13 +78,16 @@ class ApiClient {
     if (!response.ok) {
       if (response.status === 401) {
         localStorage.removeItem('auth_token');
-        localStorage.removeItem('user');
+        localStorage.removeItem('auth_user');
+        localStorage.removeItem('auth_token_issued');
+        const isAdminRoute = window.location.pathname === '/guymhan' || window.location.pathname.startsWith('/guymhan/');
+        if (isAdminRoute) sessionStorage.removeItem('admin_session_timestamp');
         // Show toast before redirect
         const event = new CustomEvent('auth:session-expired');
         window.dispatchEvent(event);
         // Delay redirect to allow toast to show
         setTimeout(() => {
-          window.location.href = '/login';
+          window.location.href = isAdminRoute ? '/guymhan/login' : '/login';
         }, 100);
         throw new Error('Session expired. Please log in again.');
       }
@@ -99,7 +102,7 @@ class ApiClient {
         throw new Error('The requested resource was not found.');
       }
       if (response.status >= 500) {
-        throw new Error('Server error. Please try again later.');
+        throw new Error(data.message || data.error || 'Server error. Please try again later.');
       }
       throw new Error(data.error || data.message || 'An error occurred');
     }
@@ -142,25 +145,50 @@ class ApiClient {
 
 export const api = new ApiClient(API_BASE_URL);
 
+export const downloadAuthenticated = async (endpoint: string, filename: string): Promise<{ success: true }> => {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}` },
+  });
+  if (!response.ok) throw new Error('Export failed');
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return { success: true };
+};
+
+export interface SmsRecipientSource { manual: string[]; contact_ids: string[]; group_ids: string[]; excluded: string[]; }
+export interface SmsPreview { entered_count:number; valid_count:number; invalid_count:number; duplicate_count:number; opted_out_count:number; excluded_count:number; sendable_count:number; recipients:string[]; encoding:'gsm7'|'ucs2'; character_count:number; unit_count:number; segment_count:number; total_segments:number; required_credits:number; price_per_segment:number; estimated_charge:number; wallet_balance:number; available_balance:number; available_credits:number; sufficient_balance:boolean; invalid:string[]; }
+export interface SmsCampaignInput { name:string; content:string; sender_id?:string; scheduled_at?:string|null; send_now?:boolean; idempotency_key:string; recipients:SmsRecipientSource; }
+
 // Auth
 export const login = (email: string, password: string) => api.post<{ user: any; token: string }>('/auth/login', { email, password }, false);
 export const register = (data: { name: string; email: string; password: string; account_type?: string }) => api.post<{ user: any; token: string }>('/auth/register', data, false);
 export const logout = () => api.post('/auth/logout');
 export const getCurrentUser = () => api.get<{ user: any; wallet: any }>('/auth/user');
-export const getDashboardStats = () => api.get<any>('/dashboard/stats');
-export const getCampaign = (id: string) => api.get<any>(`/campaigns/${id}`);
-export const getSmsCampaign = (id: string) => api.get<any>(`/sms/campaigns/${id}`);
+export const getDashboardStats = (range = '7d') => api.get<any>('/dashboard/stats', { range });
+export const getSmsCampaign = (id: string) => api.get<any>(`/sms/campaigns-v2/${id}`);
 export const getEmailCampaign = (id: string) => api.get<any>(`/email/campaigns/${id}`);
-export const createSmsCampaign = (data: any) => api.post<any>('/sms/campaigns', data);
+export const previewSmsCampaign = (data: Omit<SmsCampaignInput,'name'|'idempotency_key'|'scheduled_at'>) =>
+  api.post<SmsPreview>('/sms/preview',data) as Promise<ApiResponse<SmsPreview> & {preview?: SmsPreview}>;
+export const createSmsCampaign = (data: SmsCampaignInput) =>
+  api.post<any>('/sms/campaigns-v2', data) as Promise<ApiResponse<any> & {campaign?: any}>;
+export const queueSmsCampaign = (id:string) =>
+  api.post<any>(`/sms/campaigns-v2/${id}/queue`) as Promise<ApiResponse<any> & {campaign?: any}>;
+export const retrySmsCampaign = (id:string) =>
+  api.post<any>(`/sms/campaigns-v2/${id}/retry`) as Promise<ApiResponse<any> & {campaign?: any;retried_messages?:number}>;
+export const cancelSmsCampaign = (id:string) => api.post<any>(`/sms/campaigns-v2/${id}/cancel`);
 export const createEmailCampaign = (data: any) => api.post<any>('/email/campaigns', data);
 export const deleteCampaign = (id: string, type: 'sms' | 'email' = 'sms') => api.delete(`/${type}/campaigns/${id}`);
 export const duplicateCampaign = (id: string, type: 'sms' | 'email' = 'sms') => api.post<any>(`/${type}/campaigns/${id}/duplicate`);
 export const retryCampaign = (id: string) => api.post<any>(`/campaigns/${id}/retry`);
 export const exportCampaignMessages = (id: string, type: 'sms' | 'email' = 'sms') => {
-  // For CSV downloads, we need to redirect
-  const token = localStorage.getItem('auth_token');
-  const url = `${API_BASE_URL}/${type}/campaigns/${id}/export`;
-  window.open(`${url}?token=${token}`, '_blank');
+  const endpoint = type === 'sms' ? `/sms/campaigns-v2/${id}/export` : `/email/campaigns/${id}/export`;
+  return downloadAuthenticated(endpoint, `${type}-campaign-${id}.csv`);
 };
 export const checkCampaignCredits = (recipientCount: number, type: 'sms' | 'email') => 
   api.post<any>('/campaigns/check-credits', { recipient_count: recipientCount, type });
@@ -170,21 +198,29 @@ export const createContactGroup = (name: string, description?: string) => api.po
 export const updateContactGroup = (id: string, name: string, description?: string) => api.put<{ group: any }>(`/contact-groups/${id}`, { name, description });
 export const deleteContactGroup = (id: string) => api.delete<void>(`/contact-groups/${id}`);
 export const deleteContacts = (ids: string[]) => api.post<any>('/contacts/bulk-delete', { ids });
+export const addContactsToGroup = (ids: string[], groupId: string) => api.post<any>('/contacts/bulk-add-to-group', { ids, group_id: groupId });
 export const deleteContact = (id: string) => api.delete<void>(`/contacts/${id}`);
 export const exportContacts = (groupId?: string) => {
-  const token = localStorage.getItem('auth_token');
-  const url = groupId 
-    ? `${API_BASE_URL}/contacts/export?group_id=${groupId}&token=${token}`
-    : `${API_BASE_URL}/contacts/export?token=${token}`;
-  window.open(url, '_blank');
+  const query = groupId ? `?group_id=${encodeURIComponent(groupId)}` : '';
+  return downloadAuthenticated(`/contacts/export${query}`, `contacts-${new Date().toISOString().slice(0, 10)}.csv`);
 };
-export const buyCredits = (data: { amount: number; payment_method: string; requested_credits?: number }) => api.post<any>('/wallet/buy', data);
+export const buyCredits = (data: { amount: number; payment_method: string }) => api.post<any>('/wallet/buy', data);
 export const getPaymentStatus = (reference: string) => api.get<any>('/wallet/payments/status', { reference });
-export const getWalletHistory = () => api.get<any[]>('/wallet/history');
+export const exportPaymentHistory = (status?: string, gateway?: string) => {
+  const params=new URLSearchParams();
+  if(status&&status!=='all')params.set('status',status);
+  if(gateway&&gateway!=='all')params.set('gateway',gateway);
+  const query=params.toString()?`?${params.toString()}`:'';
+  return downloadAuthenticated(`/wallet/payments/export${query}`,`payment-history-${new Date().toISOString().slice(0,10)}.csv`);
+};
+export const downloadPaymentReceipt = (paymentId:number,reference:string) =>
+  downloadAuthenticated(`/wallet/receipt?id=${encodeURIComponent(String(paymentId))}`,`receipt-${reference}.html`);
 export const saveSettings = (section: string, data: any) => api.put<any>(`/settings/${section}`, data);
-export const exportReport = (type: string) => api.get<any>(`/reports/export/${type}`);
-
-// Sender IDs - REMOVED
+export const exportReport = (type: string,format:'csv'|'excel'|'pdf'='csv',range='90d') => {
+  const extension=format==='excel'?'xls':format;
+  return downloadAuthenticated(`/reports/export?type=${encodeURIComponent(type)}&format=${format}&range=${encodeURIComponent(range)}`, `${type}-report.${extension}`);
+};
+export const emailReport = (range:string) => api.post<{message:string}>('/reports/email',{range});
 
 // Email limits
 export const getEmailLimits = () => api.get<any>('/email/limits');
@@ -204,7 +240,7 @@ export const deleteTemplate = (id: string) => api.delete(`/templates/${id}`);
 
 // Profile
 export const getProfile = () => api.get<any>('/settings/profile');
-export const updateProfile = (data: { name?: string; email?: string; phone?: string }) => api.put<any>('/settings/profile', data);
+export const updateProfile = (data: { name?: string; email?: string; phone?: string; company_name?: string; address?: string; city?: string; province?: string; postal_code?: string; country?: string; vat_number?: string; website?: string; industry?: string }) => api.put<any>('/settings/profile', data);
 export const uploadBranding = (formData: FormData) => api.upload<any>('/settings/branding', formData);
 
 // Contacts
@@ -218,7 +254,7 @@ export const updateContact = (id: string, data: { name?: string; phone?: string;
 
 // Campaigns
 export const getSmsCampaigns = (params?: { status?: string; search?: string; page?: number }) => 
-  api.get<{ campaigns: any[]; total: number; stats: any }>('/sms/campaigns', params as any);
+  api.get<{ campaigns: any[]; stats:any; meta: {total:number;page:number;per_page:number} }>('/sms/campaigns-v2', params as any);
 export const getEmailCampaigns = (params?: { status?: string; search?: string; page?: number }) => 
   api.get<{ campaigns: any[]; total: number; stats: any }>('/email/campaigns', params as any);
 
@@ -226,7 +262,6 @@ export const getEmailCampaigns = (params?: { status?: string; search?: string; p
 export const getWalletStats = () => api.get<{ balance: number; used_this_month: number; total_spent: number }>('/wallet/stats');
 export const getTransactions = (params?: { page?: number; limit?: number }) => 
   api.get<{ transactions: any[]; total: number }>('/wallet/transactions', params as any);
-export const getCreditPackages = () => api.get<{ packages: any[] }>('/wallet/packages');
 
 // Reports
 export const getReportStats = (dateRange?: string) => 
@@ -238,9 +273,6 @@ export const getDeliveryBreakdown = (dateRange?: string) =>
 
 // Settings
 export const getSettings = (section: string) => api.get<any>(`/settings/${section}`);
-export const getOrganization = () => api.get<any>('/settings/organization');
-export const getNotificationSettings = () => api.get<any>('/settings/notifications');
-export const updateNotificationSettings = (data: any) => api.put<any>('/settings/notifications', data);
 
 export const handleApiError = (error: unknown) => {
   toast({ title: "Error", description: error instanceof Error ? error.message : 'An error occurred', variant: "destructive" });
@@ -258,4 +290,3 @@ export interface DashboardStats { balance: number; smsSent: number; emailsSent: 
 export interface Campaign { id: string; name: string; type: 'sms' | 'email'; status: string; recipients: number; delivered: number; failed: number; createdAt: string; }
 export interface Contact { id: string; name: string; phone: string; email: string; group: string; status: string; createdAt: string; }
 export interface Transaction { id: string; type: string; description: string; amount: string; date: string; status: string; }
-export interface CreditPackage { credits: number; price: number; }

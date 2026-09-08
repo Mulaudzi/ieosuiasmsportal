@@ -20,41 +20,44 @@ class EmailService
     private static function getMailer(): PHPMailer
     {
         if (self::$mailer === null) {
-            self::$mailer = new PHPMailer(true);
+            $mailer = new PHPMailer(true);
             
             // Get system SMTP settings from database (fallback to env)
             require_once __DIR__ . '/../controllers/SmtpSettingsController.php';
             $settings = SmtpSettingsController::getSettings('system');
 
             // Server settings
-            self::$mailer->isSMTP();
-            self::$mailer->Host = $settings['host'];
-            self::$mailer->SMTPAuth = true;
-            self::$mailer->Username = $settings['username'];
-            self::$mailer->Password = $settings['password'];
-            self::$mailer->Port = $settings['port'];
+            $mailer->isSMTP();
+            $mailer->Host = $settings['host'];
+            $mailer->SMTPAuth = true;
+            $mailer->Username = $settings['username'];
+            $mailer->Password = $settings['password'];
+            $mailer->Port = $settings['port'];
+            $mailer->Timeout = max(5, min(60, (int) env('SMTP_TIMEOUT', 20)));
+            $mailer->SMTPKeepAlive = false;
             
             switch ($settings['encryption']) {
                 case 'ssl':
-                    self::$mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+                    $mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
                     break;
                 case 'tls':
-                    self::$mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                    $mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
                     break;
                 default:
-                    self::$mailer->SMTPSecure = '';
-                    self::$mailer->SMTPAutoTLS = false;
+                    $mailer->SMTPSecure = '';
+                    $mailer->SMTPAutoTLS = false;
             }
 
             // Default sender
-            self::$mailer->setFrom($settings['from_email'], $settings['from_name']);
+            $mailer->setFrom($settings['from_email'], $settings['from_name']);
 
             // Encoding
-            self::$mailer->CharSet = 'UTF-8';
-            self::$mailer->Encoding = 'base64';
+            $mailer->CharSet = 'UTF-8';
+            $mailer->Encoding = 'base64';
 
             // Debug (set to 0 for production)
-            self::$mailer->SMTPDebug = (env('APP_DEBUG', 'false') === 'true') ? SMTP::DEBUG_SERVER : SMTP::DEBUG_OFF;
+            $mailer->SMTPDebug = (env('APP_DEBUG', 'false') === 'true') ? SMTP::DEBUG_SERVER : SMTP::DEBUG_OFF;
+            self::$mailer = $mailer;
         }
 
         return self::$mailer;
@@ -63,7 +66,7 @@ class EmailService
     /**
      * Send email using PHPMailer
      */
-    public static function send(string $to, string $subject, string $htmlBody, ?string $textBody = null): array
+    public static function send(string $to, string $subject, string $htmlBody, ?string $textBody = null, ?string $replyTo = null): array
     {
         try {
             $mail = self::getMailer();
@@ -74,6 +77,7 @@ class EmailService
 
             // Recipient
             $mail->addAddress($to);
+            $mail->addReplyTo($replyTo ?: env('SUPPORT_EMAIL', 'support@ieosuia.com'), 'IEOSUIA Support');
 
             // Content
             $mail->isHTML(true);
@@ -89,7 +93,7 @@ class EmailService
                 'message_id' => uniqid('email_'),
             ];
 
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             error_log("PHPMailer Error: " . $e->getMessage());
             return [
                 'success' => false,
@@ -118,7 +122,7 @@ class EmailService
             'If you didn\'t create an account with us, you can safely ignore this email. This link will expire in 24 hours.'
         );
 
-        return self::send($email, $subject, $html);
+        return self::send($email, $subject, $html, null, env('SECURITY_EMAIL', 'security@ieosuia.com'));
     }
 
     /**
@@ -138,30 +142,32 @@ class EmailService
             'If you didn\'t request a password reset, you can safely ignore this email. Your password will remain unchanged.'
         );
 
-        return self::send($email, $subject, $html);
+        return self::send($email, $subject, $html, null, env('SECURITY_EMAIL', 'security@ieosuia.com'));
     }
 
     /**
      * Send payment confirmation email
      */
-    public static function sendPaymentConfirmationEmail(string $email, string $name, float $amount, int $credits, string $reference): array
+    public static function sendPaymentConfirmationEmail(string $email, string $name, float $amount, string $reference): array
     {
         $appUrl = env('FRONTEND_URL', env('APP_URL', 'https://sms.ieosuia.com'));
         $walletUrl = $appUrl . '/wallet';
         $appName = env('SMTP_FROM_NAME', env('MAIL_FROM_NAME', 'IEOSUIA SMS Portal'));
         
-        $subject = 'Payment Confirmed - ' . number_format($credits) . ' Credits Added';
+        $pricePerCredit = (float) env('SMS_PRICE_PER_SEGMENT', 0.35);
+        $credits = $pricePerCredit > 0 ? max(0, (int) floor(($amount + 0.000001) / $pricePerCredit)) : 0;
+        $subject = 'SMS credit purchase confirmed';
         
         $html = self::getEmailTemplate(
             'Payment Successful!',
             "Hello $name,",
-            'Great news! Your payment of <strong>R' . number_format($amount, 2) . '</strong> has been successfully processed. We have added <strong>' . number_format($credits) . ' SMS credits</strong> to your account.<br><br>Reference: <code>' . htmlspecialchars($reference) . '</code>',
+            'Your payment of <strong>R' . number_format($amount, 2) . '</strong> has been processed. You can now use <strong>' . number_format($credits) . ' SMS credits</strong>; one credit sends one billable SMS segment.<br><br>Reference: <code>' . htmlspecialchars($reference) . '</code>',
             $walletUrl,
             'View Your Wallet',
-            'Thank you for your purchase! Your credits are ready to use immediately. If you have any questions about your payment, please contact our support team.'
+            'Your SMS credits are available immediately. Any amount smaller than one full credit remains safely available toward future SMS usage. If you have questions, please contact support.'
         );
         
-        return self::send($email, $subject, $html);
+        return self::send($email, $subject, $html, null, env('BILLING_EMAIL', 'billing@ieosuia.com'));
     }
     
     /**

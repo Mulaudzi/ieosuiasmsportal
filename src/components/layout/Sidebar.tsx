@@ -22,24 +22,24 @@ import { LogoSidebar } from "@/components/layout/Logo";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "SMS Campaigns", href: "/sms-campaigns", icon: MessageSquare },
-  { name: "Email Campaigns", href: "/email-campaigns", icon: Mail },
+  { name: "Email Campaigns · Soon", href: "/email-campaigns", icon: Mail },
   { name: "Contacts", href: "/contacts", icon: Users },
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Wallet", href: "/wallet", icon: Wallet },
   { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "Tests", href: "/test-dashboard", icon: Bug },
+  ...(import.meta.env.DEV ? [{ name: "Tests", href: "/test-dashboard", icon: Bug }] : []),
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 const adminNavigation = [
-  { name: "Admin Dashboard", href: "/admin", icon: Shield },
-  { name: "Admin Users", href: "/admin/users", icon: Users },
+  { name: "Operations", href: "/guymhan", icon: Shield },
+  { name: "Platform Managers", href: "/guymhan/users", icon: Users },
 ];
 
 export function Sidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { balance, isLoading: walletLoading } = useWallet();
+  const { smsCredits, pricePerCredit, isLoading: walletLoading } = useWallet();
 
   const handleLogout = async () => {
     await logout();
@@ -92,7 +92,7 @@ export function Sidebar() {
           })}
           
           {/* Admin Section - Only show for admin users */}
-          {user?.account_type === "admin" && (
+          {user?.role === "admin" && (
             <>
               <div className="mt-4 mb-2 px-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
@@ -127,7 +127,7 @@ export function Sidebar() {
         <div className="mx-3 mb-4 rounded-xl bg-sidebar-accent p-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-sidebar-foreground/80">
-              Credit Balance
+              SMS Credits
             </span>
             <Wallet className="h-4 w-4 text-primary" />
           </div>
@@ -135,10 +135,10 @@ export function Sidebar() {
             {walletLoading ? (
               <Loader2 className="h-6 w-6 animate-spin" />
             ) : (
-              balance.toLocaleString()
+              smsCredits.toLocaleString()
             )}
           </p>
-          <p className="text-xs text-sidebar-muted">credits available</p>
+          <p className="text-xs text-sidebar-muted">1 credit = 1 segment · R{pricePerCredit.toFixed(2)}</p>
           <Link
             to="/wallet"
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"

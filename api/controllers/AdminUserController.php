@@ -12,17 +12,25 @@ class AdminUserController {
      * Create a new admin user
      */
     public function create(): void {
+        if (strtolower((string) env('ADMIN_BOOTSTRAP_ENABLED', 'false')) !== 'true') {
+            Response::error('Admin bootstrap is disabled', 404);
+        }
+        if (table('users')->where('role', 'admin')->first() || table('admin_users')->first()) {
+            Response::error('Admin bootstrap has already been completed', 409);
+        }
         $data = Request::validate([
             'email' => 'required|email|max:255',
-            'password_1' => 'required|min:12|max:255',
-            'password_2' => 'required|min:12|max:255',
-            'password_3' => 'required|min:12|max:255',
+            'password' => 'required|min:8|max:255',
+            'pin' => 'required|min:4|max:12',
             'name' => 'required|min:2|max:100',
             'setup_key' => 'required|max:100',
         ]);
         
         // Verify setup key (temporary security measure)
-        $setupKey = env('ADMIN_SETUP_KEY', 'ieosuia-admin-setup-2024');
+        $setupKey = trim((string) env('ADMIN_SETUP_KEY', ''));
+        if (strlen($setupKey) < 24) {
+            Response::error('Admin bootstrap is not configured', 503);
+        }
         if ($data['setup_key'] !== $setupKey) {
             Response::error('Invalid setup key', 403);
             return;
@@ -35,17 +43,14 @@ class AdminUserController {
             return;
         }
         
-        // Hash all 3 passwords using same method as regular users
-        $hashedPassword1 = Auth::hashPassword($data['password_1']);
-        $hashedPassword2 = Auth::hashPassword($data['password_2']);
-        $hashedPassword3 = Auth::hashPassword($data['password_3']);
+        if (!preg_match('/^\d{4,12}$/', (string) $data['pin'])) {
+            Response::error('PIN must contain 4 to 12 digits', 422);
+        }
         
-        // Create admin user with 3 passwords
         $adminId = table('admin_users')->insert([
             'email' => $data['email'],
-            'password_1' => $hashedPassword1,
-            'password_2' => $hashedPassword2,
-            'password_3' => $hashedPassword3,
+            'password' => Auth::hashPassword($data['password']),
+            'pin_hash' => Auth::hashPassword($data['pin']),
             'name' => $data['name'],
             'is_active' => 1,
             'created_at' => date('Y-m-d H:i:s'),
@@ -85,63 +90,10 @@ class AdminUserController {
     }
     
     /**
-     * Update admin password
+     * Public credential maintenance is intentionally unavailable.
      */
     public function updatePassword(): void {
-        $data = Request::validate([
-            'email' => 'required|email',
-            'current_password_1' => 'required',
-            'current_password_2' => 'required',
-            'current_password_3' => 'required',
-            'new_password_1' => 'required|min:12|max:255',
-            'new_password_2' => 'required|min:12|max:255',
-            'new_password_3' => 'required|min:12|max:255',
-            'setup_key' => 'required|max:100',
-        ]);
-        
-        // Verify setup key
-        $setupKey = env('ADMIN_SETUP_KEY', 'ieosuia-admin-setup-2024');
-        if ($data['setup_key'] !== $setupKey) {
-            Response::error('Invalid setup key', 403);
-            return;
-        }
-        
-        // Find admin user
-        $admin = table('admin_users')->where('email', $data['email'])->first();
-        if (!$admin) {
-            Response::error('Admin user not found', 404);
-            return;
-        }
-        
-        // Verify all 3 current passwords
-        if (!password_verify($data['current_password_1'], $admin['password_1'])) {
-            Response::error('Current password 1 is incorrect', 401);
-            return;
-        }
-        if (!password_verify($data['current_password_2'], $admin['password_2'])) {
-            Response::error('Current password 2 is incorrect', 401);
-            return;
-        }
-        if (!password_verify($data['current_password_3'], $admin['password_3'])) {
-            Response::error('Current password 3 is incorrect', 401);
-            return;
-        }
-        
-        // Update all 3 passwords
-        table('admin_users')->where('id', $admin['id'])->update([
-            'password_1' => Auth::hashPassword($data['new_password_1']),
-            'password_2' => Auth::hashPassword($data['new_password_2']),
-            'password_3' => Auth::hashPassword($data['new_password_3']),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ]);
-        
-        // Log password change
-        AuditLogService::log('admin_password_changed', 'security', $admin['id'], null, [
-            'email' => $data['email'],
-            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
-        ], null);
-        
-        Response::success(['message' => 'All passwords updated successfully']);
+        Response::error('Public admin password maintenance is disabled', 404);
     }
     
     /**
@@ -253,7 +205,8 @@ class AdminUserController {
         
         $data = Request::validate([
             'id' => 'required',
-            'new_password' => 'required|min:12|max:255',
+            'new_password' => 'required|min:8|max:255',
+            'new_pin' => 'min:4|max:12',
         ]);
         
         $admin = table('admin_users')->where('id', $data['id'])->first();
@@ -262,12 +215,19 @@ class AdminUserController {
             return;
         }
         
-        table('admin_users')->where('id', $data['id'])->update([
+        $updates = [
             'password' => Auth::hashPassword($data['new_password']),
             'failed_attempts' => 0,
             'locked_until' => null,
             'updated_at' => date('Y-m-d H:i:s'),
-        ]);
+        ];
+        if (!empty($data['new_pin'])) {
+            if (!preg_match('/^\d{4,12}$/', (string) $data['new_pin'])) {
+                Response::error('PIN must contain 4 to 12 digits', 422);
+            }
+            $updates['pin_hash'] = Auth::hashPassword($data['new_pin']);
+        }
+        table('admin_users')->where('id', $data['id'])->update($updates);
         
         // Log password reset
         AuditLogService::log('admin_password_reset', 'security', $data['id'], null, [
@@ -318,7 +278,7 @@ class AdminUserController {
     }
     
     /**
-     * Check if email belongs to an admin user (public endpoint for login form)
+     * Check if email belongs to an admin user (legacy internal helper)
      */
     public function checkEmail(): void {
         $data = Request::validate([
@@ -376,10 +336,10 @@ class AdminUserController {
     }
     
     /**
-     * Authenticate admin user with 3 passwords (used by login endpoint)
+     * Authenticate an administrator with a password and numeric PIN.
      * Returns array with admin data on success, or array with error info on failure
      */
-    public static function authenticate(string $email, string $password1, string $password2, string $password3): array {
+    public static function authenticate(string $email, string $password, string $pin): array {
         $admin = table('admin_users')
             ->where('email', $email)
             ->where('is_active', 1)
@@ -398,11 +358,14 @@ class AdminUserController {
             ];
         }
         
-        // Verify all 3 passwords together - don't reveal which one failed
-        $allPasswordsValid = 
-            password_verify($password1, $admin['password_1']) &&
-            password_verify($password2, $admin['password_2']) &&
-            password_verify($password3, $admin['password_3']);
+        // The fallback keeps login available during the short deployment window
+        // before migration 003 drops the legacy columns.
+        $storedPassword = (string) ($admin['password'] ?? $admin['password_1'] ?? '');
+        $storedPin = (string) ($admin['pin_hash'] ?? $admin['password_2'] ?? '');
+        $allPasswordsValid =
+            $pin !== '' &&
+            password_verify($password, $storedPassword) &&
+            password_verify($pin, $storedPin);
         
         if (!$allPasswordsValid) {
             // Increment failed attempts
@@ -435,7 +398,6 @@ class AdminUserController {
             'failed_attempts' => 0,
             'locked_until' => null,
             'last_login_at' => date('Y-m-d H:i:s'),
-            'last_login_ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
         

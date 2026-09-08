@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow, differenceInSeconds, differenceInMinutes, differenceInHours, differenceInDays, subDays } from "date-fns";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -91,7 +91,6 @@ import {
   Filter,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useAdminSession } from "@/hooks/useAdminSession";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,7 +100,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { api, handleApiError } from "@/lib/api";
+import { api, downloadAuthenticated, handleApiError } from "@/lib/api";
 
 interface User {
   id: string;
@@ -448,10 +447,10 @@ function ScheduledCampaignCard({ campaign, isPast }: { campaign: ScheduledCampai
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isLoading: authLoading } = useAuth();
   
   // Admin session timeout handling
-  useAdminSession();
   
   const [users, setUsers] = useState<User[]>([]);
   const [senderIds, setSenderIds] = useState<SenderId[]>([]);
@@ -526,23 +525,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (authLoading) return;
 
-    // Check for admin session token and account type
-    const adminSession = sessionStorage.getItem("admin_session");
-    const isAdminUser = user?.account_type === "admin";
-
-    if (!adminSession || !isAdminUser) {
-      setAccessDenied(true);
-      return;
-    }
-
-    // Verify session token format (basic validation)
-    try {
-      const decoded = atob(adminSession);
-      if (!decoded.includes("-admin")) {
-        setAccessDenied(true);
-        return;
-      }
-    } catch {
+    if (user?.role !== "admin") {
       setAccessDenied(true);
       return;
     }
@@ -551,33 +534,12 @@ export default function AdminDashboard() {
     loadData();
   }, [authLoading, user]);
 
-  // Show access denied screen
-  if (accessDenied) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-md mx-auto p-8">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10 mx-auto mb-6">
-            <ShieldAlert className="h-10 w-10 text-destructive" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground mb-2">Access Denied</h1>
-          <p className="text-muted-foreground mb-6">
-            You don't have permission to access the admin dashboard. Please login with admin credentials.
-          </p>
-          <Button onClick={() => navigate("/login")} className="gap-2">
-            <Shield className="h-4 w-4" />
-            Go to Login
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   const loadData = async () => {
     setLoading(true);
     try {
       const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes, contactStatsRes, alertsRes, trendsRes] = await Promise.all([
         api.get<{ users: User[] }>("/admin/users"),
-        api.get<{ sender_ids: SenderId[] }>("/admin/sender-ids"),
+        Promise.resolve({ success: true, data: { sender_ids: [] as SenderId[] } }),
         api.get<Stats>("/admin/stats"),
         api.get<{ logs: AuditLog[] }>("/admin/audit-logs?per_page=100"),
         api.get<{ jobs: CronJob[] }>("/admin/cron/status"),
@@ -592,23 +554,24 @@ export default function AdminDashboard() {
         api.get<{ trends: SubmissionTrend[] }>("/admin/contact-emails/trends?days=30"),
       ]);
 
-      if (usersRes.success) setUsers(usersRes.data?.users || []);
-      if (senderIdsRes.success) setSenderIds(senderIdsRes.data?.sender_ids || []);
-      if (statsRes.success) setStats(statsRes.data || null);
-      if (logsRes.success) setAuditLogs(logsRes.data?.logs || []);
-      if (cronRes.success) setCronJobs(cronRes.data?.jobs || []);
-      if (scheduledRes.success) setScheduledCampaigns(scheduledRes.data?.campaigns || []);
-      if (smtpRes.success) setSmtpSettings(smtpRes.data?.settings || []);
-      if (notifRes.success) setNotificationSettings(notifRes.data?.settings || []);
-      if (healthRes.success) setSystemHealth(healthRes.data?.health || null);
-      if (heatmapRes.success) setHeatmapData(heatmapRes.data?.heatmap || null);
+      if (usersRes.success) setUsers(((usersRes.data ?? usersRes) as { users?: User[] }).users || []);
+      if (senderIdsRes.success) setSenderIds(((senderIdsRes.data ?? senderIdsRes) as { sender_ids?: SenderId[] }).sender_ids || []);
+      if (statsRes.success) setStats((statsRes.data ?? statsRes) as Stats);
+      if (logsRes.success) setAuditLogs(((logsRes.data ?? logsRes) as { logs?: AuditLog[] }).logs || []);
+      if (cronRes.success) setCronJobs(((cronRes.data ?? cronRes) as { jobs?: CronJob[] }).jobs || []);
+      if (scheduledRes.success) setScheduledCampaigns(((scheduledRes.data ?? scheduledRes) as { campaigns?: ScheduledCampaign[] }).campaigns || []);
+      if (smtpRes.success) setSmtpSettings(((smtpRes.data ?? smtpRes) as { settings?: SmtpSetting[] }).settings || []);
+      if (notifRes.success) setNotificationSettings(((notifRes.data ?? notifRes) as { settings?: NotificationSetting[] }).settings || []);
+      if (healthRes.success) setSystemHealth(((healthRes.data ?? healthRes) as { health?: SystemHealth }).health || null);
+      if (heatmapRes.success) setHeatmapData(((heatmapRes.data ?? heatmapRes) as { heatmap?: HeatmapData }).heatmap || null);
       if (contactRes.success) {
-        setContactEmails(contactRes.data?.emails || []);
-        setUnreadContactCount(contactRes.data?.unread_count || 0);
+        const payload = (contactRes.data ?? contactRes) as { emails?: ContactEmail[]; unread_count?: number };
+        setContactEmails(payload.emails || []);
+        setUnreadContactCount(payload.unread_count || 0);
       }
-      if (contactStatsRes.success) setContactEmailStats(contactStatsRes.data?.stats || null);
-      if (alertsRes.success) setAlertRecipients(alertsRes.data?.recipients || []);
-      if (trendsRes.success) setSubmissionTrends(trendsRes.data?.trends || []);
+      if (contactStatsRes.success) setContactEmailStats(((contactStatsRes.data ?? contactStatsRes) as { stats?: ContactEmailStats }).stats || null);
+      if (alertsRes.success) setAlertRecipients(((alertsRes.data ?? alertsRes) as { recipients?: ContactAlertRecipient[] }).recipients || []);
+      if (trendsRes.success) setSubmissionTrends(((trendsRes.data ?? trendsRes) as { trends?: SubmissionTrend[] }).trends || []);
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -667,8 +630,9 @@ export default function AdminDashboard() {
       
       const res = await api.get<{ report: any }>(`/admin/contact-emails/report?${params.toString()}`);
       
-      if (res.success && res.data?.report) {
-        const report = res.data.report;
+      const payload = (res.data ?? res) as { report?: any };
+      if (res.success && payload.report) {
+        const report = payload.report;
         
         // Generate simple text report for now (could be enhanced with PDF library)
         const reportText = `
@@ -726,12 +690,13 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
     const pollInterval = setInterval(async () => {
       try {
         const res = await api.get<{ notifications: RealtimeNotification[]; last_id: number }>(`/admin/realtime/poll?last_id=${lastRealtimeId}`);
-        if (res.success && res.data?.notifications?.length) {
-          setLastRealtimeId(res.data.last_id);
+        const payload = (res.data ?? res) as { notifications?: RealtimeNotification[]; last_id?: number };
+        if (res.success && payload.notifications?.length) {
+          setLastRealtimeId(payload.last_id || lastRealtimeId);
           setRealtimeConnected(true);
           
           // Show toast for each new notification
-          res.data.notifications.forEach((notif) => {
+          payload.notifications.forEach((notif) => {
             if (notif.type === 'new_contact_submission') {
               toast({
                 title: notif.title,
@@ -765,8 +730,9 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
         purpose: newAlertPurpose,
       });
       
-      if (res.success && res.data?.recipient) {
-        setAlertRecipients(prev => [...prev, res.data!.recipient]);
+      const payload = (res.data ?? res) as { recipient?: ContactAlertRecipient };
+      if (res.success && payload.recipient) {
+        setAlertRecipients(prev => [...prev, payload.recipient!]);
         setNewAlertEmail("");
         setNewAlertName("");
         setNewAlertPurpose("all");
@@ -807,7 +773,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
     setHealthLoading(true);
     try {
       const res = await api.get<{ health: SystemHealth }>("/admin/system-health");
-      if (res.success) setSystemHealth(res.data?.health || null);
+      if (res.success) setSystemHealth(((res.data ?? res) as { health?: SystemHealth }).health || null);
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -824,7 +790,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
       if (dateTo) params.set("to_date", format(dateTo, "yyyy-MM-dd"));
       
       const res = await api.get<{ logs: AuditLog[] }>(`/admin/audit-logs?${params.toString()}`);
-      if (res.success) setAuditLogs(res.data?.logs || []);
+      if (res.success) setAuditLogs(((res.data ?? res) as { logs?: AuditLog[] }).logs || []);
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -846,7 +812,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
       if (res.success) {
         toast({
           title: "Scheduled Campaigns Processed",
-          description: res.data?.message || "Campaigns have been processed",
+          description: ((res.data ?? res) as { message?: string }).message || "Campaigns have been processed",
         });
         loadData();
       }
@@ -867,8 +833,9 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
       if (dateTo) params.set("to_date", format(dateTo, "yyyy-MM-dd"));
       
       const res = await api.get<{ logs: AuditLog[] }>(`/admin/audit-logs?${params.toString()}`);
-      if (res.success && res.data?.logs) {
-        setAuditLogs(prev => [...prev, ...res.data!.logs]);
+      const payload = (res.data ?? res) as { logs?: AuditLog[] };
+      if (res.success && payload.logs) {
+        setAuditLogs(prev => [...prev, ...payload.logs!]);
       }
     } catch (error) {
       handleApiError(error);
@@ -984,7 +951,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
       if (res.success) {
         toast({ 
           title: "Test email sent!", 
-          description: res.data?.message || `Check ${email} for the test email.` 
+          description: ((res.data ?? res) as { message?: string }).message || `Check ${email} for the test email.`
         });
         loadData();
       }
@@ -1034,13 +1001,31 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
     setDateTo(undefined);
   };
 
+  // Keep this after every hook so renders always call hooks in the same order.
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10 mx-auto mb-6">
+            <ShieldAlert className="h-10 w-10 text-destructive" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Access Denied</h1>
+          <p className="text-muted-foreground mb-6">You do not have permission to access the admin dashboard.</p>
+          <Button onClick={() => navigate("/guymhan/login")} className="gap-2">
+            <Shield className="h-4 w-4" />Admin Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <AdminLayout
       title="Admin Dashboard"
       subtitle="Central hub for system administration and user management"
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/admin/users")}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/guymhan/users")}>
             <Shield className="h-4 w-4 mr-2" />
             Manage Admins
           </Button>
@@ -1104,7 +1089,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
         <h3 className="text-lg font-semibold text-foreground mb-4">Quick Navigation</h3>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <button
-            onClick={() => navigate("/admin/users")}
+            onClick={() => navigate("/guymhan/users")}
             className="group rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary hover:shadow-md"
           >
             <div className="flex items-center gap-3 mb-2">
@@ -1630,19 +1615,13 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-popover">
                 <DropdownMenuItem
-                  onClick={() => {
-                    const token = localStorage.getItem('auth_token');
-                    window.open(`${import.meta.env.VITE_API_URL || 'https://sms.ieosuia.com/api'}/admin/heatmap/export?format=csv&token=${token}`, '_blank');
-                  }}
+                  onClick={() => downloadAuthenticated('/admin/heatmap/export?format=csv', `heatmap-${format(new Date(),'yyyy-MM-dd')}.csv`).catch(handleApiError)}
                 >
                   <FileSpreadsheet className="h-4 w-4 mr-2" />
                   Export as CSV
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => {
-                    const token = localStorage.getItem('auth_token');
-                    window.open(`${import.meta.env.VITE_API_URL || 'https://sms.ieosuia.com/api'}/admin/heatmap/export?format=pdf&token=${token}`, '_blank');
-                  }}
+                  onClick={() => downloadAuthenticated('/admin/heatmap/export?format=pdf', `heatmap-${format(new Date(),'yyyy-MM-dd')}.html`).catch(handleApiError)}
                 >
                   <FileText className="h-4 w-4 mr-2" />
                   Export as PDF
@@ -1846,9 +1825,9 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
         </div>
       </div>
 
-      <Tabs defaultValue="sender-ids">
+      <Tabs defaultValue={new URLSearchParams(location.search).get('tab') || "users"}>
         <TabsList>
-          <TabsTrigger value="sender-ids" className="gap-2">
+          {false && <TabsTrigger value="sender-ids" className="gap-2">
             <Key className="h-4 w-4" />
             Sender IDs
             {pendingCount > 0 && (
@@ -1856,7 +1835,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
                 {pendingCount}
               </span>
             )}
-          </TabsTrigger>
+          </TabsTrigger>}
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" />
             Users
@@ -1889,7 +1868,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="sender-ids" className="mt-6">
+        {false && <TabsContent value="sender-ids" className="mt-6">
           {/* Filters */}
           <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative flex-1 max-w-md">
@@ -2008,7 +1987,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
               </div>
             )}
           </div>
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="users" className="mt-6">
           {/* Search */}
@@ -2352,7 +2331,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
                       if (actionFilter !== 'all') params.set('action', actionFilter);
                       if (dateFrom) params.set('from_date', format(dateFrom, 'yyyy-MM-dd'));
                       if (dateTo) params.set('to_date', format(dateTo, 'yyyy-MM-dd'));
-                      window.open(`${import.meta.env.VITE_API_URL || ''}/api/admin/audit-logs/export?${params.toString()}`, '_blank');
+                      downloadAuthenticated(`/admin/audit-logs/export?${params.toString()}`, `audit-logs-${format(new Date(),'yyyy-MM-dd')}.csv`).catch(handleApiError);
                     }}
                   >
                     <FileSpreadsheet className="mr-2 h-4 w-4" />
@@ -2365,7 +2344,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
                       if (actionFilter !== 'all') params.set('action', actionFilter);
                       if (dateFrom) params.set('from_date', format(dateFrom, 'yyyy-MM-dd'));
                       if (dateTo) params.set('to_date', format(dateTo, 'yyyy-MM-dd'));
-                      window.open(`${import.meta.env.VITE_API_URL || ''}/api/admin/audit-logs/export?${params.toString()}`, '_blank');
+                      downloadAuthenticated(`/admin/audit-logs/export?${params.toString()}`, `audit-logs-${format(new Date(),'yyyy-MM-dd')}.html`).catch(handleApiError);
                     }}
                   >
                     <FileText className="mr-2 h-4 w-4" />

@@ -20,6 +20,7 @@ export default function CookiePolicy() {
         <p className="text-muted-foreground mb-8">Last updated: January 13, 2026</p>
 
         <div className="prose prose-gray dark:prose-invert max-w-none space-y-6">
+          <section><h2 className="text-xl font-semibold text-foreground mb-3">Who operates this service</h2><p className="text-muted-foreground leading-relaxed">IEOSUIA, 26 Rock Alder, Naturena, Johannesburg, 2095, South Africa.</p></section>
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">1. What Are Cookies?</h2>
             <p className="text-muted-foreground leading-relaxed">

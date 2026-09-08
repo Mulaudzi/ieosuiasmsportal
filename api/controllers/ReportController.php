@@ -3,12 +3,15 @@
  * Report Controller
  */
 
+require_once __DIR__.'/../domain/SmsReportingService.php';
+
 class ReportController {
     public function campaigns(): void {
         $userId = Auth::id();
         $startDate = Request::query('start_date', date('Y-m-d', strtotime('-30 days')));
         $endDate = Request::query('end_date', date('Y-m-d'));
-        $type = Request::query('type'); // sms or email
+        $type = Request::query('type');
+        if ($type && $type !== 'sms') Response::error('Email campaign reporting is coming soon.', 410);
         
         $pdo = db();
         
@@ -16,27 +19,22 @@ class ReportController {
             SELECT 
                 c.id,
                 c.name,
-                c.type,
-                c.status,
-                c.total_recipients,
+                'sms' AS type,
+                c.state AS status,
+                c.recipient_count AS total_recipients,
                 c.actual_cost,
                 c.created_at,
                 c.completed_at,
-                COUNT(CASE WHEN m.status IN ('Sent', 'Awaiting DLR', 'Delivered') THEN 1 END) as sent_count,
-                COUNT(CASE WHEN m.status = 'Delivered' THEN 1 END) as delivered_count,
-                COUNT(CASE WHEN m.status = 'Failed' THEN 1 END) as failed_count
-            FROM campaigns c
-            LEFT JOIN messages m ON c.id = m.campaign_id
+                COUNT(CASE WHEN m.state IN ('sent','delivered') THEN 1 END) as sent_count,
+                COUNT(CASE WHEN m.state = 'delivered' THEN 1 END) as delivered_count,
+                COUNT(CASE WHEN m.state = 'failed' THEN 1 END) as failed_count
+            FROM sms_campaigns c
+            LEFT JOIN sms_messages m ON c.id = m.campaign_id AND m.user_id=c.user_id
             WHERE c.user_id = ?
             AND c.created_at BETWEEN ? AND ?
         ";
         
         $params = [$userId, $startDate . ' 00:00:00', $endDate . ' 23:59:59'];
-        
-        if ($type) {
-            $sql .= " AND c.type = ?";
-            $params[] = $type;
-        }
         
         $sql .= " GROUP BY c.id ORDER BY c.created_at DESC";
         
@@ -75,7 +73,7 @@ class ReportController {
         }
         
         // Verify campaign ownership
-        $campaign = table('campaigns')
+        $campaign = table('sms_campaigns')
             ->where('id', $campaignId)
             ->where('user_id', $userId)
             ->first();
@@ -84,7 +82,7 @@ class ReportController {
             Response::error('Campaign not found', 404);
         }
         
-        $query = table('messages')->where('campaign_id', $campaignId);
+        $query = table('sms_messages')->where('campaign_id', $campaignId)->where('user_id', $userId);
         
         if ($status) {
             $query->where('status', $status);
@@ -92,8 +90,9 @@ class ReportController {
         
         $total = $query->count();
         
-        $messages = table('messages')
-            ->where('campaign_id', $campaignId);
+        $messages = table('sms_messages')
+            ->where('campaign_id', $campaignId)
+            ->where('user_id', $userId);
         
         if ($status) {
             $messages->where('status', $status);
@@ -111,13 +110,30 @@ class ReportController {
     public function export(): void {
         $userId = Auth::id();
         $campaignId = Request::query('campaign_id');
-        $format = Request::query('format', 'csv');
+        $format = strtolower((string)Request::query('format', 'csv'));
+        $reportType = Request::query('type');
+
+        if (!$campaignId && $reportType === 'campaigns') {
+            $range=(string)Request::query('range','90d');
+            try {$summary=SmsReportingService::summary((int)$userId,$range);$messageRows=SmsReportingService::rows((int)$userId,$range);} catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}
+            $headers=['Campaign / Metric','Destination / Value','Status','Segments','Charge (ZAR)','Sent At','Delivered At','Failed At','Details','Record Created'];
+            $blank=array_fill(0,count($headers),'');
+            $rows=[];
+            foreach ([
+                ['Reporting period',$range],['Period start',$summary['start']],['Period end',$summary['end']],
+                ['Total Messages',$summary['total_messages']],['Delivered',$summary['delivered']],
+                ['Failed',$summary['failed']],['Pending',$summary['pending']],
+            ] as [$label,$value]) {$row=$blank;$row[0]=$label;$row[1]=$value;$rows[]=$row;}
+            $rows[]=$blank;
+            foreach($messageRows as $row)$rows[]=$row;
+            $this->downloadReport($format,$headers,$rows,'sms-campaign-report-'.date('Y-m-d'));
+        }
         
         if (!$campaignId) {
             Response::error('Campaign ID required', 400);
         }
         
-        $campaign = table('campaigns')
+        $campaign = table('sms_campaigns')
             ->where('id', $campaignId)
             ->where('user_id', $userId)
             ->first();
@@ -126,8 +142,9 @@ class ReportController {
             Response::error('Campaign not found', 404);
         }
         
-        $messages = table('messages')
+        $messages = table('sms_messages')
             ->where('campaign_id', $campaignId)
+            ->where('user_id', $userId)
             ->orderBy('id', 'ASC')
             ->get();
         
@@ -142,11 +159,11 @@ class ReportController {
             
             foreach ($messages as $message) {
                 fputcsv($output, [
-                    $message['recipient'],
-                    $message['status'],
+                    $message['destination'],
+                    $message['state'],
                     $message['sent_at'],
                     $message['delivered_at'],
-                    $message['error_message'],
+                    $message['last_error']??null,
                 ]);
             }
             
@@ -155,6 +172,38 @@ class ReportController {
         }
         
         Response::success(['messages' => $messages]);
+    }
+
+    public function emailReport():void
+    {
+        $userId=(int)Auth::id();$user=table('users')->where('id',$userId)->first();if(!$user)Response::error('User not found',404);
+        $range=(string)Request::input('range','7d');try{$summary=SmsReportingService::summary($userId,$range);$rows=SmsReportingService::rows($userId,$range);}catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}
+        $escape=static fn($value)=>htmlspecialchars((string)$value,ENT_QUOTES,'UTF-8');$body='<h2>IEOSUIA SMS Report</h2><p>Period: '.$escape($range).' ('.$escape($summary['start']).' to '.$escape($summary['end']).')</p><p><strong>Total Messages:</strong> '.$summary['total_messages'].' &nbsp; <strong>Delivered:</strong> '.$summary['delivered'].' &nbsp; <strong>Failed:</strong> '.$summary['failed'].' &nbsp; <strong>Pending:</strong> '.$summary['pending'].'</p><table cellpadding="6" cellspacing="0" border="1"><tr><th>Campaign</th><th>Destination</th><th>Status</th><th>Segments</th><th>Sent</th><th>Delivered</th><th>Failed</th><th>Details</th></tr>';
+        foreach($rows as $row)$body.='<tr><td>'.$escape($row[0]).'</td><td>'.$escape($row[1]).'</td><td>'.$escape($row[2]).'</td><td>'.(int)$row[3].'</td><td>'.$escape($row[5]).'</td><td>'.$escape($row[6]).'</td><td>'.$escape($row[7]).'</td><td>'.$escape($row[8]).'</td></tr>';
+        $body.='</table><p>This report was generated from your IEOSUIA SMS Portal account.</p>';
+        require_once __DIR__.'/../services/EmailService.php';$result=EmailService::send((string)$user['email'],'IEOSUIA SMS report - '.date('Y-m-d'),$body);
+        if(empty($result['success']))Response::error('Report email could not be sent',503);Response::success(['message'=>'Report sent to your registered email address']);
+    }
+
+    private function downloadReport(string $format,array $headers,array $rows,string $filename):void
+    {
+        if($format==='csv'){
+            header('Content-Type:text/csv;charset=UTF-8');header('Content-Disposition:attachment;filename="'.$filename.'.csv"');$out=fopen('php://output','w');fputcsv($out,$headers);foreach($rows as $row)fputcsv($out,array_map([$this,'spreadsheetSafe'],$row));fclose($out);exit;
+        }
+        if(in_array($format,['excel','xls'],true)){
+            header('Content-Type:application/vnd.ms-excel;charset=UTF-8');header('Content-Disposition:attachment;filename="'.$filename.'.xls"');echo '<html><head><meta charset="UTF-8"></head><body><table border="1"><tr>';foreach($headers as $header)echo '<th>'.htmlspecialchars($header,ENT_QUOTES,'UTF-8').'</th>';echo '</tr>';foreach($rows as $row){echo '<tr>';foreach($row as $value)echo '<td>'.htmlspecialchars((string)$this->spreadsheetSafe($value),ENT_QUOTES,'UTF-8').'</td>';echo '</tr>';}echo '</table></body></html>';exit;
+        }
+        if($format==='pdf'){$this->outputPdf($headers,$rows,$filename);}
+        Response::error('Unsupported export format',422);
+    }
+
+    private function spreadsheetSafe(mixed $value):mixed{return is_string($value)&&preg_match('/^[=+\-@]/',$value)?"'".$value:$value;}
+
+    private function outputPdf(array $headers,array $rows,string $filename):never
+    {
+        $truncate=static fn($value)=>function_exists('mb_substr')?mb_substr((string)$value,0,28):substr((string)$value,0,28);$lines=['IEOSUIA SMS Campaign Report - '.date('Y-m-d'),implode(' | ',$headers)];foreach($rows as $row)$lines[]=implode(' | ',array_map($truncate,$row));$pages=array_chunk($lines,42);$objects=[];$pageIds=[];$fontId=3+count($pages)*2;
+        foreach($pages as $index=>$page){$pageId=3+$index*2;$streamId=$pageId+1;$pageIds[]=$pageId;$commands="BT /F1 8 Tf 30 810 Td 11 TL\n";foreach($page as $line){$safe=str_replace(['\\','(',')',"\r","\n"],['\\\\','\\(','\\)',' ',' '],$line);$commands.='('.$safe.") Tj T*\n";}$commands.='ET';$objects[$pageId]="<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 {$fontId} 0 R >> >> /Contents {$streamId} 0 R >>";$objects[$streamId]="<< /Length ".strlen($commands)." >>\nstream\n{$commands}\nendstream";}
+        $objects[1]='<< /Type /Catalog /Pages 2 0 R >>';$objects[2]='<< /Type /Pages /Kids ['.implode(' ',array_map(static fn($id)=>$id.' 0 R',$pageIds)).'] /Count '.count($pageIds).' >>';$objects[$fontId]='<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>';ksort($objects);$pdf="%PDF-1.4\n";$offsets=[0];for($id=1;$id<=$fontId;$id++){$offsets[$id]=strlen($pdf);$pdf.="{$id} 0 obj\n".$objects[$id]."\nendobj\n";}$xref=strlen($pdf);$pdf.="xref\n0 ".($fontId+1)."\n0000000000 65535 f \n";for($id=1;$id<=$fontId;$id++)$pdf.=sprintf('%010d 00000 n ', $offsets[$id])."\n";$pdf.="trailer\n<< /Size ".($fontId+1)." /Root 1 0 R >>\nstartxref\n{$xref}\n%%EOF";header('Content-Type:application/pdf');header('Content-Disposition:attachment;filename="'.$filename.'.pdf"');header('Content-Length:'.strlen($pdf));echo $pdf;exit;
     }
     
     /**
@@ -182,25 +231,23 @@ class ReportController {
             SELECT 
                 c.id,
                 c.name,
-                c.type,
-                c.status,
+                'sms' AS type,
+                c.state AS status,
                 c.sender_id,
-                c.total_recipients,
+                c.recipient_count AS total_recipients,
                 c.actual_cost,
                 c.created_at,
-                c.started_at,
+                c.queued_at AS started_at,
                 c.completed_at,
-                c.is_ab_test,
-                c.ab_winner_variant,
                 COUNT(m.id) as total_messages,
-                COUNT(CASE WHEN m.status IN ('Sent', 'Awaiting DLR', 'Delivered') THEN 1 END) as sent_count,
-                COUNT(CASE WHEN m.status = 'Delivered' THEN 1 END) as delivered_count,
-                COUNT(CASE WHEN m.status = 'Failed' THEN 1 END) as failed_count,
-                COUNT(CASE WHEN m.status = 'Pending' THEN 1 END) as pending_count,
+                COUNT(CASE WHEN m.state IN ('sent','delivered') THEN 1 END) as sent_count,
+                COUNT(CASE WHEN m.state = 'delivered' THEN 1 END) as delivered_count,
+                COUNT(CASE WHEN m.state = 'failed' THEN 1 END) as failed_count,
+                COUNT(CASE WHEN m.state IN ('pending','queued','processing') THEN 1 END) as pending_count,
                 AVG(CASE WHEN m.delivered_at IS NOT NULL AND m.sent_at IS NOT NULL 
                     THEN TIMESTAMPDIFF(SECOND, m.sent_at, m.delivered_at) END) as avg_delivery_time_seconds
-            FROM campaigns c
-            LEFT JOIN messages m ON c.id = m.campaign_id
+            FROM sms_campaigns c
+            LEFT JOIN sms_messages m ON c.id = m.campaign_id AND m.user_id=c.user_id
             WHERE c.user_id = ?
             AND c.id IN ($placeholders)
             GROUP BY c.id
@@ -216,6 +263,10 @@ class ReportController {
         
         // Calculate rates and format data
         foreach ($campaigns as &$campaign) {
+            $campaign['actual_cost'] = (float)($campaign['actual_cost'] ?? 0);
+            foreach (['total_recipients','total_messages','sent_count','delivered_count','failed_count','pending_count'] as $field) {
+                $campaign[$field] = (int)($campaign[$field] ?? 0);
+            }
             $campaign['delivery_rate'] = $campaign['sent_count'] > 0 
                 ? round(($campaign['delivered_count'] / $campaign['sent_count']) * 100, 1) 
                 : 0;
@@ -231,23 +282,14 @@ class ReportController {
                 SELECT 
                     HOUR(sent_at) as hour,
                     COUNT(*) as count,
-                    SUM(CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END) as delivered
-                FROM messages
-                WHERE campaign_id = ? AND sent_at IS NOT NULL
+                    SUM(CASE WHEN state = 'delivered' THEN 1 ELSE 0 END) as delivered
+                FROM sms_messages
+                WHERE campaign_id = ? AND user_id=? AND sent_at IS NOT NULL
                 GROUP BY HOUR(sent_at)
                 ORDER BY hour
             ");
-            $stmtHourly->execute([$campaign['id']]);
+            $stmtHourly->execute([$campaign['id'],$userId]);
             $campaign['hourly_distribution'] = $stmtHourly->fetchAll();
-            
-            // Get A/B test variants if applicable
-            if ($campaign['is_ab_test']) {
-                $stmtVariants = $pdo->prepare("
-                    SELECT * FROM campaign_variants WHERE campaign_id = ?
-                ");
-                $stmtVariants->execute([$campaign['id']]);
-                $campaign['variants'] = $stmtVariants->fetchAll();
-            }
         }
         
         // Calculate comparison metrics
@@ -486,68 +528,20 @@ class ReportController {
      * Get report stats for the dashboard
      */
     public function stats(): void {
-        $userId = Auth::id();
-        $range = Request::query('range', '7d');
-        
-        $days = $range === '30d' ? 30 : ($range === '90d' ? 90 : 7);
-        $startDate = date('Y-m-d', strtotime("-{$days} days"));
-        
-        $pdo = db();
-        
-        // Get message stats
-        $stmt = $pdo->prepare("
-            SELECT 
-                COUNT(*) as total_messages,
-                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as failed
-            FROM messages m
-            JOIN campaigns c ON m.campaign_id = c.id
-            WHERE c.user_id = ? AND m.created_at >= ?
-        ");
-        $stmt->execute([$userId, $startDate]);
-        $messageStats = $stmt->fetch();
-        
-        // SMS stats
-        $stmt = $pdo->prepare("
-            SELECT 
-                COUNT(*) as total_sent,
-                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as failed,
-                SUM(CASE WHEN m.status = 'Pending' THEN 1 ELSE 0 END) as pending,
-                COALESCE(SUM(m.cost), 0) as credits_used
-            FROM messages m
-            JOIN campaigns c ON m.campaign_id = c.id
-            WHERE c.user_id = ? AND c.type = 'sms' AND m.created_at >= ?
-        ");
-        $stmt->execute([$userId, $startDate]);
-        $smsStats = $stmt->fetch();
-        
-        // Email stats
-        $stmt = $pdo->prepare("
-            SELECT 
-                COUNT(*) as total_sent,
-                SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as bounced
-            FROM messages m
-            JOIN campaigns c ON m.campaign_id = c.id
-            WHERE c.user_id = ? AND c.type = 'email' AND m.created_at >= ?
-        ");
-        $stmt->execute([$userId, $startDate]);
-        $emailStats = $stmt->fetch();
-        
-        $totalMessages = (int) $messageStats['total_messages'];
-        $delivered = (int) $messageStats['delivered'];
-        
+        $userId = (int)Auth::id();$range=(string)Request::query('range','7d');try{$sms=SmsReportingService::summary($userId,$range);}catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}$averageSeconds=$sms['avg_delivery_seconds'];
         Response::success([
             'summary' => [
-                'total_messages' => $totalMessages,
-                'delivered' => $delivered,
-                'failed' => (int) $messageStats['failed'],
-                'avg_delivery_time' => '2.3s',
-                'delivery_rate' => $totalMessages > 0 ? round(($delivered / $totalMessages) * 100, 1) : 0,
+                'total_messages' => $sms['total_messages'],
+                'delivered' => $sms['delivered'],
+                'failed' => $sms['failed'],
+                'pending' => $sms['pending'],
+                'avg_delivery_time' => $averageSeconds === null ? 'N/A' : round($averageSeconds,1).'s',
+                'delivery_rate' => $sms['delivery_rate'],
             ],
-            'sms' => $smsStats,
-            'email' => array_merge($emailStats ?: [], ['opened' => 0, 'clicked' => 0]),
+            'sms' => [
+                'total_sent'=>$sms['total_messages'],'delivered'=>$sms['delivered'],'failed'=>$sms['failed'],'pending'=>$sms['pending'],'awaiting_delivery'=>$sms['awaiting_delivery'],'dlr_unavailable'=>$sms['dlr_unavailable'],'credits_used'=>$sms['credits_used'],
+            ],
+            'email' => ['coming_soon'=>true,'total_sent'=>0,'delivered'=>0,'opened'=>0,'clicked'=>0,'bounced'=>0],
         ]);
     }
     
@@ -555,35 +549,7 @@ class ReportController {
      * Get chart data for reports
      */
     public function chart(): void {
-        $userId = Auth::id();
-        $range = Request::query('range', '7d');
-        $days = $range === '30d' ? 30 : ($range === '90d' ? 90 : 7);
-        
-        $pdo = db();
-        $chart = [];
-        
-        for ($i = $days - 1; $i >= 0; $i--) {
-            $date = date('Y-m-d', strtotime("-{$i} days"));
-            $stmt = $pdo->prepare("
-                SELECT 
-                    SUM(CASE WHEN c.type = 'sms' THEN 1 ELSE 0 END) as sms,
-                    SUM(CASE WHEN c.type = 'email' THEN 1 ELSE 0 END) as email,
-                    SUM(CASE WHEN m.status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-                    SUM(CASE WHEN m.status = 'Failed' THEN 1 ELSE 0 END) as failed
-                FROM messages m
-                JOIN campaigns c ON m.campaign_id = c.id
-                WHERE c.user_id = ? AND DATE(m.created_at) = ?
-            ");
-            $stmt->execute([$userId, $date]);
-            $row = $stmt->fetch();
-            $chart[] = [
-                'date' => date('M j', strtotime($date)),
-                'sms' => (int) ($row['sms'] ?? 0),
-                'email' => (int) ($row['email'] ?? 0),
-                'delivered' => (int) ($row['delivered'] ?? 0),
-                'failed' => (int) ($row['failed'] ?? 0),
-            ];
-        }
+        $userId=(int)Auth::id();$range=(string)Request::query('range','7d');try{$rows=SmsReportingService::daily($userId,$range);}catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}$chart=array_map(static fn($row)=>['date'=>date('M j',strtotime($row['date'])),'sms'=>(int)$row['total_messages'],'email'=>0,'delivered'=>(int)$row['delivered'],'failed'=>(int)$row['failed'],'pending'=>(int)$row['pending']],$rows);
         
         Response::success(['chart' => $chart]);
     }
@@ -592,21 +558,7 @@ class ReportController {
      * Get delivery breakdown
      */
     public function delivery(): void {
-        $userId = Auth::id();
-        $range = Request::query('range', '7d');
-        $days = $range === '30d' ? 30 : ($range === '90d' ? 90 : 7);
-        $startDate = date('Y-m-d', strtotime("-{$days} days"));
-        
-        $pdo = db();
-        $stmt = $pdo->prepare("
-            SELECT m.status, COUNT(*) as count
-            FROM messages m
-            JOIN campaigns c ON m.campaign_id = c.id
-            WHERE c.user_id = ? AND m.created_at >= ?
-            GROUP BY m.status
-        ");
-        $stmt->execute([$userId, $startDate]);
-        $breakdown = $stmt->fetchAll();
+        $userId=(int)Auth::id();$range=(string)Request::query('range','7d');try{$breakdown=SmsReportingService::breakdown($userId,$range);}catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}
         
         Response::success(['breakdown' => $breakdown]);
     }

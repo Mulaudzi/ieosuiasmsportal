@@ -15,24 +15,25 @@ import {
   Filter,
   MessageSquare,
   Eye,
-  Copy,
-  Trash2,
   Calendar,
   Loader2,
   RefreshCw,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { toast } from "@/hooks/use-toast";
-import { getSmsCampaigns, deleteCampaign, duplicateCampaign, handleApiError } from "@/lib/api";
+import { getSmsCampaigns, handleApiError } from "@/lib/api";
 import { format } from "date-fns";
 
 interface Campaign {
   id: string;
   name: string;
-  status: "delivered" | "pending" | "queued" | "failed" | "draft" | "sending";
+  status: "draft" | "scheduled" | "queued" | "processing" | "completed" | "partially_failed" | "failed" | "cancelled";
   recipient_count: number;
   delivered_count: number;
+  awaiting_delivery_count: number;
+  failed_count: number;
+  skipped_count: number;
+  dlr_unavailable_count: number;
   credits_used: number;
   created_at: string;
   scheduled_at?: string;
@@ -52,6 +53,11 @@ const statusConfig: Record<string, { label: string; class: string }> = {
   queued: { label: "Scheduled", class: "status-queued" },
   failed: { label: "Failed", class: "status-failed" },
   draft: { label: "Draft", class: "bg-muted text-muted-foreground" },
+  scheduled: { label: "Scheduled", class: "status-queued" },
+  processing: { label: "Processing", class: "status-pending" },
+  completed: { label: "Dispatch complete", class: "status-delivered" },
+  partially_failed: { label: "Partially failed", class: "status-failed" },
+  cancelled: { label: "Cancelled", class: "bg-muted text-muted-foreground" },
 };
 
 export default function SmsCampaigns() {
@@ -61,10 +67,10 @@ export default function SmsCampaigns() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const count = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 
-  const loadCampaigns = useCallback(async () => {
-    setLoading(true);
+  const loadCampaigns = useCallback(async (showLoading=true) => {
+    if(showLoading)setLoading(true);
     try {
       const response = await getSmsCampaigns({
         status: statusFilter !== "all" ? statusFilter : undefined,
@@ -79,53 +85,20 @@ export default function SmsCampaigns() {
     } catch (error) {
       handleApiError(error);
     } finally {
-      setLoading(false);
+      if(showLoading)setLoading(false);
     }
   }, [statusFilter, searchQuery]);
 
   useEffect(() => {
-    loadCampaigns();
+    void loadCampaigns();
+    const timer=window.setInterval(()=>void loadCampaigns(false),30000);
+    return()=>window.clearInterval(timer);
   }, [loadCampaigns]);
 
   const handleView = (id: string) => {
     navigate(`/sms-campaigns/${id}`);
   };
 
-  const handleDuplicate = async (id: string) => {
-    setLoadingAction(`copy-${id}`);
-    try {
-      const response = await duplicateCampaign(id, 'sms');
-      if (response.success) {
-        toast({
-          title: "Campaign duplicated",
-          description: "New campaign created successfully.",
-        });
-        loadCampaigns();
-      }
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    setLoadingAction(`delete-${id}`);
-    try {
-      const response = await deleteCampaign(id, 'sms');
-      if (response.success) {
-        toast({
-          title: "Campaign deleted",
-          description: "The campaign has been removed.",
-        });
-        loadCampaigns();
-      }
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setLoadingAction(null);
-    }
-  };
 
   const formatDate = (dateString: string) => {
     try {
@@ -149,7 +122,7 @@ export default function SmsCampaigns() {
       subtitle="Create and manage your SMS campaigns"
       actions={
         <div className="flex gap-3">
-          <Button variant="outline" size="icon" onClick={loadCampaigns} disabled={loading}>
+          <Button variant="outline" size="icon" onClick={()=>void loadCampaigns()} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
           <Link to="/sms-campaigns/new">
@@ -199,15 +172,15 @@ export default function SmsCampaigns() {
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-sm text-muted-foreground">Messages Sent</p>
-          <p className="mt-1 text-2xl font-bold">{stats.sent.toLocaleString()}</p>
+          <p className="mt-1 text-2xl font-bold">{count(stats.sent).toLocaleString()}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-sm text-muted-foreground">Scheduled</p>
           <p className="mt-1 text-2xl font-bold">{stats.scheduled}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Credits Used</p>
-          <p className="mt-1 text-2xl font-bold">{stats.credits_used.toLocaleString()}</p>
+          <p className="text-sm text-muted-foreground">SMS Credits Used</p>
+          <p className="mt-1 text-2xl font-bold">{count(stats.credits_used).toLocaleString()}</p>
         </div>
       </div>
 
@@ -241,8 +214,8 @@ export default function SmsCampaigns() {
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Campaign</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Status</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Recipients</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Delivered</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Credits</th>
+                  <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Delivery breakdown</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">SMS Credits Used</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Created</th>
                   <th className="px-6 py-4 text-right text-sm font-medium text-muted-foreground">Actions</th>
                 </tr>
@@ -271,38 +244,14 @@ export default function SmsCampaigns() {
                         {statusConfig[campaign.status]?.label || campaign.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-foreground">{campaign.recipient_count.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-foreground">{campaign.delivered_count.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-foreground">{campaign.credits_used.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-foreground">{count(campaign.recipient_count).toLocaleString()}</td>
+                    <td className="px-4 py-4"><div className="flex min-w-max flex-wrap gap-2 text-xs"><span className="rounded-full bg-success/10 px-2 py-1 text-success">Delivered {count(campaign.delivered_count)}</span><span className="rounded-full bg-warning/10 px-2 py-1 text-warning">Awaiting DLR {count(campaign.awaiting_delivery_count)}</span>{count(campaign.dlr_unavailable_count)>0&&<span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">DLR unavailable {count(campaign.dlr_unavailable_count)}</span>}{count(campaign.failed_count)>0&&<span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">Failed {count(campaign.failed_count)}</span>}{count(campaign.skipped_count)>0&&<span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">Skipped {count(campaign.skipped_count)}</span>}</div></td>
+                    <td className="px-6 py-4 text-foreground">{count(campaign.credits_used).toLocaleString()}</td>
                     <td className="px-6 py-4 text-muted-foreground">{formatDate(campaign.created_at)}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => handleView(campaign.id)}>
                           <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => handleDuplicate(campaign.id)}
-                          disabled={loadingAction === `copy-${campaign.id}`}
-                        >
-                          {loadingAction === `copy-${campaign.id}` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => handleDelete(campaign.id)}
-                          disabled={loadingAction === `delete-${campaign.id}`}
-                        >
-                          {loadingAction === `delete-${campaign.id}` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          )}
                         </Button>
                       </div>
                     </td>

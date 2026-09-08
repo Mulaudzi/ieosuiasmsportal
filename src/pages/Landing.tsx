@@ -54,7 +54,7 @@ const features = [
 ];
 
 const steps = [
-  { step: 1, title: "Create Account", description: "Sign up for free and set up your business profile" },
+  { step: 1, title: "Create Account", description: "Register and set up your business profile" },
   { step: 2, title: "Add Contacts", description: "Import your contacts via CSV or add them manually" },
   { step: 3, title: "Create Campaign", description: "Design your message with customizable templates" },
   { step: 4, title: "Send & Track", description: "Send messages and monitor delivery in real-time" },
@@ -62,19 +62,19 @@ const steps = [
 
 const pricing = [
   {
-    name: "Free",
+    name: "Platform Access",
     price: "R0",
-    description: "Try our Free plan and get started instantly. Perfect for exploring all the SMS Portal features.",
+    description: "Create and configure your account. SMS sending requires prepaid SMS credits.",
     features: [
-      "27 Free SMS",
+      "Purchase credits when needed",
       "IEOSUIA branding included",
-      "Test the platform risk-free",
+      "SMS sending requires SMS credits",
       "No credit card required",
     ],
     allFeatures: [
-      "27 Free SMS",
+      "Purchase credits when needed",
       "IEOSUIA branding included",
-      "Test the platform risk-free",
+      "SMS sending requires SMS credits",
       "No credit card required",
       "Basic contact management",
       "Basic dashboard",
@@ -85,13 +85,13 @@ const pricing = [
   },
   {
     name: "Pro",
-    price: "R0.18",
-    period: "/SMS",
-    description: "Send SMS Pay-as-you-Go, starting from R0.18 per message. No subscriptions, no contracts.",
+    price: "R0.35",
+    period: "/segment",
+    description: "Pay R0.35 including VAT for each billable SMS segment. No subscription required.",
     features: [
       "Pay-as-you-Go pricing",
       "No subscriptions or contracts",
-      "Volume discounts available",
+      "Server-calculated segment pricing",
       "SMS & Email sending",
       "Priority support",
       "No watermark",
@@ -99,7 +99,7 @@ const pricing = [
     allFeatures: [
       "Pay-as-you-Go pricing",
       "No subscriptions or contracts",
-      "Volume discounts available",
+      "Server-calculated segment pricing",
       "SMS & Email sending",
       "Priority support",
       "No watermark",
@@ -142,13 +142,7 @@ const pricing = [
 ];
 
 const smsPricing = [
-  { volume: "500 – 1,000", price: "R0.27" },
-  { volume: "1,001 – 5,000", price: "R0.25" },
-  { volume: "5,001 – 10,000", price: "R0.23" },
-  { volume: "10,001 – 50,000", price: "R0.20" },
-  { volume: "50,001 – 250,000", price: "R0.19" },
-  { volume: "250,001 – 500,000", price: "R0.18" },
-  { volume: "500,000+", price: "Contact Sales" },
+  { volume: "All prepaid volumes", price: "R0.35 per segment" },
 ];
 
 const emailPricing = [
@@ -165,19 +159,19 @@ const emailPricing = [
 const pricingFaqs = [
   {
     question: "How does the Pay-as-you-Go pricing work?",
-    answer: "You only pay for what you send. Buy credits in advance and use them whenever you need. No monthly subscriptions or contracts required. The more you send, the lower your per-message cost.",
+    answer: "Add ZAR funds to your wallet and pay R0.35 including VAT for each billable SMS segment. Longer or Unicode messages may use multiple segments.",
   },
   {
     question: "Are there any hidden fees?",
     answer: "No hidden fees. The prices shown include carrier costs. VAT/BST/Tax may be added at checkout depending on your location.",
   },
   {
-    question: "What's included in the Free plan?",
-    answer: "The Free plan includes 27 SMS credits to test the platform. Free plan messages include IEOSUIA branding. No credit card required to start.",
+    question: "When can I start sending SMS?",
+    answer: "Purchase SMS credits, create your campaign, and review its exact credit requirement before queueing it.",
   },
   {
-    question: "How do volume discounts work?",
-    answer: "As your sending volume increases, your per-message cost decreases. For example, SMS costs R0.27 for 500-1,000 messages, but drops to R0.18 for 250,001-500,000 messages.",
+    question: "Is volume pricing available?",
+    answer: "The launch rate is R0.35 per segment for all prepaid volumes. Enterprise pricing requires an approved quotation.",
   },
   {
     question: "Do credits expire?",
@@ -256,7 +250,7 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/register">
               <Button size="lg" className="gap-2 text-lg px-8">
-                Get Started for Free
+                Create Account
                 <ArrowRight className="h-5 w-5" />
               </Button>
             </Link>
@@ -267,7 +261,7 @@ export default function Landing() {
             </Link>
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
-            No credit card required • 27 free SMS credits • POPIA compliant
+              No subscription required • R0.35 per SMS segment • POPIA-aware controls
           </p>
         </div>
       </section>
@@ -456,7 +450,7 @@ export default function Landing() {
                   </table>
                 </div>
                 <p className="text-xs text-muted-foreground mt-4">
-                  * Free plan SMS include IEOSUIA branding
+                  * SMS sending requires sufficient prepaid SMS credits
                 </p>
               </div>
 

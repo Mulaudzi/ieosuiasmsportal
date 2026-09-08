@@ -1,0 +1,16 @@
+[Unit]
+Description=IEOSUIA SMS database queue worker
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/sms.ieosuia.com/api
+ExecStart=/usr/bin/php /var/www/sms.ieosuia.com/api/bin/sms-worker.php
+Restart=always
+RestartSec=5
+Environment=APP_ENV=production
+
+[Install]
+WantedBy=multi-user.target

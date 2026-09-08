@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminSession } from "@/hooks/useAdminSession";
 import { Loader2, Shield } from "lucide-react";
 
 interface AdminRouteProps {
@@ -10,6 +11,7 @@ interface AdminRouteProps {
 export function AdminRoute({ children }: AdminRouteProps) {
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
+  useAdminSession();
   const [isChecking, setIsChecking] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
 
@@ -17,48 +19,10 @@ export function AdminRoute({ children }: AdminRouteProps) {
     if (authLoading) return;
 
     const checkAdminSession = () => {
-      // Check for admin session token
-      const adminSession = sessionStorage.getItem("admin_session");
-      const timestamp = sessionStorage.getItem("admin_session_timestamp");
-
-      if (!adminSession) {
-        // No admin session, redirect to admin login
-        navigate("/admin/login", { replace: true });
-        return;
-      }
-
-      // Check session expiry (15 minutes)
-      if (timestamp) {
-        const lastActivity = parseInt(timestamp, 10);
-        const now = Date.now();
-        const TIMEOUT_MS = 15 * 60 * 1000;
-        
-        if (now - lastActivity > TIMEOUT_MS) {
-          // Session expired
-          sessionStorage.removeItem("admin_session");
-          sessionStorage.removeItem("admin_session_timestamp");
-          navigate("/admin/login", { replace: true });
-          return;
-        }
-      }
-
-      // Verify session format
-      try {
-        const decoded = atob(adminSession);
-        if (!decoded.includes("-admin")) {
-          navigate("/admin/login", { replace: true });
-          return;
-        }
-      } catch {
-        navigate("/admin/login", { replace: true });
-        return;
-      }
-
-      // Check user account type
-      if (!user || user.account_type !== "admin") {
-        sessionStorage.removeItem("admin_session");
-        sessionStorage.removeItem("admin_session_timestamp");
-        navigate("/admin/login", { replace: true });
+      // The signed API identity is the only authorization source. The backend
+      // repeats this role check for every administrative operation.
+      if (!user || user.role !== "admin") {
+        navigate("/guymhan/login", { replace: true });
         return;
       }
 

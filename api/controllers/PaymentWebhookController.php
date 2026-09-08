@@ -5,6 +5,10 @@
  */
 
 require_once __DIR__ . '/../services/PayOSService.php';
+require_once __DIR__ . '/../domain/WalletService.php';
+require_once __DIR__ . '/../domain/SmsPricing.php';
+require_once __DIR__ . '/../domain/PaymentState.php';
+require_once __DIR__ . '/../services/PaymentReceiptService.php';
 
 class PaymentWebhookController {
     public function payosCallback(): void {
@@ -46,13 +50,17 @@ class PaymentWebhookController {
         }
 
         $amount = (float) ($payload['amount'] ?? $transaction['amount']);
+        if (strtoupper((string)($payload['currency'] ?? 'ZAR')) !== 'ZAR') {
+            Response::error('Unsupported payment currency', 422);
+        }
         $paymentStatus = $payOS->mapStatus($payload['status'] ?? '');
         $paymentId = $this->upsertPayOSPayment($transaction, $wallet, $payload, $paymentStatus, $amount, $internalReference, $event);
+        $storedPayment = table('payments')->where('id', $paymentId)->first();
+        $paymentStatus = PaymentState::merge($storedPayment['status'] ?? null, $paymentStatus);
 
         if ($paymentStatus === 'completed') {
             if (($transaction['status'] ?? null) !== 'completed') {
-                $requestedCredits = $this->extractRequestedCredits($transaction, $payload);
-                $this->processSuccessfulPayment($transaction, $wallet, $amount, $paymentId, $requestedCredits);
+                $this->processSuccessfulPayment($transaction, $wallet, $amount, $paymentId);
             } else {
                 table('payments')->where('id', $paymentId)->update([
                     'status' => 'completed',
@@ -60,6 +68,8 @@ class PaymentWebhookController {
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]);
             }
+            PaymentReceiptService::enqueue(db(),$paymentId,(int)$wallet['user_id']);
+            $receiptEmail=PaymentReceiptService::dispatch($paymentId);
         } elseif ($paymentStatus === 'pending') {
             table('payments')->where('id', $paymentId)->update([
                 'status' => 'pending',
@@ -81,25 +91,39 @@ class PaymentWebhookController {
             'received' => true,
             'reference' => $externalOrderId,
             'status' => $paymentStatus,
+            'receipt_email_status' => $receiptEmail['status'] ?? null,
         ]);
     }
     
     /**
      * Process a successful payment
      */
-    private function processSuccessfulPayment(array $transaction, array $wallet, float $amount, int $paymentId, ?int $requestedCredits = null): void {
+    private function processSuccessfulPayment(array $transaction, array $wallet, float $amount, int $paymentId): void {
         $pdo = db();
         
         try {
             $pdo->beginTransaction();
             
-            $credits = $this->resolveCreditsToAdd($transaction, $amount, $requestedCredits);
-            
-            // Update wallet balance
-            table('wallets')->where('id', $wallet['id'])->update([
-                'balance' => (float) $wallet['balance'] + $credits,
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
+            $lock = $pdo->prepare('SELECT * FROM wallet_transactions WHERE id = ? FOR UPDATE');
+            $lock->execute([$transaction['id']]);
+            $currentTransaction = $lock->fetch();
+            if (!$currentTransaction || $currentTransaction['status'] === 'completed') {
+                $pdo->commit();
+                return;
+            }
+            if (abs((float)$currentTransaction['amount'] - $amount) > 0.0001) {
+                throw new DomainException('Callback amount does not match the initiated transaction');
+            }
+            $paymentLock = $pdo->prepare('SELECT * FROM payments WHERE id = ? FOR UPDATE');
+            $paymentLock->execute([$paymentId]);
+            $payment = $paymentLock->fetch();
+            if (!$payment || abs((float)$payment['amount'] - $amount) > 0.0001 || (string)$payment['merchant_reference'] !== (string)$transaction['reference']) {
+                throw new DomainException('Payment amount or reference mismatch');
+            }
+
+            // Canonical wallet units are currency amounts. Commercial SMS pricing
+            // converts that balance into segments during campaign preview.
+            WalletService::creditPayment($pdo, (int)$wallet['user_id'], $paymentId, $amount, (string)$transaction['reference']);
             
             // Update transaction status
             table('wallet_transactions')->where('id', $transaction['id'])->update([
@@ -110,20 +134,17 @@ class PaymentWebhookController {
             // Update payment record
             table('payments')->where('id', $paymentId)->update([
                 'status' => 'completed',
-                'credits_added' => $credits,
+                'credits_added' => max(0, (int) floor(($amount + 0.000001) / SmsPricing::pricePerSegment())),
                 'processed_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
             
             $pdo->commit();
             
-            error_log("Payment processed successfully: {$transaction['reference']} - $credits credits added");
-            
-            // Send payment confirmation email
-            $this->sendPaymentConfirmationEmail($wallet['user_id'], $amount, $credits, $transaction['reference']);
-            
         } catch (\Exception $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error_log("Payment processing error: " . $e->getMessage());
             
             table('payments')->where('id', $paymentId)->update([
@@ -131,7 +152,11 @@ class PaymentWebhookController {
                 'error_message' => $e->getMessage(),
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
+            PaymentReceiptService::enqueue($pdo,$paymentId,(int)$wallet['user_id']);
+            throw $e;
         }
+
+        error_log("Payment processed successfully: {$transaction['reference']}");
     }
     
     /**
@@ -156,31 +181,6 @@ class PaymentWebhookController {
         ]);
     }
 
-    private function resolveCreditsToAdd(array $transaction, float $amount, ?int $requestedCredits = null): int {
-        if ($requestedCredits !== null && $requestedCredits > 0) {
-            return $requestedCredits;
-        }
-
-        if (isset($transaction['requested_credits']) && is_numeric($transaction['requested_credits']) && (int) $transaction['requested_credits'] > 0) {
-            return (int) $transaction['requested_credits'];
-        }
-
-        $pricePerCredit = (float) env('SMS_PRICE_PER_CREDIT', 0.27);
-        return (int) floor($amount / $pricePerCredit);
-    }
-
-    private function extractRequestedCredits(array $transaction, array $payload): ?int {
-        if (isset($payload['metadata']['requested_credits']) && is_numeric($payload['metadata']['requested_credits'])) {
-            return (int) $payload['metadata']['requested_credits'];
-        }
-
-        if (isset($transaction['requested_credits']) && is_numeric($transaction['requested_credits'])) {
-            return (int) $transaction['requested_credits'];
-        }
-
-        return null;
-    }
-
     private function upsertPayOSPayment(array $transaction, array $wallet, array $payload, string $paymentStatus, float $amount, ?string $internalReference, string $event): int {
         $existing = null;
 
@@ -198,6 +198,7 @@ class PaymentWebhookController {
                 ->first();
         }
 
+        $effectiveStatus = PaymentState::merge($existing['status'] ?? null, $paymentStatus);
         $paymentData = [
             'user_id' => $wallet['user_id'],
             'wallet_id' => $wallet['id'],
@@ -207,7 +208,7 @@ class PaymentWebhookController {
             'merchant_reference' => $transaction['reference'],
             'amount' => $amount,
             'currency' => $payload['currency'] ?? 'ZAR',
-            'status' => $paymentStatus,
+            'status' => $effectiveStatus,
             'gateway_status' => $payload['status'] ?? null,
             'payment_method' => 'hosted_checkout',
             'payer_email' => $payload['customer_email'] ?? ($payload['metadata']['customer_email'] ?? null),
@@ -243,38 +244,6 @@ class PaymentWebhookController {
 
         $cache[$key] = (int) ($stmt->fetch()['count'] ?? 0) > 0;
         return $cache[$key];
-    }
-    
-    /**
-     * Send payment confirmation email to user
-     */
-    private function sendPaymentConfirmationEmail(int $userId, float $amount, int $credits, string $reference): void {
-        try {
-            $user = table('users')->where('id', $userId)->first();
-            
-            if (!$user || empty($user['email'])) {
-                error_log("Cannot send payment email: User $userId not found or has no email");
-                return;
-            }
-            
-            require_once __DIR__ . '/../services/EmailService.php';
-            
-            $result = EmailService::sendPaymentConfirmationEmail(
-                $user['email'],
-                $user['name'] ?? 'Customer',
-                $amount,
-                $credits,
-                $reference
-            );
-            
-            if ($result['success']) {
-                error_log("Payment confirmation email sent to: {$user['email']}");
-            } else {
-                error_log("Failed to send payment confirmation email: " . ($result['error'] ?? 'Unknown error'));
-            }
-        } catch (\Exception $e) {
-            error_log("Error sending payment confirmation email: " . $e->getMessage());
-        }
     }
     
 }

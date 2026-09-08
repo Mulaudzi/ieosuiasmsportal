@@ -1,634 +1,105 @@
-import { useState } from "react";
-import { ScheduleRecommendations } from "@/components/campaigns/ScheduleRecommendations";
-import { ABTestSetup } from "@/components/campaigns/ABTesting";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Upload,
-  Users,
-  MessageSquare,
-  Calendar,
-  CreditCard,
-  Send,
-  FileText,
-  Loader2,
-} from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
-import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
-import { createSmsCampaign } from "@/lib/api";
+import { api, createSmsCampaign, getTemplates, previewSmsCampaign, SmsPreview } from "@/lib/api";
+import { X } from "lucide-react";
 
-const steps = [
-  { id: 1, name: "Campaign Setup", icon: FileText },
-  { id: 2, name: "Recipients", icon: Users },
-  { id: 3, name: "Message", icon: MessageSquare },
-  { id: 4, name: "Schedule", icon: Calendar },
-  { id: 5, name: "Review", icon: Check },
-];
+const newKey = () => crypto.randomUUID();
 
 export default function CreateSmsCampaign() {
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    recipientMethod: "upload",
-    contactGroup: "",
-    message: "",
-    
-    scheduleType: "now",
-    scheduleDate: "",
-    scheduleTime: "",
-  });
-  
-  // A/B Testing state
-  const [abTestEnabled, setAbTestEnabled] = useState(false);
-  const [abMessageA, setAbMessageA] = useState("");
-  const [abMessageB, setAbMessageB] = useState("");
-  const [abSplitPercent, setAbSplitPercent] = useState(50);
+  const [step, setStep] = useState(1);
+  const [name, setName] = useState("");
+  const [manual, setManual] = useState("");
+  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [contactIds, setContactIds] = useState<string[]>([]);
+  const [excluded, setExcluded] = useState<string[]>([]);
+  const [contacts, setContacts] = useState<Array<{id:string;name:string;phone:string}>>([]);
+  const [groups, setGroups] = useState<Array<{id:string;name:string}>>([]);
+  const [templates,setTemplates]=useState<Array<{id:string;name:string;content:string}>>([]);
+  const [selectedTemplate,setSelectedTemplate]=useState("none");
+  const [content, setContent] = useState("");
+  const [schedule, setSchedule] = useState("");
+  const [preview, setPreview] = useState<SmsPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const recipients = useMemo(() => ({
+    manual: manual.split(/[\n,;]+/).map(v => v.trim()).filter(Boolean),
+    contact_ids: contactIds,
+    group_ids: groupIds,
+    excluded,
+  }), [manual, contactIds, groupIds, excluded]);
+  useEffect(()=>{void Promise.all([api.get<unknown[]>("/contacts",{per_page:"100"}),api.get<unknown[]>("/contact-groups"),getTemplates('sms')]).then(([contactResponse,groupResponse,templateResponse])=>{const contactRows=(Array.isArray(contactResponse.data)?contactResponse.data:[]) as Array<{id:string|number;name:string;phone:string}>;const groupRows=((groupResponse as typeof groupResponse&{groups?:unknown[]}).groups??groupResponse.data??[]) as Array<{id:string|number;name:string}>;const templatePayload=templateResponse as typeof templateResponse&{templates?:unknown[]};const templateRows=(templatePayload.templates??templateResponse.data??[]) as Array<{id:string|number;name:string;content:string}>;setContacts(contactRows.map(row=>({...row,id:String(row.id)})));setGroups(groupRows.map(row=>({...row,id:String(row.id)})));setTemplates(templateRows.map(row=>({...row,id:String(row.id)})));}).catch(()=>toast({title:"Campaign resources could not be fully loaded",description:"Manual entry remains available.",variant:"destructive"}))},[]);
+  const chooseTemplate=(id:string)=>{setSelectedTemplate(id);if(id==='none')return;const template=templates.find(item=>item.id===id);if(template){setContent(template.content);setPreview(null);}};
+  const toggle=(values:string[],setValues:(value:string[])=>void,id:string)=>setValues(values.includes(id)?values.filter(value=>value!==id):[...values,id]);
 
-  const messageLength = formData.message.length;
-  const smsCount = Math.ceil(messageLength / 160) || 0;
-  const estimatedCredits = smsCount * 1250; // Assuming 1250 recipients
-
-  const handleNext = () => {
-    if (currentStep < 5) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!formData.name || !formData.message) {
-      toast({
-        title: "Missing required fields",
-        description: "Please fill in campaign name and message.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
+  const calculate = async (nextExcluded = excluded) => {
+    setBusy(true);
+    setPreview(null);
     try {
-      const campaignData = {
-        ...formData,
-        is_ab_test: abTestEnabled,
-        ab_test_split_percent: abSplitPercent,
-        ab_variants: abTestEnabled ? [
-          { variant_name: 'A', message_content: abMessageA },
-          { variant_name: 'B', message_content: abMessageB },
-        ] : undefined,
-      };
-      const response = await createSmsCampaign(campaignData);
-      if (response.success) {
-        toast({
-          title: "Campaign created successfully!",
-          description: `Campaign ID: ${response.data?.campaignId}. Estimated cost: ${response.data?.estimatedCost} credits.`,
-        });
-        navigate("/sms-campaigns");
-      } else {
-        toast({
-          title: "Failed to create campaign",
-          description: response.error,
-          variant: "destructive",
-        });
-      }
+      const response = await previewSmsCampaign({ content, recipients: { ...recipients, excluded: nextExcluded } });
+      const value = response.preview ?? response.data;
+      if (!value) throw new Error("Preview was not returned");
+      setPreview(value); setStep(4);
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+      setStep(3);
+      toast({ title: "Cannot calculate campaign", description: error instanceof Error ? error.message : "Check the recipients and message.", variant: "destructive" });
+    } finally { setBusy(false); }
   };
 
-  return (
-    <DashboardLayout
-      title="Create SMS Campaign"
-      subtitle="Send bulk SMS to your contacts"
-      actions={
-        <Link to="/sms-campaigns">
-          <Button variant="outline" className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Campaigns
-          </Button>
-        </Link>
-      }
-    >
-      {/* Progress Steps */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          {steps.map((step, index) => (
-            <div key={step.id} className="flex items-center">
-              <div className="wizard-step">
-                <div
-                  className={cn(
-                    "wizard-step-circle",
-                    currentStep === step.id && "active",
-                    currentStep > step.id && "completed",
-                    currentStep < step.id && "pending"
-                  )}
-                >
-                  {currentStep > step.id ? (
-                    <Check className="h-5 w-5" />
-                  ) : (
-                    <step.icon className="h-5 w-5" />
-                  )}
-                </div>
-                <span
-                  className={cn(
-                    "hidden text-sm font-medium sm:block",
-                    currentStep === step.id
-                      ? "text-foreground"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {step.name}
-                </span>
-              </div>
-              {index < steps.length - 1 && (
-                <div
-                  className={cn(
-                    "mx-4 h-0.5 w-12 sm:w-24",
-                    currentStep > step.id ? "bg-success" : "bg-border"
-                  )}
-                />
-              )}
-            </div>
-          ))}
-        </div>
+  const excludeRecipient = (phone: string) => {
+    const next = [...new Set([...excluded, phone])];
+    setExcluded(next);
+    void calculate(next);
+  };
+
+  const fitToAvailableCredits = () => {
+    if (!preview || preview.segment_count < 1) return;
+    const affordableRecipients = Math.floor(preview.available_credits / preview.segment_count);
+    const next = [...new Set([...excluded, ...preview.recipients.slice(Math.max(0, affordableRecipients))])];
+    setExcluded(next);
+    void calculate(next);
+  };
+
+  const submit = async (sendNow: boolean) => {
+    setBusy(true);
+    try {
+      const response = await createSmsCampaign({ name, content, recipients, scheduled_at: sendNow ? null : schedule, send_now: sendNow, idempotency_key: newKey() });
+      const campaign = response.campaign ?? response.data?.campaign;
+      if (!campaign) throw new Error("Campaign was not created");
+      toast({ title: sendNow ? "Campaign queued" : "Campaign scheduled", description: "Processing continues in the background." });
+      navigate(`/sms-campaigns/${campaign.id}`);
+    } catch (error) {
+      toast({ title: "Campaign was not submitted", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally { setBusy(false); }
+  };
+
+  return <DashboardLayout title="Create SMS Campaign" subtitle="Accurate recipients, segments and cost before sending">
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="flex gap-2 text-sm text-muted-foreground">{[1,2,3,4,5].map(n => <span key={n} className={step === n ? "font-semibold text-primary" : ""}>Step {n}</span>)}</div>
+      <div className="rounded-xl border bg-card p-6 space-y-5">
+        {step === 1 && <><div><Label>Campaign name</Label><Input value={name} onChange={e=>setName(e.target.value)} maxLength={100}/></div><Button disabled={!name.trim()} onClick={()=>setStep(2)}>Recipients</Button></>}
+        {step === 2 && <>
+          <div><Label>Manual phone numbers</Label><Textarea rows={7} placeholder="One number per line, or comma-separated" value={manual} onChange={e=>setManual(e.target.value)}/></div>
+          <div><Label>Contacts</Label><div className="mt-2 max-h-40 overflow-auto rounded-lg border p-2">{contacts.length?contacts.map(contact=><button type="button" key={contact.id} onClick={()=>toggle(contactIds,setContactIds,contact.id)} className={`block w-full rounded p-2 text-left text-sm ${contactIds.includes(contact.id)?"bg-primary text-primary-foreground":"hover:bg-muted"}`}>{contact.name || contact.phone} · {contact.phone}</button>):<p className="p-2 text-sm text-muted-foreground">No contacts available.</p>}</div></div>
+          <div><Label>Contact groups</Label><div className="mt-2 max-h-40 overflow-auto rounded-lg border p-2">{groups.length?groups.map(group=><button type="button" key={group.id} onClick={()=>toggle(groupIds,setGroupIds,group.id)} className={`block w-full rounded p-2 text-left text-sm ${groupIds.includes(group.id)?"bg-primary text-primary-foreground":"hover:bg-muted"}`}>{group.name}</button>):<p className="p-2 text-sm text-muted-foreground">No groups available.</p>}</div></div>
+          <div className="flex gap-2"><Button variant="outline" onClick={()=>setStep(1)}>Back</Button><Button onClick={()=>setStep(3)}>Message</Button></div>
+        </>}
+        {step === 3 && <><div><Label>Saved SMS template</Label><Select value={selectedTemplate} onValueChange={chooseTemplate}><SelectTrigger className="mt-2"><SelectValue placeholder="Choose a saved template"/></SelectTrigger><SelectContent><SelectItem value="none">Write message from scratch</SelectItem>{templates.map(template=><SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}</SelectContent></Select>{templates.length===0&&<p className="mt-1 text-xs text-muted-foreground">No saved SMS templates yet. You can still write the message below.</p>}</div><div><Label>SMS message</Label><Textarea rows={8} value={content} onChange={e=>{setContent(e.target.value);setPreview(null)}}/><p className="mt-1 text-xs text-muted-foreground">Selecting a template fills this field. You can edit it before continuing.</p></div><p className="text-sm text-muted-foreground">The server is authoritative for GSM-7/UCS-2 analysis and credit calculation.</p><div className="flex gap-2"><Button variant="outline" onClick={()=>setStep(2)}>Back</Button><Button disabled={!content.trim()||busy} onClick={() => void calculate()}>{busy?"Calculating…":"Calculate recipients and credits"}</Button></div></>}
+        {step === 4 && preview && <>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">{[["Entered",preview.entered_count],["Invalid",preview.invalid_count],["Duplicates",preview.duplicate_count],["Opted out",preview.opted_out_count],["Removed from campaign",preview.excluded_count],["Sendable",preview.sendable_count],["Encoding",preview.encoding.toUpperCase()],["Characters",preview.character_count],["Credits/message",preview.segment_count],["Credits required",preview.required_credits]].map(([label,value])=><div key={String(label)} className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold">{value}</p></div>)}</div>
+          <div className="rounded-lg border p-4 space-y-1"><p>Campaign requirement: <strong>{preview.required_credits.toLocaleString()} SMS credits</strong></p><p>Available: <strong>{preview.available_credits.toLocaleString()} SMS credits</strong></p><p className="text-xs text-muted-foreground">1 credit sends 1 billable SMS segment (R{Number(preview.price_per_segment).toFixed(2)}).</p><p className={preview.sufficient_balance?"text-success":"text-destructive"}>{preview.sufficient_balance?"You have enough SMS credits":"You do not have enough SMS credits"}</p></div>
+          {!preview.sufficient_balance && <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3"><p className="font-medium">Add credits or reduce this campaign</p><p className="text-sm text-muted-foreground">Removing recipients here affects only this campaign. Contacts stay in their contact groups.</p><div className="flex flex-wrap gap-2"><Button asChild><Link to="/wallet">Buy SMS credits</Link></Button><Button variant="outline" disabled={preview.available_credits < preview.segment_count} onClick={fitToAvailableCredits}>Fit campaign to available credits</Button></div></div>}
+          <div className="rounded-lg border"><div className="border-b p-3"><p className="font-medium">Campaign recipients ({preview.sendable_count})</p><p className="text-xs text-muted-foreground">Remove individual numbers from this send without changing saved contacts or groups.</p></div><div className="max-h-56 divide-y overflow-auto">{preview.recipients.map(phone=><div key={phone} className="flex items-center justify-between gap-3 p-3 text-sm"><span className="font-mono">{phone}</span><Button type="button" size="sm" variant="ghost" onClick={()=>excludeRecipient(phone)} disabled={busy}><X className="mr-1 h-4 w-4"/>Remove</Button></div>)}</div></div>
+          <div className="flex gap-2"><Button variant="outline" onClick={()=>setStep(3)}>Back</Button><Button disabled={!preview.sufficient_balance} onClick={()=>setStep(5)}>Continue</Button></div>
+        </>}
+        {step === 5 && preview && <><div><Label>Schedule time (optional)</Label><Input type="datetime-local" value={schedule} onChange={e=>setSchedule(e.target.value)}/></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={()=>setStep(4)}>Back</Button><Button disabled={busy} onClick={()=>submit(true)}>{busy?"Submitting…":"Queue now"}</Button><Button variant="secondary" disabled={busy||!schedule} onClick={()=>submit(false)}>Schedule</Button></div></>}
       </div>
-
-      {/* Step Content */}
-      <div className="rounded-xl border border-border bg-card p-6">
-        {/* Step 1: Campaign Setup */}
-        {currentStep === 1 && (
-          <div className="animate-fade-in space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">
-                Campaign Setup
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Give your campaign a name and description
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">Campaign Name *</Label>
-                <Input
-                  id="name"
-                  placeholder="e.g., Summer Sale Announcement"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  className="mt-1.5"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Brief description of this campaign..."
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  className="mt-1.5"
-                  rows={3}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Recipients */}
-        {currentStep === 2 && (
-          <div className="animate-fade-in space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">
-                Select Recipients
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Choose how you want to add recipients
-              </p>
-            </div>
-
-            <RadioGroup
-              value={formData.recipientMethod}
-              onValueChange={(value) =>
-                setFormData({ ...formData, recipientMethod: value })
-              }
-              className="grid gap-4 sm:grid-cols-3"
-            >
-              <Label
-                htmlFor="upload"
-                className={cn(
-                  "flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all",
-                  formData.recipientMethod === "upload"
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                )}
-              >
-                <RadioGroupItem value="upload" id="upload" className="sr-only" />
-                <Upload className="h-8 w-8 text-primary" />
-                <div className="text-center">
-                  <p className="font-medium text-foreground">Upload File</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    CSV or Excel file
-                  </p>
-                </div>
-              </Label>
-
-              <Label
-                htmlFor="group"
-                className={cn(
-                  "flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all",
-                  formData.recipientMethod === "group"
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                )}
-              >
-                <RadioGroupItem value="group" id="group" className="sr-only" />
-                <Users className="h-8 w-8 text-primary" />
-                <div className="text-center">
-                  <p className="font-medium text-foreground">Contact Group</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Existing contacts
-                  </p>
-                </div>
-              </Label>
-
-              <Label
-                htmlFor="manual"
-                className={cn(
-                  "flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all",
-                  formData.recipientMethod === "manual"
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                )}
-              >
-                <RadioGroupItem value="manual" id="manual" className="sr-only" />
-                <MessageSquare className="h-8 w-8 text-primary" />
-                <div className="text-center">
-                  <p className="font-medium text-foreground">Manual Entry</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Type numbers
-                  </p>
-                </div>
-              </Label>
-            </RadioGroup>
-
-            {formData.recipientMethod === "upload" && (
-              <div className="rounded-lg border-2 border-dashed border-border p-8 text-center">
-                <Upload className="mx-auto h-10 w-10 text-muted-foreground" />
-                <p className="mt-4 text-sm font-medium text-foreground">
-                  Drop your file here or click to browse
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Supports CSV, XLS, XLSX up to 10MB
-                </p>
-                <Button variant="outline" className="mt-4">
-                  Select File
-                </Button>
-              </div>
-            )}
-
-            {formData.recipientMethod === "group" && (
-              <div>
-                <Label>Select Contact Group</Label>
-                <Select
-                  value={formData.contactGroup}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, contactGroup: value })
-                  }
-                >
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Choose a group..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Contacts (12,450)</SelectItem>
-                    <SelectItem value="customers">Customers (8,200)</SelectItem>
-                    <SelectItem value="leads">Leads (3,500)</SelectItem>
-                    <SelectItem value="vip">VIP Customers (750)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 3: Message */}
-        {currentStep === 3 && (
-          <div className="animate-fade-in space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">
-                Compose Message
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Write your SMS message
-              </p>
-            </div>
-
-            <div className="space-y-4">
-
-              {/* A/B Testing Setup */}
-              <ABTestSetup
-                enabled={abTestEnabled}
-                onEnabledChange={(enabled) => {
-                  setAbTestEnabled(enabled);
-                  if (enabled && formData.message) {
-                    setAbMessageA(formData.message);
-                  }
-                }}
-                messageA={abMessageA}
-                messageB={abMessageB}
-                splitPercent={abSplitPercent}
-                onMessageAChange={setAbMessageA}
-                onMessageBChange={setAbMessageB}
-                onSplitChange={setAbSplitPercent}
-                campaignType="sms"
-                totalRecipients={1250}
-              />
-
-              {!abTestEnabled && (
-                <>
-                  <div>
-                    <Label htmlFor="message">Message *</Label>
-                    <Textarea
-                      id="message"
-                      placeholder="Type your message here..."
-                      value={formData.message}
-                      onChange={(e) =>
-                        setFormData({ ...formData, message: e.target.value })
-                      }
-                      className="mt-1.5 min-h-[150px]"
-                    />
-                    <div className="mt-2 flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        {messageLength} / 160 characters
-                        {smsCount > 1 && ` (${smsCount} SMS)`}
-                      </span>
-                      <span className="font-medium text-primary">
-                        ~{estimatedCredits.toLocaleString()} credits
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg bg-muted/50 p-4">
-                    <p className="text-sm font-medium text-foreground">Preview</p>
-                    <div className="mt-2 rounded-lg bg-card p-4 shadow-sm">
-                      <p className="text-xs text-muted-foreground">
-                        From: IEOSUIA
-                      </p>
-                      <p className="mt-2 text-sm text-foreground">
-                        {formData.message || "Your message will appear here..."}
-                      </p>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Schedule */}
-        {currentStep === 4 && (
-          <div className="animate-fade-in space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">
-                Schedule Delivery
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Choose when to send your campaign
-              </p>
-            </div>
-
-            <RadioGroup
-              value={formData.scheduleType}
-              onValueChange={(value) =>
-                setFormData({ ...formData, scheduleType: value })
-              }
-              className="space-y-4"
-            >
-              <Label
-                htmlFor="now"
-                className={cn(
-                  "flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-all",
-                  formData.scheduleType === "now"
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                )}
-              >
-                <RadioGroupItem value="now" id="now" />
-                <div>
-                  <p className="font-medium text-foreground">Send Now</p>
-                  <p className="text-sm text-muted-foreground">
-                    Start sending immediately after review
-                  </p>
-                </div>
-              </Label>
-
-              <Label
-                htmlFor="schedule"
-                className={cn(
-                  "flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-all",
-                  formData.scheduleType === "schedule"
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                )}
-              >
-                <RadioGroupItem value="schedule" id="schedule" />
-                <div>
-                  <p className="font-medium text-foreground">Schedule</p>
-                  <p className="text-sm text-muted-foreground">
-                    Pick a specific date and time
-                  </p>
-                </div>
-              </Label>
-            </RadioGroup>
-
-            {formData.scheduleType === "schedule" && (
-              <div className="space-y-4">
-                {/* Schedule Recommendations */}
-                <ScheduleRecommendations 
-                  campaignType="sms"
-                  onSelectTime={(date, time) => 
-                    setFormData({ ...formData, scheduleDate: date, scheduleTime: time })
-                  }
-                />
-                
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="date">Date</Label>
-                    <Input
-                      id="date"
-                      type="date"
-                      value={formData.scheduleDate}
-                      onChange={(e) =>
-                        setFormData({ ...formData, scheduleDate: e.target.value })
-                      }
-                      className="mt-1.5"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="time">Time</Label>
-                    <Input
-                      id="time"
-                      type="time"
-                      value={formData.scheduleTime}
-                      onChange={(e) =>
-                        setFormData({ ...formData, scheduleTime: e.target.value })
-                      }
-                      className="mt-1.5"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 5: Review */}
-        {currentStep === 5 && (
-          <div className="animate-fade-in space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">
-                Review & Send
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Confirm your campaign details before sending
-              </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-sm text-muted-foreground">Campaign Name</p>
-                <p className="mt-1 font-medium text-foreground">
-                  {formData.name || "Untitled Campaign"}
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-sm text-muted-foreground">Recipients</p>
-                <p className="mt-1 font-medium text-foreground">
-                  1,250 contacts
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-sm text-muted-foreground">Sender</p>
-                <p className="mt-1 font-medium text-foreground">
-                  IEOSUIA
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-sm text-muted-foreground">Delivery</p>
-                <p className="mt-1 font-medium text-foreground">
-                  {formData.scheduleType === "now"
-                    ? "Send Immediately"
-                    : `${formData.scheduleDate} at ${formData.scheduleTime}`}
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-muted/50 p-4">
-              <p className="text-sm font-medium text-foreground">Message</p>
-              {abTestEnabled ? (
-                <div className="mt-2 space-y-3">
-                  <div className="rounded-lg border border-primary/30 bg-card p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">A</div>
-                      <span className="text-xs text-muted-foreground">Variant A ({abSplitPercent}%)</span>
-                    </div>
-                    <p className="text-sm text-foreground">{abMessageA || "No message"}</p>
-                  </div>
-                  <div className="rounded-lg border border-accent/30 bg-card p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">B</div>
-                      <span className="text-xs text-muted-foreground">Variant B ({100 - abSplitPercent}%)</span>
-                    </div>
-                    <p className="text-sm text-foreground">{abMessageB || "No message"}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-foreground">
-                  {formData.message || "No message entered"}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between rounded-xl border-2 border-primary bg-primary/5 p-4">
-              <div className="flex items-center gap-3">
-                <CreditCard className="h-6 w-6 text-primary" />
-                <div>
-                  <p className="font-medium text-foreground">Estimated Cost</p>
-                  <p className="text-sm text-muted-foreground">
-                    {smsCount} SMS × 1,250 recipients
-                  </p>
-                </div>
-              </div>
-              <p className="text-2xl font-bold text-primary">
-                {estimatedCredits.toLocaleString()} credits
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Navigation */}
-        <div className="mt-8 flex items-center justify-between border-t border-border pt-6">
-          <Button
-            variant="outline"
-            onClick={handleBack}
-            disabled={currentStep === 1}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-
-          {currentStep < 5 ? (
-            <Button onClick={handleNext} className="gap-2">
-              Continue
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting} className="gap-2">
-              {isSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              {isSubmitting ? "Sending..." : "Send Campaign"}
-            </Button>
-          )}
-        </div>
-      </div>
-    </DashboardLayout>
-  );
+    </div>
+  </DashboardLayout>;
 }

@@ -14,7 +14,7 @@ class RealtimeController
     {
         // Verify admin access
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }
@@ -112,7 +112,7 @@ class RealtimeController
     public static function poll(): void
     {
         $user = Auth::user();
-        if (!$user || $user['account_type'] !== 'admin') {
+        if (!$user || !Auth::isAdmin()) {
             Response::error('Unauthorized', 403);
             return;
         }

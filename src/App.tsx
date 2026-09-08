@@ -8,10 +8,6 @@ import { AdminRoute } from "@/components/auth/AdminRoute";
 
 import { CookieConsent } from "@/components/CookieConsent";
 import Landing from "./pages/Landing";
-import Login from "./pages/Login";
-import AdminLogin from "./pages/AdminLogin";
-import Register from "./pages/Register";
-import GoogleCallback from "./pages/GoogleCallback";
 import VerifyEmail from "./pages/VerifyEmail";
 import VerifyEmailReminder from "./pages/VerifyEmailReminder";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -39,12 +35,13 @@ import Support from "./pages/Support";
 import Documentation from "./pages/Documentation";
 import Careers from "./pages/Careers";
 import Contact from "./pages/Contact";
+import CentralAuthRedirect from "@/components/auth/CentralAuthRedirect";
 
-import CreateEmailCampaign from "./pages/CreateEmailCampaign";
 import AdminDashboard from "./pages/AdminDashboard";
-import AutomatedTestDashboard from "./pages/AutomatedTestDashboard";
+import AdminOperations from "./pages/AdminOperations";
 import Pricing from "./pages/Pricing";
 import AdminManagement from "./pages/AdminManagement";
+import AdminOperationalLogs from "./pages/AdminOperationalLogs";
 
 const queryClient = new QueryClient();
 
@@ -59,12 +56,13 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/pricing" element={<Pricing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<CentralAuthRedirect />} />
+            <Route path="/register" element={<CentralAuthRedirect mode="signup" />} />
+            <Route path="/auth/callback" element={<CentralAuthRedirect callback />} />
+            <Route path="/guymhan/auth/callback" element={<CentralAuthRedirect mode="admin" callback />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/verify-email-reminder" element={<ProtectedRoute><VerifyEmailReminder /></ProtectedRoute>} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/auth/google/callback" element={<GoogleCallback />} />
             <Route path="/terms-of-service" element={<TermsOfService />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/cookie-policy" element={<CookiePolicy />} />
@@ -82,8 +80,8 @@ const App = () => (
             <Route path="/sms-campaigns/new" element={<ProtectedRoute requireVerified><CreateSmsCampaign /></ProtectedRoute>} />
             <Route path="/sms-campaigns/:id" element={<ProtectedRoute requireVerified><CampaignDetails /></ProtectedRoute>} />
             <Route path="/email-campaigns" element={<ProtectedRoute requireVerified><EmailCampaigns /></ProtectedRoute>} />
-            <Route path="/email-campaigns/new" element={<ProtectedRoute requireVerified><CreateEmailCampaign /></ProtectedRoute>} />
-            <Route path="/email-campaigns/:id" element={<ProtectedRoute requireVerified><CampaignDetails /></ProtectedRoute>} />
+            <Route path="/email-campaigns/new" element={<Navigate to="/email-campaigns" replace />} />
+            <Route path="/email-campaigns/:id" element={<Navigate to="/email-campaigns" replace />} />
             <Route path="/contacts" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
             <Route path="/contacts/import" element={<ProtectedRoute requireVerified><Contacts /></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute requireVerified><Templates /></ProtectedRoute>} />
@@ -95,12 +93,11 @@ const App = () => (
             <Route path="/reports/compare" element={<ProtectedRoute requireVerified><CampaignComparison /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             
-            <Route path="/test-dashboard" element={<ProtectedRoute><AutomatedTestDashboard /></ProtectedRoute>} />
-            
-            {/* Admin Routes */}
-            <Route path="/admin/login" element={<AdminLogin />} />
-            <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-            <Route path="/admin/users" element={<AdminRoute><AdminManagement /></AdminRoute>} />
+            <Route path="/guymhan/login" element={<CentralAuthRedirect mode="admin" />} />
+            <Route path="/guymhan" element={<AdminRoute><AdminOperations /></AdminRoute>} />
+            <Route path="/guymhan/tools" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+            <Route path="/guymhan/users" element={<AdminRoute><AdminManagement /></AdminRoute>} />
+            <Route path="/guymhan/logs" element={<AdminRoute><AdminOperationalLogs /></AdminRoute>} />
             
             <Route path="*" element={<NotFound />} />
           </Routes>

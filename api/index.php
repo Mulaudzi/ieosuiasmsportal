@@ -13,6 +13,7 @@ require_once __DIR__ . '/core/JWT.php';
 require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/RateLimiter.php';
 require_once __DIR__ . '/core/EmailValidator.php';
+require_once __DIR__ . '/core/Config.php';
 
 // Load services (with graceful handling)
 $emailServicePath = __DIR__ . '/services/EmailService.php';
@@ -20,8 +21,13 @@ if (file_exists($emailServicePath)) {
     require_once $emailServicePath;
 }
 
-// CORS Headers
-header('Access-Control-Allow-Origin: *');
+// CORS Headers: fail closed to the configured frontend origin.
+$allowedOrigin = rtrim((string) env('FRONTEND_URL', ''), '/');
+$requestOrigin = rtrim((string) ($_SERVER['HTTP_ORIGIN'] ?? ''), '/');
+if ($allowedOrigin !== '' && $requestOrigin === $allowedOrigin) {
+    header('Access-Control-Allow-Origin: ' . $allowedOrigin);
+    header('Vary: Origin');
+}
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 header('Content-Type: application/json');
@@ -47,28 +53,50 @@ $router = new Router();
 
 // Health check
 $router->get('/up', function() {
-    Response::success(['status' => 'ok', 'timestamp' => date('c')]);
+    $database = false; $services = [];
+    try { db()->query('SELECT 1'); $database = true; $services = table('service_heartbeats')->get(); } catch (Throwable) {}
+    Response::success(['status' => $database ? 'ok' : 'degraded', 'database' => $database, 'services' => array_map(fn($row)=>['name'=>$row['service_name'],'last_seen_at'=>$row['last_seen_at']],$services), 'timestamp' => date('c')], $database ? 200 : 503);
+});
+
+// Deployment readiness includes the asynchronous processes required to move
+// queued messages and reconcile delivery receipts. Keep /up as the lightweight
+// web/database health probe and use /ready as the production readiness gate.
+$router->get('/ready', function() {
+    $required=[
+        'sms-worker'=>max(30,(int)env('SMS_WORKER_HEALTH_MAX_AGE_SECONDS',120)),
+        'sms-scheduler'=>max(60,(int)env('SMS_SCHEDULER_HEALTH_MAX_AGE_SECONDS',180)),
+        'sms-dlr-poller'=>max(120,(int)env('SMS_DLR_POLLER_HEALTH_MAX_AGE_SECONDS',300)),
+    ];
+    try{
+        db()->query('SELECT 1');
+        $rows=table('service_heartbeats')->get();$byName=[];
+        foreach($rows as $row)$byName[(string)$row['service_name']]=$row;
+        $services=[];$ready=true;$now=time();
+        foreach($required as $name=>$maxAge){
+            $last=$byName[$name]['last_seen_at']??null;$timestamp=$last?strtotime((string)$last):false;
+            $age=$timestamp===false?null:max(0,$now-$timestamp);$healthy=$age!==null&&$age<=$maxAge;
+            if(!$healthy)$ready=false;
+            $metadata=json_decode((string)($byName[$name]['metadata_json']??''),true);if(!is_array($metadata))$metadata=[];
+            $services[$name]=['healthy'=>$healthy,'last_seen_at'=>$last,'age_seconds'=>$age,'max_age_seconds'=>$maxAge,'metrics'=>$metadata];
+        }
+        Response::success(['status'=>$ready?'ready':'not_ready','database'=>true,'services'=>$services,'timestamp'=>date('c')],$ready?200:503);
+    }catch(Throwable $e){
+        error_log('Readiness check failed: '.$e->getMessage());
+        Response::success(['status'=>'not_ready','database'=>false,'services'=>[],'timestamp'=>date('c')],503);
+    }
 });
 
 // Auth routes (public)
-$router->post('/auth/register', 'AuthController@register');
-$router->post('/auth/login', 'AuthController@login');
-$router->post('/auth/forgot-password', 'AuthController@forgotPassword');
-$router->post('/auth/reset-password', 'AuthController@resetPassword');
-$router->post('/auth/verify-email', 'AuthController@verifyEmail');
-
-// Admin email check (public - for login form detection)
-$router->post('/admin/check-email', 'AdminUserController@checkEmail');
+$router->post('/auth/register', 'IeosuiaAuthController@disabled');
+$router->get('/auth/ieosuia/start', 'IeosuiaAuthController@start');
+$router->get('/auth/ieosuia/callback', 'IeosuiaAuthController@callback');
+$router->post('/auth/login', 'IeosuiaAuthController@disabled');
+$router->post('/auth/forgot-password', 'IeosuiaAuthController@disabled');
+$router->post('/auth/reset-password', 'IeosuiaAuthController@disabled');
+$router->post('/auth/verify-email', 'IeosuiaAuthController@disabled');
 
 // Admin user management (public but requires setup key)
-$router->post('/admin-users/create', 'AdminUserController@create');
-$router->post('/admin-users/update-password', 'AdminUserController@updatePassword');
-
-// Google OAuth routes (public)
-$router->get('/auth/google/status', 'GoogleAuthController@status');
-$router->get('/auth/google/url', 'GoogleAuthController@getAuthUrl');
-$router->post('/auth/google/callback', 'GoogleAuthController@callback');
-$router->post('/auth/google/credential', 'GoogleAuthController@signInWithCredential');
+$router->post('/admin-users/create', 'IeosuiaAuthController@disabled');
 
 // Protected routes
 $router->group(['middleware' => 'auth'], function($router) {
@@ -93,12 +121,21 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/admin/users/{id}/activate', 'AdminController@activateUser');
     $router->post('/admin/users/{id}/deactivate', 'AdminController@deactivateUser');
     $router->put('/admin/users/{id}/role', 'AdminController@changeRole');
-    // Sender IDs route removed
     $router->get('/admin/audit-logs', 'AdminController@auditLogs');
     $router->get('/admin/audit-logs/export', 'AdminController@exportAuditLogs');
     $router->get('/admin/system-health', 'AdminController@systemHealth');
     $router->get('/admin/activity-heatmap', 'AdminController@activityHeatmap');
     $router->get('/admin/heatmap/export', 'AdminController@exportHeatmap');
+    $router->get('/admin/operations/overview', 'AdminOperationsController@overview');
+    $router->get('/admin/operations/services', 'AdminOperationsController@services');
+    $router->get('/admin/operations/provider', 'AdminOperationsController@provider');
+    $router->get('/admin/operations/logs', 'AdminOperationsController@logs');
+    $router->get('/admin/operations/customers', 'AdminOperationsController@customers');
+    $router->get('/admin/operations/customers/{id}', 'AdminOperationsController@customer');
+    $router->get('/admin/operations/campaigns', 'AdminOperationsController@campaigns');
+    $router->get('/admin/operations/campaigns/{id}', 'AdminOperationsController@campaign');
+    $router->get('/admin/operations/finance', 'AdminOperationsController@finance');
+    $router->post('/admin/operations/payments/{id}/retry-receipt', 'AdminOperationsController@retryPaymentReceipt');
     
     // Admin user management (authenticated)
     $router->get('/admin-users', 'AdminUserController@list');
@@ -144,11 +181,6 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/realtime/poll', 'RealtimeController@poll');
     $router->post('/admin/realtime/cleanup', 'RealtimeController@cleanup');
     
-    // E2E Test Console (all authenticated users)
-    $router->post('/e2e/run', 'E2ETestController@runTests');
-    $router->get('/e2e/health', 'E2ETestController@healthCheck');
-    $router->get('/e2e/phpunit', 'E2ETestController@runPhpunit');
-    
     // Dashboard
     $router->get('/dashboard/stats', 'DashboardController@stats');
     $router->get('/dashboard/chart', 'DashboardController@chart');
@@ -159,6 +191,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/contacts', 'ContactController@index');
     $router->post('/contacts', 'ContactController@store');
     $router->post('/contacts/bulk-delete', 'ContactController@bulkDelete');
+    $router->post('/contacts/bulk-add-to-group', 'ContactController@bulkAddToGroup');
     $router->post('/contacts/import', 'ContactController@import');
     $router->get('/contacts/export', 'ContactController@export');
     $router->get('/contacts/{id}', 'ContactController@show');
@@ -178,24 +211,25 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->put('/templates/{id}', 'TemplateController@update');
     $router->delete('/templates/{id}', 'TemplateController@destroy');
     
-    // SMS Campaigns
-    $router->get('/sms/campaigns', 'CampaignController@smsIndex');
-    $router->post('/sms/campaigns', 'CampaignController@smsStore');
-    $router->get('/sms/campaigns/{id}', 'CampaignController@smsShow');
-    $router->post('/sms/campaigns/{id}/send', 'CampaignController@smsSend');
-    $router->post('/sms/campaigns/{id}/cancel', 'CampaignController@cancel');
-    $router->post('/sms/campaigns/{id}/duplicate', 'CampaignController@duplicate');
-    $router->get('/sms/campaigns/{id}/export', 'CampaignController@exportMessages');
-    $router->delete('/sms/campaigns/{id}', 'CampaignController@destroy');
-    
+    // Canonical SMS MVP API
+    $router->post('/sms/preview', 'SmsController@preview');
+    $router->get('/sms/campaigns-v2', 'SmsController@index');
+    $router->post('/sms/campaigns-v2', 'SmsController@store');
+    $router->get('/sms/campaigns-v2/{id}', 'SmsController@show');
+    $router->post('/sms/campaigns-v2/{id}/queue', 'SmsController@queue');
+    $router->post('/sms/campaigns-v2/{id}/retry', 'SmsController@retry');
+    $router->post('/sms/campaigns-v2/{id}/cancel', 'SmsController@cancel');
+    $router->get('/sms/campaigns-v2/{id}/messages', 'SmsController@messages');
+    $router->get('/sms/campaigns-v2/{id}/export', 'SmsController@export');
+
     // Email Campaigns
-    $router->get('/email/campaigns', 'CampaignController@emailIndex');
-    $router->post('/email/campaigns', 'CampaignController@emailStore');
-    $router->get('/email/campaigns/{id}', 'CampaignController@emailShow');
-    $router->post('/email/campaigns/{id}/send', 'CampaignController@emailSend');
-    $router->post('/email/campaigns/{id}/duplicate', 'CampaignController@duplicate');
-    $router->get('/email/campaigns/{id}/export', 'CampaignController@exportMessages');
-    $router->delete('/email/campaigns/{id}', 'CampaignController@destroy');
+    $router->get('/email/campaigns', 'CampaignController@emailComingSoon');
+    $router->post('/email/campaigns', 'CampaignController@emailComingSoon');
+    $router->get('/email/campaigns/{id}', 'CampaignController@emailComingSoon');
+    $router->post('/email/campaigns/{id}/send', 'CampaignController@emailComingSoon');
+    $router->post('/email/campaigns/{id}/duplicate', 'CampaignController@emailComingSoon');
+    $router->get('/email/campaigns/{id}/export', 'CampaignController@emailComingSoon');
+    $router->delete('/email/campaigns/{id}', 'CampaignController@emailComingSoon');
     
     // Campaign utilities
     $router->post('/campaigns/check-credits', 'CampaignController@checkCredits');
@@ -205,16 +239,14 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/attachments/upload', 'CampaignController@uploadAttachment');
     $router->delete('/attachments/{id}', 'CampaignController@deleteAttachment');
     
-    // Sender IDs - REMOVED
-    
     // Wallet
     $router->get('/wallet', 'WalletController@index');
     $router->get('/wallet/stats', 'WalletController@stats');
     $router->get('/wallet/transactions', 'WalletController@transactions');
     $router->get('/wallet/payments', 'WalletController@payments');
+    $router->get('/wallet/payments/export', 'WalletController@exportPayments');
     $router->get('/wallet/payments/status', 'WalletController@paymentStatus');
     $router->get('/wallet/receipt', 'WalletController@receipt');
-    $router->get('/wallet/packages', 'WalletController@packages');
     $router->post('/wallet/buy', 'WalletController@buy');
     
     // Settings
@@ -230,6 +262,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/reports/campaigns', 'ReportController@campaigns');
     $router->get('/reports/messages', 'ReportController@messages');
     $router->get('/reports/export', 'ReportController@export');
+    $router->post('/reports/email', 'ReportController@emailReport');
     $router->get('/reports/compare', 'ReportController@compare');
     $router->get('/reports/ab-test-results', 'ReportController@abTestResults');
     $router->post('/reports/ab-test-winner', 'ReportController@selectAbTestWinner');
@@ -241,7 +274,8 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->delete('/opt-outs/{id}', 'OptOutController@destroy');
     
     // Email limits check
-    $router->get('/email/limits', 'CampaignController@emailLimits');
+    $router->get('/email/limits', 'CampaignController@emailComingSoon');
+    $router->get('/dlr/status/{messageId}', 'DlrController@status');
 });
 
 // Contact Form (public)
@@ -250,14 +284,14 @@ $router->post('/contact', 'ContactFormController@submit');
 // Email Bounce Webhook (public with secret validation)
 $router->post('/webhooks/email/bounce', 'ContactFormController@bounceWebhook');
 
-// DLR Webhook (public with secret validation) - Legacy
-$router->post('/dlr/webhook', 'DlrController@webhook');
-$router->get('/dlr/status/{messageId}', 'DlrController@status');
+// Both historical and current provider URLs feed the canonical SMS ledger.
+$router->post('/dlr/webhook', 'LogicSmsWebhookController@delivery');
+$router->get('/dlr/webhook', 'LogicSmsWebhookController@delivery');
+$router->post('/webhooks/logicsms/dlr', 'LogicSmsWebhookController@delivery');
+$router->get('/webhooks/logicsms/dlr', 'LogicSmsWebhookController@delivery');
+$router->post('/webhooks/logicsms/dlr/{token}', 'LogicSmsWebhookController@delivery');
+$router->get('/webhooks/logicsms/dlr/{token}', 'LogicSmsWebhookController@delivery');
 
-// Telnyx Webhooks (public with signature validation)
-$router->post('/webhooks/telnyx/dlr', 'TelnyxWebhookController@dlr');
-$router->post('/webhooks/telnyx/dlr-failover', 'TelnyxWebhookController@dlrFailover');
-$router->post('/webhooks/telnyx/inbound', 'TelnyxWebhookController@inbound');
 
 // Payment Webhooks (public with signature validation)
 $router->post('/payments/payos/callback', 'PaymentWebhookController@payosCallback');

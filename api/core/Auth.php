@@ -22,8 +22,12 @@ class Auth {
         
         $user = table('users')->where('id', $payload['sub'])->first();
         
-        if (!$user) {
+        if (!$user || !(bool) ($user['is_active'] ?? true)) {
             Response::error('User not found', 401);
+        }
+
+        if ((int) ($payload['ver'] ?? 1) !== (int) ($user['auth_version'] ?? 1)) {
+            Response::error('Session has been invalidated', 401);
         }
         
         self::$user = $user;
@@ -45,7 +49,10 @@ class Auth {
             if ($token) {
                 $payload = JWT::decode($token);
                 if ($payload && isset($payload['sub'])) {
-                    self::$user = table('users')->where('id', $payload['sub'])->first();
+                    $user = table('users')->where('id', $payload['sub'])->first();
+                    if ($user && (bool) ($user['is_active'] ?? true) && (int) ($payload['ver'] ?? 1) === (int) ($user['auth_version'] ?? 1)) {
+                        self::$user = $user;
+                    }
                     self::$tokenChecked = true;
                 }
             }
@@ -77,6 +84,7 @@ class Auth {
             'sub' => $user['id'],
             'email' => $user['email'],
             'name' => $user['name'],
+            'ver' => (int) ($user['auth_version'] ?? 1),
         ]);
     }
     
@@ -89,10 +97,7 @@ class Auth {
             return false;
         }
         
-        return (bool) table('user_roles')
-            ->where('user_id', self::$user['id'])
-            ->where('role', $role)
-            ->first();
+        return strtolower((string) (self::$user['role'] ?? 'user')) === strtolower($role);
     }
     
     public static function isAdmin(): bool {
@@ -112,6 +117,7 @@ class Auth {
             'phone' => $user['phone'] ?? null,
             'avatar_url' => $user['avatar_url'] ?? null,
             'account_type' => $user['account_type'] ?? 'standard',
+            'role' => $user['role'] ?? 'user',
             'email_verified' => !empty($user['email_verified_at']),
             'email_verified_at' => $user['email_verified_at'] ?? null,
             'created_at' => $user['created_at'] ?? null,

@@ -30,7 +30,7 @@ const generalFaqs = [
   },
   {
     question: "What are SMS credits and how do they work?",
-    answer: "SMS credits are used to send messages. Each standard SMS (160 characters) costs 1 credit. Longer messages use multiple credits. You can purchase credits from the Wallet section. New accounts receive 5 free credits to get started.",
+    answer: "Add ZAR funds in the Wallet section before sending. Each recipient is charged R0.35 for every billable SMS segment. Longer messages and Unicode content may use multiple segments.",
   },
   {
     question: "How do I import contacts?",
@@ -66,7 +66,7 @@ const generalFaqs = [
   },
   {
     question: "Can I send to international numbers?",
-    answer: "Currently we support South African mobile numbers. International messaging support is coming soon. Contact support for enterprise international messaging needs.",
+    answer: "The launch service is priced and configured for South African mobile numbers. Contact support before using international destinations so routing and pricing can be confirmed.",
   },
   {
     question: "How do I cancel a scheduled campaign?",
@@ -77,7 +77,7 @@ const generalFaqs = [
 const pricingFaqs = [
   {
     question: "How much does each SMS cost?",
-    answer: "SMS pricing depends on your plan and volume. Starter plan includes 30 free SMS/month. Pro plan at R299/month includes unlimited SMS. Individual credits can be purchased starting from R50 for smaller volumes.",
+    answer: "The launch price is R0.35 including VAT per billable SMS segment. Add prepaid ZAR funds to your wallet; longer or Unicode messages may use multiple segments.",
   },
   {
     question: "What payment methods do you accept?",
@@ -85,23 +85,19 @@ const pricingFaqs = [
   },
   {
     question: "Do credits expire?",
-    answer: "Purchased credits do not expire. Free credits included in monthly plans reset each billing cycle. Your credit balance is always visible in your Wallet.",
+    answer: "Purchased SMS credits do not expire while your account remains active. Your available credits are visible in the SMS Credits section.",
   },
   {
     question: "Can I get a refund on unused credits?",
     answer: "Credits are non-refundable once purchased. However, they never expire so you can use them whenever you need. Contact support for exceptional circumstances.",
   },
   {
-    question: "Is there a free trial?",
-    answer: "Yes! New accounts receive 5 free SMS credits to test the platform. You can explore all features with the Starter plan at no cost.",
+    question: "How do I buy SMS credits?",
+    answer: "Open SMS Credits, choose a payment amount of at least R10, and complete PayOS checkout or EFT. Credits become available only after payment confirmation.",
   },
   {
-    question: "How do I upgrade my plan?",
-    answer: "Go to Settings > Subscription to view available plans. Select the plan you want and complete the payment. Your new plan benefits are available immediately.",
-  },
-  {
-    question: "What's included in the Pro plan?",
-    answer: "Pro plan (R299/month) includes unlimited SMS, full template customization, automated reminders, advanced reports, SMS & email sending, and priority support.",
+    question: "Is unlimited SMS included?",
+    answer: "No. SMS usage is prepaid and charged per billable segment. Enterprise volume pricing requires an approved quotation.",
   },
   {
     question: "Do you offer volume discounts?",

@@ -442,10 +442,10 @@ export default function Settings() {
             <Lock className="h-4 w-4" />
             <span className="hidden sm:inline">Security</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-2">
+          {false && <TabsTrigger value="notifications" className="gap-2">
             <Bell className="h-4 w-4" />
             <span className="hidden sm:inline">Notifications</span>
-          </TabsTrigger>
+          </TabsTrigger>}
           <TabsTrigger value="get-started" className="gap-2">
             <Zap className="h-4 w-4" />
             <span className="hidden sm:inline">Get Started</span>
@@ -815,7 +815,7 @@ export default function Settings() {
         </TabsContent>
 
         {/* Notifications Tab */}
-        <TabsContent value="notifications">
+        {false && <TabsContent value="notifications">
           <div className="rounded-xl border border-border bg-card p-6">
             <h3 className="text-lg font-semibold text-foreground">
               Notification Preferences
@@ -874,7 +874,7 @@ export default function Settings() {
               </div>
             </div>
           </div>
-        </TabsContent>
+        </TabsContent>}
 
         {/* Get Started Tab */}
         <TabsContent value="get-started">

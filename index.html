@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        var path = window.location.pathname.replace(/\/+$/, '') || '/';
+        if (path === '/login' && !window.location.hash.includes('ieosuia_token=')) window.location.replace('/api/auth/ieosuia/start');
+        if (path === '/register') window.location.replace('/api/auth/ieosuia/start?screen_hint=signup');
+      })();
+    </script>
     <title>IEOSUIA SMS Portal</title>
     <meta name="description" content="IEOSUIA SMS Portal for SMS and email campaign management." />
     <meta name="author" content="IEOSUIA SMS Portal" />

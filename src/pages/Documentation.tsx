@@ -123,7 +123,7 @@ const quickStart = [
   {
     step: 1,
     title: "Create Your Account",
-    description: "Sign up for free and verify your email address to get started with 5 free SMS credits.",
+    description: "Create your account, verify your email address, and add ZAR funds to your wallet before sending.",
   },
   {
     step: 2,

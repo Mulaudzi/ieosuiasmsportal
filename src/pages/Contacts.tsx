@@ -55,7 +55,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { getContacts, getContactGroups, deleteContacts, deleteContactGroup, exportContacts, handleApiError } from "@/lib/api";
+import { getContacts, getContactGroups, deleteContacts, deleteContactGroup, exportContacts, addContactsToGroup, handleApiError } from "@/lib/api";
 import { ContactImportModal } from "@/components/contacts/ContactImportModal";
 import { AddContactModal } from "@/components/contacts/AddContactModal";
 import { EditContactModal } from "@/components/contacts/EditContactModal";
@@ -102,6 +102,8 @@ export default function Contacts() {
   const [selectedGroupsForDelete, setSelectedGroupsForDelete] = useState<Set<string>>(new Set());
   const [deleteContactsWithGroups, setDeleteContactsWithGroups] = useState(false);
   const [deletingGroups, setDeletingGroups] = useState(false);
+  const [addToGroupDialogOpen,setAddToGroupDialogOpen]=useState(false);
+  const [targetGroupId,setTargetGroupId]=useState('');
   const [pagination, setPagination] = useState({ page: 1, total: 0, limit: 50 });
   const [sortOrder, setSortOrder] = useState("newest");
 
@@ -195,17 +197,23 @@ if (groupsRes?.success) {
   };
 
   const handleAddToGroup = async () => {
-    if (selectedContacts.length === 0) return;
+    if (selectedContacts.length === 0 || !targetGroupId) return;
     setLoadingAction("addToGroup");
-    // TODO: Implement add to group API
-    setTimeout(() => {
+    try {
+      const response=await addContactsToGroup(selectedContacts,targetGroupId);
       toast({
         title: "Contacts added to group",
-        description: `${selectedContacts.length} contacts added.`,
+        description: `${response.added ?? response.data?.added ?? 0} added; ${response.already_present ?? response.data?.already_present ?? 0} already present.`,
       });
       setSelectedContacts([]);
+      setAddToGroupDialogOpen(false);
+      setTargetGroupId('');
+      await loadData();
+    } catch(error) {
+      handleApiError(error);
+    } finally {
       setLoadingAction(null);
-    }, 1000);
+    }
   };
 
   const handleBulkDelete = async () => {
@@ -359,6 +367,16 @@ if (groupsRes?.success) {
         group={groupToEdit}
         onSuccess={loadData}
       />
+      <Dialog open={addToGroupDialogOpen} onOpenChange={setAddToGroupDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add contacts to group</DialogTitle><DialogDescription>Select a group for the {selectedContacts.length} selected contacts.</DialogDescription></DialogHeader>
+          <Select value={targetGroupId} onValueChange={setTargetGroupId}>
+            <SelectTrigger><SelectValue placeholder="Select a group" /></SelectTrigger>
+            <SelectContent>{groups.map(group=><SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}</SelectContent>
+          </Select>
+          <DialogFooter><Button variant="outline" onClick={()=>setAddToGroupDialogOpen(false)}>Cancel</Button><Button onClick={handleAddToGroup} disabled={!targetGroupId||loadingAction==='addToGroup'}>{loadingAction==='addToGroup'&&<Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Add contacts</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DashboardLayout
         title="Contacts"
         subtitle="Manage your contact lists and groups"
@@ -514,7 +532,7 @@ if (groupsRes?.success) {
                   {selectedContacts.length} selected
                 </span>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={handleAddToGroup} disabled={loadingAction === "addToGroup"}>
+                  <Button variant="outline" size="sm" onClick={()=>setAddToGroupDialogOpen(true)} disabled={groups.length===0}>
                     {loadingAction === "addToGroup" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
                     Add to Group
                   </Button>

@@ -8,6 +8,7 @@ interface User {
   phone?: string;
   avatar_url?: string;
   account_type?: string;
+  role?: "user" | "admin";
   email_verified?: boolean;
   email_verified_at?: string | null;
   created_at?: string;
@@ -19,7 +20,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isEmailVerified: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, password2?: string, password3?: string) => Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }>;
+  login: (email: string, password: string, pin?: string) => Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }>;
   register: (data: { name: string; email: string; password: string; accountType: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -27,7 +28,6 @@ interface AuthContextType {
   forgotPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string, otp: string, password: string) => Promise<{ success: boolean; error?: string }>;
   updateUser: (data: Partial<User> & { password?: string; current_password?: string; password_confirmation?: string }) => Promise<{ success: boolean; error?: string }>;
-  setAuthFromGoogle: (user: User, token: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -109,7 +109,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
+    let cancelled = false;
+    const centralToken = new URLSearchParams(window.location.hash.slice(1)).get("ieosuia_token");
+    if (centralToken) {
+      localStorage.setItem(TOKEN_KEY, centralToken);
+      localStorage.setItem(TOKEN_ISSUED_KEY, Date.now().toString());
+      localStorage.removeItem(USER_KEY);
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    }
+    const storedToken = centralToken || localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
     const storedIssuedAt = localStorage.getItem(TOKEN_ISSUED_KEY);
     
@@ -129,17 +137,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         handleLogout();
       }
+      setIsLoading(false);
+    } else if (storedToken) {
+      setToken(storedToken);
+      fetch(`${API_URL}/auth/user`, { headers: { Authorization: `Bearer ${storedToken}` } })
+        .then(async response => {
+          const data = await response.json();
+          if (!response.ok || !data.success || !data.user) throw new Error('Unable to load account');
+          if (!cancelled) {
+            setUser(data.user);
+            localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+            setIsLoading(false);
+            scheduleTokenRefresh(Date.now());
+          }
+        })
+        .catch(() => { if (!cancelled) { handleLogout(); setIsLoading(false); } });
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
 
     return () => {
+      cancelled = true;
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
       }
     };
   }, []);
 
-  const login = async (email: string, password: string, password2?: string, password3?: string): Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }> => {
+  const login = async (email: string, password: string, pin?: string): Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }> => {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
@@ -147,8 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ 
           email, 
           password, 
-          password_2: password2,
-          password_3: password3,
+          pin,
         }),
       });
 
@@ -173,8 +197,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Check if admin auth is required (3 passwords needed)
-      if (data.success && (data.data as Record<string, unknown>)?.requires_admin_auth) {
+      // Preserve compatibility with an explicit admin-auth challenge response.
+      if (data.success && (data.requires_admin_auth || (data.data as Record<string, unknown>)?.requires_admin_auth)) {
         return { success: false, requires_admin_auth: true };
       }
 
@@ -224,6 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           phone: userObj.phone as string | undefined,
           avatar_url: userObj.avatar_url as string | undefined,
           account_type: userObj.account_type as string | undefined,
+          role: (userObj.role as "user" | "admin" | undefined) ?? "user",
           email_verified: userObj.email_verified as boolean | undefined,
           email_verified_at: userObj.email_verified_at as string | undefined,
           created_at: userObj.created_at as string | undefined,
@@ -302,16 +327,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Register error:", error);
       return { success: false, error: "Network error. Please check your connection." };
     }
-  };
-
-  const setAuthFromGoogle = (userData: User, authToken: string) => {
-    const issuedAt = Date.now();
-    setToken(authToken);
-    setUser(userData);
-    localStorage.setItem(TOKEN_KEY, authToken);
-    localStorage.setItem(USER_KEY, JSON.stringify(userData));
-    localStorage.setItem(TOKEN_ISSUED_KEY, issuedAt.toString());
-    scheduleTokenRefresh(issuedAt);
   };
 
   const verifyEmail = async (verificationToken: string): Promise<{ success: boolean; error?: string }> => {
@@ -478,7 +493,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         forgotPassword,
         resetPassword,
         updateUser,
-        setAuthFromGoogle,
       }}
     >
       {children}
