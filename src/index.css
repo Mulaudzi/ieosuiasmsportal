@@ -301,3 +301,49 @@
     }
   }
 }
+
+/* Mobile application shell. Shared dashboard pages inherit these guards so
+   desktop tables and fixed-width controls cannot widen the phone viewport. */
+@media (max-width: 1023px) {
+  html, body, #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  main, main > *, header, header > * {
+    min-width: 0;
+  }
+
+  main .overflow-x-auto {
+    max-width: calc(100vw - 1.5rem);
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  main table {
+    min-width: 680px;
+  }
+
+  [role="dialog"] {
+    width: calc(100vw - 1rem) !important;
+    max-width: calc(100vw - 1rem) !important;
+    max-height: calc(100dvh - 1rem) !important;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 639px) {
+  main .grid-cols-2,
+  main .grid-cols-3,
+  main .grid-cols-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  main input,
+  main select,
+  main textarea,
+  main button {
+    max-width: 100%;
+  }
+}

@@ -36,7 +36,12 @@ const adminNavigation = [
   { name: "Platform Managers", href: "/guymhan/users", icon: Users },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  mobile?: boolean;
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { smsCredits, pricePerCredit, isLoading: walletLoading } = useWallet();
@@ -56,11 +61,13 @@ export function Sidebar() {
 
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar">
+    <aside className={cn(
+      mobile ? "h-full w-full bg-sidebar" : "fixed left-0 top-0 z-40 hidden h-[100dvh] w-64 bg-sidebar lg:block"
+    )}>
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex h-16 items-center border-b border-sidebar-border px-6">
-          <Link to="/dashboard">
+          <Link to="/dashboard" onClick={onNavigate}>
             <LogoSidebar size="md" />
           </Link>
         </div>
@@ -77,6 +84,7 @@ export function Sidebar() {
               <Link
                 key={item.name}
                 to={item.href}
+                onClick={onNavigate}
                 className={cn(
                   "nav-item group",
                   isActive && "active"
@@ -106,6 +114,7 @@ export function Sidebar() {
                   <Link
                     key={item.name}
                     to={item.href}
+                    onClick={onNavigate}
                     className={cn(
                       "nav-item group",
                       isActive && "active"
@@ -141,6 +150,7 @@ export function Sidebar() {
           <p className="text-xs text-sidebar-muted">1 credit = 1 segment · R{pricePerCredit.toFixed(2)}</p>
           <Link
             to="/wallet"
+            onClick={onNavigate}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Buy Credits
@@ -152,11 +162,12 @@ export function Sidebar() {
           <div className="flex items-center gap-3 rounded-lg px-3 py-2">
             <Link 
               to="/settings"
+              onClick={onNavigate}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-accent text-sm font-medium text-sidebar-primary-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
             >
               {user ? getInitials(user.name) : 'U'}
             </Link>
-            <Link to="/settings" className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
+            <Link to="/settings" onClick={onNavigate} className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
               <p className="truncate text-sm font-medium text-sidebar-primary-foreground">
                 {user?.name || 'User'}
               </p>
