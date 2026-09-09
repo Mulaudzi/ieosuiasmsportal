@@ -9,7 +9,7 @@ interface LogoProps {
   variant?: "light" | "dark";
 }
 
-export function Logo({ size = "md", linkTo = "/landing", className = "", variant = "light" }: LogoProps) {
+export function Logo({ size = "md", linkTo = "/", className = "", variant = "light" }: LogoProps) {
   const sizes = {
     sm: "h-8",
     md: "h-10",
@@ -29,7 +29,7 @@ export function Logo({ size = "md", linkTo = "/landing", className = "", variant
   );
 
   if (linkTo) {
-    return <Link to={linkTo}>{content}</Link>;
+    return <Link to={linkTo === "/landing" ? "/" : linkTo}>{content}</Link>;
   }
 
   return content;

@@ -55,6 +55,7 @@ const App = () => (
           <CookieConsent />
           <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/landing" element={<Navigate to="/" replace />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/login" element={<CentralAuthRedirect />} />
             <Route path="/register" element={<CentralAuthRedirect mode="signup" />} />
