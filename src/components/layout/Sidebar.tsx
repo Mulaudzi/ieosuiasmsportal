@@ -2,7 +2,6 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   MessageSquare,
-  Mail,
   Users,
   FileText,
   Wallet,
@@ -13,6 +12,7 @@ import {
   Shield,
   Bug,
   Loader2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,7 +22,6 @@ import { LogoSidebar } from "@/components/layout/Logo";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "SMS Campaigns", href: "/sms-campaigns", icon: MessageSquare },
-  { name: "Email Campaigns · Soon", href: "/email-campaigns", icon: Mail },
   { name: "Contacts", href: "/contacts", icon: Users },
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Wallet", href: "/wallet", icon: Wallet },
@@ -66,10 +65,20 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
     )}>
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-16 items-center border-b border-sidebar-border px-6">
+        <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4 sm:px-6">
           <Link to="/dashboard" onClick={onNavigate}>
             <LogoSidebar size="md" />
           </Link>
+          {mobile && (
+            <button
+              type="button"
+              onClick={onNavigate}
+              className="grid h-10 w-10 place-items-center rounded-xl text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+              aria-label="Close navigation"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
 
         {/* Navigation */}

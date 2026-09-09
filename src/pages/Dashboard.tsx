@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/loading-skeleton";
 import {
   MessageSquare,
-  Mail,
   Users,
   CheckCircle,
   Plus,
@@ -30,11 +29,9 @@ import {
 
 interface DashboardData {
   smsSent: number;
-  emailsSent: number;
   contacts: number;
   deliveryRate: string;
   smsChange: string;
-  emailChange: string;
   contactsChange: string;
   deliveryChange: string;
 }
@@ -45,11 +42,9 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData>({
     smsSent: 0,
-    emailsSent: 0,
     contacts: 0,
     deliveryRate: "0%",
     smsChange: "No data yet",
-    emailChange: "No data yet",
     contactsChange: "Add contacts to get started",
     deliveryChange: "Send messages to see stats",
   });
@@ -75,7 +70,6 @@ export default function Dashboard() {
         const stats = (response.data ?? response) as any;
         setData({
           smsSent: stats.total_sent || 0,
-          emailsSent: stats.emails_sent || 0,
           contacts: stats.total_contacts || 0,
           deliveryRate: stats.delivery_rate 
             ? `${stats.delivery_rate}%` 
@@ -83,9 +77,6 @@ export default function Dashboard() {
           smsChange: stats.total_sent > 0 
             ? `${stats.total_delivered || 0} delivered` 
             : "No messages sent yet",
-          emailChange: stats.emails_sent > 0 
-            ? `${stats.emails_delivered || 0} delivered` 
-            : "No emails sent yet",
           contactsChange: stats.total_contacts > 0 
             ? `${stats.active_campaigns || 0} active campaigns` 
             : "Import contacts to start",
@@ -129,20 +120,13 @@ export default function Dashboard() {
                 New SMS Campaign
               </Button>
             </Link>
-            <Link to="/email-campaigns/new">
-              <Button variant="outline" className="gap-2">
-                <Mail className="h-4 w-4" />
-                New Email Campaign
-              </Button>
-            </Link>
           </div>
         }
       >
         {/* Quick Stats */}
-        <div id="metrics-section" className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div id="metrics-section" className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {loading ? (
             <>
-              <MetricCardSkeleton />
               <MetricCardSkeleton />
               <MetricCardSkeleton />
               <MetricCardSkeleton />
@@ -161,20 +145,6 @@ export default function Dashboard() {
                   changeType="positive"
                   icon={MessageSquare}
                   iconColor="primary"
-                />
-              </FeatureTooltip>
-              <FeatureTooltip
-                title="Email Performance"
-                description="Total emails delivered to your contacts. Monitor campaign effectiveness."
-                tip="Personalize subject lines to boost open rates by up to 26%!"
-              >
-                <MetricCard
-                  title="Total Emails Sent"
-                  value={data.emailsSent}
-                  change={data.emailChange}
-                  changeType="positive"
-                  icon={Mail}
-                  iconColor="accent"
                 />
               </FeatureTooltip>
               <FeatureTooltip
