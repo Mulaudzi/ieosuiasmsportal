@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://sms.ieosuia.com/api";
 
 export default function CentralAuthRedirect({ mode = "login", callback = false }: { mode?: "login" | "signup" | "admin"; callback?: boolean }) {
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams(window.location.hash.slice(1));
     const customerToken = params.get("ieosuia_token");
