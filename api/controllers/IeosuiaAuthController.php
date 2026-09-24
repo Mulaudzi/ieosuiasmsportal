@@ -36,14 +36,14 @@ final class IeosuiaAuthController
         $pending = is_array($_SESSION['ieosuia_oauth'] ?? null) ? $_SESSION['ieosuia_oauth'] : $this->readFlowCookie();
         unset($_SESSION['ieosuia_oauth']);
         $this->clearFlowCookie();
-        if (!is_array($pending) || time() - (int) ($pending['created_at'] ?? 0) > 600 || !isset($_GET['state'], $_GET['code']) || !hash_equals((string) ($pending['state'] ?? ''), (string) $_GET['state'])) {
+        if (!is_array($pending) || time() - (int) ($pending['created_at'] ?? 0) > 900 || !isset($_GET['state'], $_GET['code']) || !hash_equals((string) ($pending['state'] ?? ''), (string) $_GET['state'])) {
             $this->fail('invalid_response');
         }
 
         $tokens = $this->request('/oauth/token', ['grant_type' => 'authorization_code', 'client_id' => env('AUTH_CLIENT_ID', 'sms-web'), 'redirect_uri' => $this->redirectUri(), 'code' => (string) $_GET['code'], 'code_verifier' => (string) $pending['verifier']]);
         $profile = $this->request('/oauth/userinfo', null, (string) ($tokens['access_token'] ?? ''));
         $type = (string) ($pending['account_type'] ?? 'customer');
-        if (($profile['account_type'] ?? '') !== $type || empty($profile['sub']) || empty($profile['email']) || empty($profile['email_verified'])) $this->fail('identity_not_allowed');
+        if (($profile['account_type'] ?? '') !== $type || ($profile['application'] ?? '') !== 'sms' || empty($profile['sub']) || empty($profile['email']) || empty($profile['email_verified'])) $this->fail('identity_not_allowed');
         $uuid = (string) $profile['sub'];
         $email = strtolower((string) $profile['email']);
 
@@ -72,7 +72,8 @@ final class IeosuiaAuthController
         if ($user) {
             if (!empty($user['identity_uuid']) && !hash_equals((string) $user['identity_uuid'], $uuid)) $this->fail('identity_conflict');
             if (($user['role'] ?? 'user') === 'admin') $this->fail('local_access_missing');
-            table('users')->where('id', $user['id'])->update(['identity_uuid' => $uuid, 'name' => $name, 'is_active' => 1, 'email_verified_at' => $user['email_verified_at'] ?? date('Y-m-d H:i:s'), 'last_login_at' => date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')]);
+            if (!(bool)($user['is_active'] ?? false)) $this->fail('local_access_missing');
+            table('users')->where('id', $user['id'])->update(['identity_uuid' => $uuid, 'name' => $name, 'email_verified_at' => $user['email_verified_at'] ?? date('Y-m-d H:i:s'), 'last_login_at' => date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')]);
             return table('users')->where('id', $user['id'])->first();
         }
 
@@ -111,7 +112,7 @@ final class IeosuiaAuthController
     {
         $payload = $this->b64(json_encode($pending, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         $signature = $this->b64(hash_hmac('sha256', $payload, $this->flowSecret(), true));
-        setcookie(self::FLOW_COOKIE, $payload.'.'.$signature, ['expires' => time() + 600, 'path' => '/api/auth/ieosuia', 'secure' => $this->https(), 'httponly' => true, 'samesite' => 'Lax']);
+        setcookie(self::FLOW_COOKIE, $payload.'.'.$signature, ['expires' => time() + 900, 'path' => '/api/auth/ieosuia', 'secure' => $this->https(), 'httponly' => true, 'samesite' => 'Lax']);
     }
 
     private function readFlowCookie(): ?array
