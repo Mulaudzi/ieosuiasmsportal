@@ -6,6 +6,10 @@
 class Auth {
     private static $user = null;
     private static $tokenChecked = false;
+
+    public static function ensureRevocationTable(): void {
+        db()->exec("CREATE TABLE IF NOT EXISTS revoked_auth_tokens (token_hash CHAR(64) PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, token_type ENUM('customer','admin') NOT NULL, expires_at DATETIME NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_revoked_auth_tokens_user (user_id,token_type), INDEX idx_revoked_auth_tokens_expiry (expires_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    }
     
     public static function check(): void {
         $token = Request::bearerToken();
@@ -24,6 +28,13 @@ class Auth {
         
         if (!$user || !(bool) ($user['is_active'] ?? true)) {
             Response::error('User not found', 401);
+        }
+
+        self::ensureRevocationTable();
+        $revoked = db()->prepare('SELECT 1 FROM revoked_auth_tokens WHERE token_hash = ? AND expires_at >= NOW() LIMIT 1');
+        $revoked->execute([hash('sha256', $token)]);
+        if ($revoked->fetchColumn()) {
+            Response::error('Session has been invalidated', 401);
         }
 
         if ((int) ($payload['ver'] ?? 1) !== (int) ($user['auth_version'] ?? 1)) {
@@ -49,6 +60,13 @@ class Auth {
             if ($token) {
                 $payload = JWT::decode($token);
                 if ($payload && isset($payload['sub'])) {
+                    self::ensureRevocationTable();
+                    $revoked = db()->prepare('SELECT 1 FROM revoked_auth_tokens WHERE token_hash = ? AND expires_at >= NOW() LIMIT 1');
+                    $revoked->execute([hash('sha256', $token)]);
+                    if ($revoked->fetchColumn()) {
+                        self::$tokenChecked = true;
+                        return null;
+                    }
                     $user = table('users')->where('id', $payload['sub'])->first();
                     if ($user && (bool) ($user['is_active'] ?? true) && (int) ($payload['ver'] ?? 1) === (int) ($user['auth_version'] ?? 1)) {
                         self::$user = $user;
@@ -115,7 +133,7 @@ class Auth {
             'name' => $user['name'],
             'email' => $user['email'],
             'phone' => $user['phone'] ?? null,
-            'avatar_url' => $user['avatar_url'] ?? null,
+            'avatar_url' => !empty($user['avatar_url']) ? '/api/uploads/avatars/' . basename($user['avatar_url']) : null,
             'account_type' => $user['account_type'] ?? 'standard',
             'role' => $user['role'] ?? 'user',
             'email_verified' => !empty($user['email_verified_at']),

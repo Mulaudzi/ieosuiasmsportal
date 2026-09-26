@@ -9,6 +9,7 @@ final class IeosuiaAuthController
         $this->session();
         $type = ($_GET['account_type'] ?? 'customer') === 'admin' ? 'admin' : 'customer';
         $screenHint = (($_GET['screen_hint'] ?? '') === 'signup' && $type === 'customer') ? 'signup' : 'login';
+        $prompt = ($_GET['prompt'] ?? '') === 'login' ? 'login' : '';
         $verifier = $this->b64(random_bytes(48));
         $state = $this->b64(random_bytes(32));
         $pending = ['verifier' => $verifier, 'state' => $state, 'account_type' => $type, 'created_at' => time()];
@@ -22,6 +23,7 @@ final class IeosuiaAuthController
             'scope' => 'openid profile email',
             'account_type' => $type,
             'screen_hint' => $screenHint,
+            'prompt' => $prompt,
             'state' => $state,
             'code_challenge' => $this->b64(hash('sha256', $verifier, true)),
             'code_challenge_method' => 'S256',

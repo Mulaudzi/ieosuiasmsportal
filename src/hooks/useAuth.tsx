@@ -45,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const signingOutRef = useRef(false);
 
   const scheduleTokenRefresh = (tokenIssuedAt: number) => {
     if (refreshTimeoutRef.current) {
@@ -66,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshToken = async () => {
+    if (signingOutRef.current) return;
     const currentToken = localStorage.getItem(TOKEN_KEY);
     if (!currentToken) return;
 
@@ -80,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         const data = await response.json();
+        if (signingOutRef.current) return;
         if (data.success && data.data?.token) {
           const newToken = data.data.token;
           const issuedAt = Date.now();
@@ -110,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    const centralToken = new URLSearchParams(window.location.hash.slice(1)).get("ieosuia_token");
+    const centralToken = localStorage.getItem('ieosuia_explicit_logout') ? null : new URLSearchParams(window.location.hash.slice(1)).get("ieosuia_token");
     if (centralToken) {
       localStorage.setItem(TOKEN_KEY, centralToken);
       localStorage.setItem(TOKEN_ISSUED_KEY, Date.now().toString());
@@ -162,6 +165,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(refreshTimeoutRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const synchronizeLogout = (event: StorageEvent) => {
+      if (event.key !== 'ieosuia_explicit_logout' || !event.newValue) return;
+      signingOutRef.current = true;
+      handleLogout();
+    };
+    window.addEventListener('storage', synchronizeLogout);
+    return () => window.removeEventListener('storage', synchronizeLogout);
   }, []);
 
   const login = async (email: string, password: string, pin?: string): Promise<{ success: boolean; error?: string; requires_admin_auth?: boolean; remaining_attempts?: number }> => {
@@ -423,10 +436,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async (): Promise<void> => {
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    localStorage.setItem('ieosuia_explicit_logout', Date.now().toString());
+    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+    // Stay on the current screen until revocation completes. Clearing React state
+    // first lets the protected-route guard race us into central SSO again.
     try {
       const currentToken = token || localStorage.getItem(TOKEN_KEY);
       if (currentToken) {
         await fetch(`${API_URL}/auth/logout`, {
+          signal: AbortSignal.timeout(8000),
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -437,7 +457,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
-      handleLogout();
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(TOKEN_ISSUED_KEY);
+      sessionStorage.removeItem('redirectAfterLogin');
+      window.location.replace('https://auth.ieosuia.com/oauth/logout?client_id=sms-web&post_logout_redirect_uri=https%3A%2F%2Fsms.ieosuia.com%2F%3Fsigned_out%3D1');
     }
   };
 

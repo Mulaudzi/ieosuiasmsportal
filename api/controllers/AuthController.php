@@ -245,7 +245,14 @@ class AuthController {
      * Logout user
      */
     public function logout(): void {
-        if (Auth::id()) db()->prepare('UPDATE users SET auth_version=auth_version+1 WHERE id=?')->execute([Auth::id()]);
+        $token = Request::bearerToken();
+        $payload = $token ? JWT::decode($token) : null;
+        if ($token && $payload && isset($payload['sub'])) {
+            Auth::ensureRevocationTable();
+            $expiresAt = date('Y-m-d H:i:s', max(time() + 60, (int) ($payload['exp'] ?? time() + 86400)));
+            $statement = db()->prepare("INSERT IGNORE INTO revoked_auth_tokens (token_hash, user_id, token_type, expires_at) VALUES (?, ?, 'customer', ?)");
+            $statement->execute([hash('sha256', $token), (int) $payload['sub'], $expiresAt]);
+        }
         Response::success(['message' => 'Logged out successfully']);
     }
     
@@ -271,6 +278,10 @@ class AuthController {
      */
     public function updateUser(): void {
         $user = Auth::user();
+        if (Request::input('password') !== null) {
+            Response::error('Passwords are managed at https://auth.ieosuia.com/forgot-password. Reset your password through central IEOSUIA authentication.',409);
+            return;
+        }
         
         $data = Request::validate([
             'name' => 'max:100',
@@ -378,7 +389,7 @@ class AuthController {
                     return;
                 }
                 
-                $avatarUrl = env('APP_URL') . '/uploads/avatars/' . $filename;
+                $avatarUrl = '/api/uploads/avatars/' . $filename;
                 table('users')->where('id', $user['id'])->update([
                     'avatar_url' => $avatarUrl,
                     'updated_at' => date('Y-m-d H:i:s'),
@@ -436,7 +447,7 @@ class AuthController {
             return;
         }
         
-        $avatarUrl = env('APP_URL') . '/uploads/avatars/' . $filename;
+        $avatarUrl = '/api/uploads/avatars/' . $filename;
         table('users')->where('id', $user['id'])->update([
             'avatar_url' => $avatarUrl,
             'updated_at' => date('Y-m-d H:i:s'),

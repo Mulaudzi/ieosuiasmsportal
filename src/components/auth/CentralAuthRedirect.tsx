@@ -8,12 +8,16 @@ export default function CentralAuthRedirect({ mode = "login", callback = false }
   useLayoutEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams(window.location.hash.slice(1));
+    const signedOut = localStorage.getItem("ieosuia_explicit_logout");
     const customerToken = params.get("ieosuia_token");
     const adminToken = params.get("ieosuia_admin_token");
     const token = customerToken || adminToken;
+    if (token && signedOut) { window.location.replace("/?signed_out=1"); return; }
     if (!token) {
       if (callback) { setError("We could not complete the secure sign-in. Please try again."); return; }
-      const query = mode === "signup" ? "?screen_hint=signup" : mode === "admin" ? "?account_type=admin" : "";
+      const fresh = signedOut ? "prompt=login" : "";
+      localStorage.removeItem("ieosuia_explicit_logout");
+      const query = mode === "signup" ? "?screen_hint=signup" : mode === "admin" ? `?account_type=admin${fresh ? `&${fresh}` : ""}` : fresh ? `?${fresh}` : "";
       window.location.replace(`/api/auth/ieosuia/start${query}`);
       return;
     }
