@@ -66,7 +66,7 @@ class EmailService
     /**
      * Send email using PHPMailer
      */
-    public static function send(string $to, string $subject, string $htmlBody, ?string $textBody = null, ?string $replyTo = null): array
+    public static function send(string $to, string $subject, string $htmlBody, ?string $textBody = null, ?string $replyTo = null, array $attachments = []): array
     {
         try {
             $mail = self::getMailer();
@@ -74,6 +74,10 @@ class EmailService
             // Clear previous recipients
             $mail->clearAddresses();
             $mail->clearReplyTos();
+            $mail->clearAttachments();
+            foreach($attachments as $attachment){
+                $mail->addStringAttachment($attachment['data'],$attachment['name'],'base64',$attachment['type']);
+            }
 
             // Recipient
             $mail->addAddress($to);

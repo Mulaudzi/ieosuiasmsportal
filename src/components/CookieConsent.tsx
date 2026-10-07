@@ -60,7 +60,7 @@ export function CookieConsent() {
                   <p className="text-sm text-muted-foreground mb-4">
                     We use cookies to enhance your browsing experience, analyze site traffic, and personalize content. 
                     By clicking "Accept All", you consent to our use of cookies. Read our{" "}
-                    <Link to="/cookie-policy" className="text-primary hover:underline">Privacy Policy</Link>
+                    <Link to="/cookie-policy" className="text-primary underline underline-offset-2">Cookie Policy</Link>
                     {" "}to learn more.
                   </p>
                 </div>

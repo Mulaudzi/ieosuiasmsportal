@@ -11,8 +11,11 @@ class NotificationController
     public function index(): void
     {
         $userId = Auth::id();
-        $page = (int) Request::query('page', 1);
-        $perPage = (int) Request::query('per_page', 20);
+        $page = max(1,(int) Request::query('page', 1));
+        $perPage = max(1,min(100,(int) Request::query('per_page', 20)));
+        $syncAvailable=true;
+        try { require_once __DIR__.'/../services/CustomerNotificationService.php'; CustomerNotificationService::sync(db(),(int)$userId); }
+        catch(Throwable $e){$syncAvailable=false;error_log('Customer notification reconciliation unavailable: '.get_class($e));}
         
         $notifications = table('notifications')
             ->where('user_id', $userId)
@@ -21,6 +24,8 @@ class NotificationController
             ->offset(($page - 1) * $perPage)
             ->get();
         
+        foreach($notifications as &$item){$item['read']=(bool)(int)$item['read'];$item['data']=is_string($item['data']??null)?json_decode($item['data'],true):($item['data']??null);}
+        unset($item);
         $unreadCount = table('notifications')
             ->where('user_id', $userId)
             ->where('read', 0)
@@ -29,6 +34,8 @@ class NotificationController
         Response::success([
             'notifications' => $notifications,
             'unread_count' => $unreadCount,
+            'sync_available' => $syncAvailable,
+            'has_more' => count($notifications)===$perPage,
         ]);
     }
     
@@ -46,7 +53,7 @@ class NotificationController
             Response::error('Notification not found', 404);
         }
         
-        table('notifications')->where('id', $params['id'])->update([
+        table('notifications')->where('id', $params['id'])->where('user_id', Auth::id())->update([
             'read' => 1,
             'read_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
@@ -86,7 +93,7 @@ class NotificationController
             Response::error('Notification not found', 404);
         }
         
-        table('notifications')->where('id', $params['id'])->delete();
+        table('notifications')->where('id', $params['id'])->where('user_id', Auth::id())->delete();
         
         Response::noContent();
     }

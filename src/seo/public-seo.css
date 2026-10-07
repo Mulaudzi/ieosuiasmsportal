@@ -1,0 +1,22 @@
+.public-breadcrumb{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:18px max(20px,calc((100% - 1120px)/2));font-size:13px;color:#425673;background:#f5f8fc;border-bottom:1px solid #dce5ef}
+.public-breadcrumb a{color:#1454b6;text-decoration:underline;min-height:30px;display:inline-flex;align-items:center}
+.public-guide{max-width:1120px;margin:auto;padding:48px 24px 72px;color:#182d48}
+.public-guide h1{font-size:clamp(30px,4vw,48px);line-height:1.14;letter-spacing:-1px;font-weight:700;max-width:850px;margin:0 0 24px}
+.public-guide .guide-lead{font-size:19px;line-height:1.7;max-width:850px;color:#435b77;margin-bottom:40px}
+.public-guide h2{font-size:26px;line-height:1.3;font-weight:650;margin:0 0 16px}
+.public-guide section{padding:30px 0;border-top:1px solid #dde6f0;max-width:900px}
+.public-guide p,.public-guide li{font-size:16px;line-height:1.85;color:#405773;max-width:850px;margin:0 0 16px}
+.public-guide a{color:#1358bb;text-decoration:underline;text-underline-offset:3px}
+.public-guide ul,.public-guide ol{padding-left:24px;list-style:disc}.public-guide ol{list-style:decimal}
+.public-guide details{border-bottom:1px solid #dbe5f1;padding:18px 0}.public-guide summary{cursor:pointer;font-size:18px;font-weight:650;line-height:1.5}.public-guide details p{margin-top:15px}
+.public-guide .guide-links{display:flex;gap:12px 25px;flex-wrap:wrap;margin-top:30px}.public-guide .guide-links a{display:inline-flex;align-items:center;min-height:44px}
+.public-guide label{display:block;font-weight:600;margin:18px 0 6px}.public-guide input{width:220px;max-width:100%;border:1px solid #879bb4;padding:12px;border-radius:6px}.public-guide output{display:block;font-size:26px;font-weight:700;margin:20px 0}
+.public-guide :focus-visible,.public-breadcrumb :focus-visible{outline:3px solid #1678e8;outline-offset:4px}
+@media(max-width:639px){.public-guide{padding:35px 20px 55px}.public-guide .guide-lead{font-size:17px}.public-guide h2{font-size:23px}}
+.sms-home .ops-section-heading > p,
+.sms-home .ops-audience-groups,
+.sms-home .ops-use-cases article > span,
+.sms-home .ops-rate > span,
+.sms-home .ops-channel-list p { color: #4c6079; }
+.public-legacy { --muted-foreground: 215 20% 35%; --primary: 221 75% 43%; }
+.public-legacy p a, .public-legacy li a { text-decoration: underline; text-underline-offset: 3px; }

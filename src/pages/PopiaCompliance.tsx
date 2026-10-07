@@ -1,21 +1,13 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft, Shield, CheckCircle, AlertCircle } from "lucide-react";
-import { Logo } from "@/components/layout/Logo";
+import { SignedInPublicHeader } from "@/components/layout/PublicChrome";
 import { Footer } from "@/components/layout/Footer";
 
 export default function PopiaCompliance() {
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
-      <nav className="bg-background border-b border-border">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo size="md" linkTo="/landing" />
-          <Link to="/landing" className="inline-flex items-center gap-2 text-primary hover:underline">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Home
-          </Link>
-        </div>
-      </nav>
+      <SignedInPublicHeader />
 
       <div className="max-w-4xl mx-auto px-6 py-12">
         <div className="flex items-center gap-3 mb-6">
@@ -252,7 +244,7 @@ export default function PopiaCompliance() {
                 <strong className="text-foreground">Information Officer:</strong> IEOSUIA PTY LTD<br />
                 <strong className="text-foreground">Email:</strong> <Link to="/contact?purpose=general" className="text-primary hover:underline">Contact us here</Link><br />
                 <strong className="text-foreground">Address:</strong> 26 Rock Alder, Extension 15, Naturena, Johannesburg, 2095<br />
-                <strong className="text-foreground">Phone:</strong> 079 928 2775 / 063 154 0696
+                <strong className="text-foreground">Phone:</strong> +27 63 808 2493
               </p>
             </div>
           </section>

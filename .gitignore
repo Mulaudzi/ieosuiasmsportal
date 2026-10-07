@@ -30,3 +30,9 @@ api/.env
 DEPLOYMENT_ACCESS.local.md
 api/.env.*
 !api/.env.example
+
+# Private verification artifacts and generated Python caches
+.artifacts/
+__pycache__/
+*.pyc
+*.pyo

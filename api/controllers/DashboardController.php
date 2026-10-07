@@ -32,6 +32,7 @@ class DashboardController {
             'total_pending' => $sms['pending'],
             'total_awaiting_delivery' => $sms['awaiting_delivery'],
             'total_dlr_unavailable' => $sms['dlr_unavailable'],
+            'total_skipped' => $sms['skipped'],
             'delivery_rate' => $sms['delivery_rate'],
             'reporting_range'=>$range,'reporting_start'=>$sms['start'],'reporting_end'=>$sms['end'],
             'total_contacts' => $totalContacts,
@@ -55,6 +56,7 @@ class DashboardController {
             ->limit(5)
             ->get();
         
+        $campaigns=SmsReportingService::campaignRecords((int)$userId,$campaigns);
         // Add message counts
         foreach ($campaigns as &$campaign) {
             $campaign['status']=$campaign['state'];

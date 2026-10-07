@@ -102,7 +102,9 @@ class SmsService {
         if(!$this->logicSmsUsername||!$this->logicSmsPassword)return ['success'=>false,'error'=>'LogicSMS is not configured','gateway'=>'logicsms'];
         $url=trim((string)env('LOGICSMS_QUERY_URL','https://www.logicsms.co.za/querysms.aspx'));
         if(!filter_var($url,FILTER_VALIDATE_URL)||strtolower((string)parse_url($url,PHP_URL_SCHEME))!=='https')return ['success'=>false,'error'=>'LogicSMS query URL must use HTTPS','gateway'=>'logicsms'];
-        $identifiers=array_values(array_unique(array_filter([$providerMessageId,$clientReference],static fn($value)=>trim((string)$value)!=='')));
+        // Query the same Unique supplied on send. The returned numeric Id is not
+        // that value (confirmed by LogicSMS support); retain it only for legacy callers.
+        $identifiers=array_values(array_unique(array_filter([$clientReference,$providerMessageId],static fn($value)=>trim((string)$value)!=='')));
         $last=['success'=>false,'error'=>'LogicSMS status could not be resolved','gateway'=>'logicsms'];
         foreach($identifiers as $identifier){
             $params=['username'=>$this->logicSmsUsername,'password'=>$this->logicSmsPassword,'Unique'=>(string)$identifier,'Extended'=>'Y'];
@@ -120,7 +122,10 @@ class SmsService {
                     $body=curl_exec($ch);$error=curl_error($ch);$status=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE);curl_close($ch);$last=self::parseStatusResponse((string)$body,$error,$status);
                 }
             }
-            if(!empty($last['success']))return $last;
+            if(!empty($last['success']))return $last+['lookup_reference'=>(string)$identifier];
+            // Do not mask authentication, transport or malformed-response errors
+            // by trying a different message. Fallback is only for missing records.
+            if(!preg_match('/cannot\s+find|not\s+found/i',(string)($last['error']??'')))return $last;
         }
         return $last;
     }
@@ -139,11 +144,14 @@ class SmsService {
         }
         if($status===''){
             $plain=trim(strip_tags($body));
-            if(preg_match('/(?:status\s*[:=]\s*)?\b(DELIVRD|DELIVERED|DELIVERY_SUCCESS|SUCCESS|UNDELIV|UNDELIVERED|FAILED|REJECTED|EXPIRED|ERROR|CREATE|CREATED|QUEUED|SENT|SUBMITTED|ACCEPTED)\b/i',$plain,$match))$status=$match[1];
+            if(preg_match('/^(?:status\s*[:=]\s*)?(DELIVRD|DELIVERED|DELIVERY_SUCCESS|SUCCESS|UNDELIV|UNDELIVERED|FAILED|REJECTED|EXPIRED|ERROR|INVALID|CREATE|CREATED|QUEUED|SENT|SUBMITTED|ACCEPTED)$/i',$plain,$match))$status=$match[1];
             elseif(strlen($plain)<=80)$status=$plain;
         }
+        // Extended=Y can return e.g. DELIVERED 2026-09-08 20:20:53.
+        // Only accept a status with a date suffix, not arbitrary error prose.
+        if(preg_match('/^(DELIVRD|DELIVERED|DELIVERY_SUCCESS|SUCCESS|UNDELIV|UNDELIVERED|FAILED|REJECTED|EXPIRED|ERROR|INVALID|CREATE|CREATED|QUEUED|SENT|SUBMITTED|ACCEPTED)\s+\d{4}[-\/]\d{2}[-\/]\d{2}[ T]\d{2}:\d{2}:\d{2}$/i',$status,$extended))$status=$extended[1];
         if($status===''||strlen($status)>80)return ['success'=>false,'error'=>'Invalid LogicSMS status response','gateway'=>'logicsms'];
-        if(preg_match('/cannot\s+find|not\s+found|invalid/i',$status))return ['success'=>false,'error'=>$status,'gateway'=>'logicsms'];
+        if(!in_array(strtoupper($status),['DELIVRD','DELIVERED','DELIVERY_SUCCESS','SUCCESS','UNDELIV','UNDELIVERED','FAILED','REJECTED','EXPIRED','ERROR','INVALID','CREATE','CREATED','QUEUED','SENT','SUBMITTED','ACCEPTED'],true))return ['success'=>false,'error'=>$status,'gateway'=>'logicsms'];
         return ['success'=>true,'status'=>$status,'gateway'=>'logicsms'];
     }
 

@@ -15,6 +15,7 @@ require_once __DIR__.'/../domain/SmsSegmentCalculator.php';
 require_once __DIR__.'/../domain/SmsPricing.php';
 require_once __DIR__.'/../domain/RecipientResolver.php';
 require_once __DIR__.'/../domain/TemplatePersonalizer.php';
+require_once __DIR__.'/../domain/SmsOptOut.php';
 require_once __DIR__.'/../domain/PaymentState.php';
 require_once __DIR__.'/../services/PayOSService.php';
 
@@ -23,6 +24,11 @@ function test(string $name, callable $fn): void { global $tests; $tests[] = [$na
 function same(mixed $expected,mixed $actual):void{if($expected!==$actual)throw new RuntimeException('expected '.json_encode($expected).', got '.json_encode($actual));}
 
 test('SA local normalizes',fn()=>same('+27821234567',PhoneNumber::normalize('082 123 4567')));
+test('opt-out enabled appends saved footer',fn()=>same("Hello\nReply STOP",SmsOptOut::compose('Hello',true,'Reply STOP')));
+test('opt-out disabled leaves message unchanged',fn()=>same('Hello',SmsOptOut::compose('Hello',false,'Reply STOP')));
+test('existing footer is not duplicated',fn()=>same("Hello\nReply STOP",SmsOptOut::compose("Hello\nReply STOP",true,'Reply STOP')));
+test('footer counts toward segments',fn()=>same(2,SmsSegmentCalculator::analyze(SmsOptOut::compose(str_repeat('a',155),true,'Reply STOP'))['segment_count']));
+test('unicode footer changes encoding',fn()=>same('ucs2',SmsSegmentCalculator::analyze(SmsOptOut::compose('Hello',true,'停止'))['encoding']));
 test('SA country code normalizes',fn()=>same('+27821234567',PhoneNumber::normalize('27821234567')));
 test('international E164 accepted',fn()=>same('+447911123456',PhoneNumber::normalize('+44 7911 123456')));
 test('ambiguous number rejected',function(){try{PhoneNumber::normalize('7911123456');throw new RuntimeException('not rejected');}catch(InvalidArgumentException){}});

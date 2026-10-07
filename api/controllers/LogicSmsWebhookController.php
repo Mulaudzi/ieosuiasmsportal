@@ -12,7 +12,7 @@ final class LogicSmsWebhookController
         if(!$configured){Response::error('Webhook is not configured',503);return;}
         $supplied=(string)($_SERVER['HTTP_X_WEBHOOK_SECRET']??Request::query('token',Request::query('secret',$params['token']??'')));
         $authenticated=false;foreach($configured as $secret)$authenticated=hash_equals($secret,$supplied)||$authenticated;
-        if($supplied===''||!$authenticated){Response::error('Invalid webhook authentication',403);return;}
+        if($supplied===''||!$authenticated){OperationalLogger::log('warning','logicsms-webhook','dlr_auth_rejected','Delivery callback authentication failed');Response::error('Invalid webhook authentication',403);return;}
 
         $payload=Request::all();
         unset($payload['token']);
@@ -20,7 +20,7 @@ final class LogicSmsWebhookController
         $unique=trim((string)($payload['Unique']??$payload['unique']??$payload['reference']??''));
         $providerStatus=trim((string)($payload['Status']??$payload['status']??$payload['dlr_status']??''));
         $state=LogicSmsDeliveryStatus::normalize($providerStatus);
-        if(($providerId===''&&$unique==='')||$state==='unknown'){Response::error('Unsupported delivery payload',422);return;}
+        if(($providerId===''&&$unique==='')||$state==='unknown'){OperationalLogger::log('warning','logicsms-webhook','dlr_payload_rejected','Delivery callback has no recognized message reference or status');Response::error('Unsupported delivery payload',422);return;}
 
         $message=null;
         if($providerId!=='')$message=table('sms_messages')->where('provider','logicsms')->where('provider_message_id',$providerId)->first();

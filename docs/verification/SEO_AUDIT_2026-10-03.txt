@@ -1,0 +1,360 @@
+IEOSUIA SMS PORTAL: TECHNICAL AND SEMANTIC SEO AUDIT
+Production: https://sms.ieosuia.com/
+Release verified: 3 October 2026, Africa/Johannesburg
+Final assets: index-sFnpEv6n.js and index-DqIpjsql.css
+
+EXECUTIVE RESULT
+Implemented and deployed a scoped public SEO release. All 16 canonical public
+pages return meaningful HTML without JavaScript. Local and live validation passed
+for metadata, responsive layout, structured-data parsing, canonical URLs, internal
+links, sitemap, public images and protected API access. Six useful public guides
+were added without repurposing private campaign routes or creating industry
+doorway pages. The approved homepage positioning and hero are preserved.
+
+No API, PHP, database, payment, messaging, scheduler, opt-out or customer-record
+changes were deployed. Existing account-route guards and central-auth destinations
+are retained. Authenticated page code is loaded separately for performance.
+The unrelated changes already present in the main checkout were not deployed.
+
+1. PAGES CREATED OR CHANGED
+New: /features, /use-cases, /contact-management, /scheduled-sms,
+/delivery-reports and /faq.
+Existing public pages improved: /, /pricing, /documentation, /support, /contact,
+/careers, /privacy-policy, /terms-of-service, /cookie-policy, /popia-compliance.
+The latter legal/careers/contact pages mainly received metadata, static rendering,
+breadcrumbs and accessibility improvements; their existing policy/job claims were
+not independently certified or rewritten as legal advice.
+
+Pricing now describes the actual prepaid SMS model instead of unsupported
+subscription tiers and active email pricing. Documentation describes the real SMS
+workflow instead of advertising unavailable features. A support form previously
+simulated a successful send without submitting an enquiry. It was replaced with
+useful help and a link to the existing working contact form.
+Email Campaigns remain Coming Soon. The functioning contact form was preserved.
+
+2. SEARCH INTENT AND 3. TITLES, DESCRIPTIONS AND CANONICAL INVENTORY
+/
+Intent: Bulk SMS South Africa and branded business messaging discovery.
+Title: IEOSUIA SMS Portal | Bulk SMS South Africa
+Description: Build audiences, send business SMS campaigns and track delivery in South Africa. Manage contacts, schedules and prepaid SMS credits in one IEOSUIA workspace.
+Canonical: https://sms.ieosuia.com/
+
+/features
+Intent: Evaluate available SMS campaign software capabilities.
+Title: SMS Campaign Software & Features | IEOSUIA
+Description: Explore SMS campaigns, saved templates, contact groups, scheduling, delivery reports and prepaid credits. See what the IEOSUIA SMS platform supports.
+Canonical: https://sms.ieosuia.com/features
+
+/use-cases
+Intent: Business SMS workflows for retail, schools, churches, events and service teams.
+Title: Business SMS Use Cases in South Africa | IEOSUIA
+Description: Practical SMS workflows for retailers, schools, churches, events and service teams. Plan contact groups, reminders and updates with responsible messaging.
+Canonical: https://sms.ieosuia.com/use-cases
+
+/contact-management
+Intent: How to import Excel/CSV contacts and organise SMS groups.
+Title: SMS Contact Import & Group Management | IEOSUIA
+Description: Prepare Excel or CSV contacts, map columns, manage groups and exclude opted-out recipients. Learn how to build an SMS campaign audience without losing contacts.
+Canonical: https://sms.ieosuia.com/contact-management
+
+/scheduled-sms
+Intent: How to schedule a campaign and distinguish dispatch from arrival.
+Title: Schedule SMS Campaigns in South Africa | IEOSUIA
+Description: Learn how to prepare and schedule an SMS campaign, check recipients and credits, and distinguish a scheduled send from network delivery confirmation.
+Canonical: https://sms.ieosuia.com/scheduled-sms
+
+/delivery-reports
+Intent: Explain SMS delivery states, missing DLR and message-versus-credit totals.
+Title: SMS Delivery Reports & Status Explained | IEOSUIA
+Description: Understand sent, delivered, failed and pending SMS statuses, including unavailable delivery reports. Review recipients and export campaign results.
+Canonical: https://sms.ieosuia.com/delivery-reports
+
+/faq
+Intent: Answer practical pre-purchase and first-campaign questions.
+Title: Bulk SMS Questions: Credits, Delivery & Opt-Outs | IEOSUIA
+Description: Answers about bulk SMS in South Africa, prepaid pricing, contact imports, scheduling, delivery confirmation, failed messages and opt-outs.
+Canonical: https://sms.ieosuia.com/faq
+
+/pricing
+Intent: SMS cost per segment, minimum purchase and prepaid campaign budgeting.
+Title: Prepaid SMS Pricing: R0.35 per Segment | IEOSUIA
+Description: Estimate SMS costs at R0.35 per billable segment with a minimum R10 purchase. Understand multi-segment messages and prepaid credit requirements.
+Canonical: https://sms.ieosuia.com/pricing
+
+/documentation
+Intent: First-campaign setup and operating workflow.
+Title: SMS Portal Getting Started Guide | IEOSUIA
+Description: Follow the IEOSUIA SMS Portal workflow: prepare contacts, buy credits, compose a campaign, review recipients, schedule sending and check delivery reports.
+Canonical: https://sms.ieosuia.com/documentation
+
+/support
+Intent: Troubleshoot campaign, credit, contact and delivery issues.
+Title: SMS Portal Support & Troubleshooting | IEOSUIA
+Description: Get help with IEOSUIA SMS campaigns, credits, contact imports and delivery statuses. Contact the support team with your campaign or payment reference.
+Canonical: https://sms.ieosuia.com/support
+
+/contact
+Intent: Reach the business and submit a real enquiry.
+Title: Contact IEOSUIA SMS Portal | South Africa
+Description: Contact IEOSUIA SMS Portal for account help, business SMS enquiries and support. Call or WhatsApp 063 154 0696, or send an enquiry using the contact form.
+Canonical: https://sms.ieosuia.com/contact
+
+/careers
+Intent: Branded career and team opportunity enquiries.
+Title: Careers & Opportunities at IEOSUIA
+Description: Explore the IEOSUIA careers page and learn how to enquire about opportunities with the team behind the SMS Portal.
+Canonical: https://sms.ieosuia.com/careers
+
+/privacy-policy
+Intent: Understand published data/privacy terms.
+Title: Privacy Policy | IEOSUIA SMS Portal
+Description: Read the IEOSUIA SMS Portal privacy policy covering personal information, account and contact data, data use, retention and privacy requests.
+Canonical: https://sms.ieosuia.com/privacy-policy
+
+/terms-of-service
+Intent: Understand published service and account terms.
+Title: Terms of Service | IEOSUIA SMS Portal
+Description: Review the terms governing use of IEOSUIA SMS Portal, including accounts, acceptable messaging, service responsibilities and payment conditions.
+Canonical: https://sms.ieosuia.com/terms-of-service
+
+/cookie-policy
+Intent: Understand published cookies, browser storage and preferences.
+Title: Cookie Policy | IEOSUIA SMS Portal
+Description: Learn how IEOSUIA SMS Portal describes its use of cookies and browser storage, and how visitors can manage their cookie preferences.
+Canonical: https://sms.ieosuia.com/cookie-policy
+
+/popia-compliance
+Intent: Find the portal's published POPIA and contact-data information.
+Title: POPIA & Contact Data Information | IEOSUIA SMS Portal
+Description: Read IEOSUIA SMS Portal information about personal information and POPIA. Review responsibilities for contact data, consent and privacy requests.
+Canonical: https://sms.ieosuia.com/popia-compliance
+
+Every public route has its own title, description, canonical, Open Graph title,
+description and URL, plus Twitter/X card metadata. No fake keywords, reviews,
+customer figures or location pages were added. No search-volume estimates or
+ranking promises are asserted. Intended long-tail coverage includes importing
+Excel contacts for SMS, calculating multi-segment SMS credits, scheduling SMS in
+South Africa and understanding unavailable delivery reports.
+
+4. STRUCTURED DATA
+All public pages: Organization, WebSite and WebPage.
+All non-home public pages: BreadcrumbList matching visible Home/current-page links.
+Homepage: SoftwareApplication, describing actual SMS features and browser usage.
+FAQ page: FAQPage using the exact shared questions and answers displayed in native
+expandable details controls. Answers are present in initial HTML, not generated
+for bots or hidden solely for SEO.
+
+Tests parsed JSON-LD on all 16 pages, checked expected types, matching visible FAQ
+answers, and absence of aggregateRating/reviewCount. This is syntax and consistency
+validation, not a claim of external rich-result certification or eligibility.
+No ratings, reviews, certifications, active email product or fictional offers.
+Google may choose not to show FAQ or software rich results for this business.
+
+5. CANONICAL STRATEGY
+Canonical origin is https://sms.ieosuia.com.
+Root has its slash; other public routes have no trailing slash.
+HTTP / and HTTP /pricing/ were verified to redirect directly to their HTTPS
+canonical destinations with one 301, followed by 200.
+/landing and /index.html redirect to /. Direct public-pages/*.html URLs redirect
+to the corresponding clean public URL.
+Tracking/query variants retain functional query parameters but use the clean,
+query-free canonical and Open Graph URL. /contact?purpose=support continues to
+work. /pricing?utm_source=seo-check was verified against /pricing canonical.
+Unknown public URLs now return a genuine HTTP 404 instead of the SPA's 200 shell.
+Existing login/register/admin-login redirects remain unchanged.
+
+6. ROBOTS.TXT
+Public content, required CSS/JS and images remain crawlable.
+Existing private/API/auth exclusions retained; internal public snapshot directory
+excluded to discourage crawling implementation URLs.
+Sitemap: https://sms.ieosuia.com/sitemap.xml
+No user-agent-dependent alternate content or AI-only hidden text.
+Robots.txt is not access control. Its disallow rules can also prevent crawlers from
+seeing a page's noindex; if private URL-only listings already exist, use Search
+Console removal tools and review crawl/noindex policy rather than expecting
+robots.txt alone to deindex them.
+
+7. SITEMAP
+Generated from the public-page manifest: exactly 16 canonical, indexable public URLs.
+No login, registration, account IDs, campaigns, contacts, API or admin routes.
+No fabricated lastmod dates. Add lastmod only when maintained from reliable
+per-page content modification evidence. A sitemap index is unnecessary at this size.
+Build output dist/sitemap.xml is the authoritative generated version.
+
+8. STATIC RENDERING AND CRAWLER STATUS
+scripts/prerender-home.mjs now delegates to scripts/prerender-public.mjs.
+A clean guest browser renders only the explicit public allowlist. Unexpected API
+or external requests fail the build. Each snapshot contains real content, one H1,
+one main landmark, metadata and JSON-LD before JavaScript.
+Homepage raw HTML contains the approved hero, features, pricing, use cases, FAQ
+and legal/footer links. It was checked with JavaScript disabled.
+Private routes use a separate empty app.html with noindex, nofollow and no
+public canonical/schema or serialized authenticated data.
+llms.txt is a concise map of public pages only. It is a discoverability aid, not
+a promise that search or AI services will use it.
+
+9. INTERNAL LINKS AND BREADCRUMBS
+Shared public navigation links to Features, Use Cases, Pricing and Documentation.
+Homepage/footer links surface the new guides and FAQ.
+Guides cross-link to related workflows, costs, support and privacy information.
+Breadcrumbs provide a clear Home/current-page path on deeper public pages.
+Public internal destinations, image URLs and internal fragment targets passed
+HTTP checks. Legacy /landing links resolve through the intentional single 301.
+No bulk keyword-only industry pages were created.
+
+10. CORE WEB VITALS AND PERFORMANCE
+Initial public entry JavaScript:
+Before: 1,546,330 bytes; gzip 409,215 bytes.
+After:    515,374 bytes; gzip 153,454 bytes.
+Reduction: approximately 67% uncompressed and 63% compressed.
+Private charts, reports, contacts and other account screens are lazy-loaded.
+All 60 built JavaScript modules, including lazy account modules, imported
+successfully in a browser with API calls intercepted by the test.
+
+The approved PNG logos were kept unchanged, as explicitly required. They remain
+a significant image-delivery opportunity; no recolouring, cropping or replacement
+was applied to improve a score. There are no external Google Fonts requests or
+new third-party tracking scripts. Hashed assets retain long-lived caching.
+HTML is refreshed rather than cached as an obsolete app shell. The reusable social
+preview has a shorter cache lifetime because its filename is stable.
+
+Lighthouse 13.5.0, mobile simulated throttling, production URLs:
+                         Performance  Accessibility  Best practices  SEO
+Homepage before release       53           96             100        100
+Homepage final release        63          100             100        100
+Pricing final release         81          100             100        100
+FAQ final release             81          100             100        100
+
+                         LCP       CLS       TBT        Server response audit
+Homepage before          6.74 s    0         214 ms     5,119 ms
+Homepage final           6.06 s    0         404 ms       393 ms
+Pricing final            4.21 s    0         225 ms        60 ms
+FAQ final                4.31 s    0         198 ms        58 ms
+
+Final measurements: 2026-10-02 22:33-22:35 UTC, or 3 October locally.
+These are individual lab runs, not a median or guaranteed visitor experience.
+An earlier post-release homepage run reached performance 92 and LCP 1.4 s;
+another exposed a public header initialisation shift of 0.0887. The header issue
+was fixed, and a separate 4x CPU-throttled browser test now reports zero layout
+shift on homepage, pricing and FAQ. The final Lighthouse runs also show zero CLS.
+The earlier high performance score is not presented as the stable final result.
+LCP and homepage blocking time still need improvement; performance is NOT claimed
+to be fully green. Entry-JavaScript reduction does not guarantee lower TBT in every
+run, and the final homepage TBT is worse than the baseline sample.
+
+Lab LCP/CLS/TBT are not field Core Web Vitals or measured real-user INP. No CrUX,
+Search Console or real-user monitoring data was available. Do not claim a field
+CWV pass. Server response times vary and are partly hosting/network dependent;
+the entire observed performance change cannot be attributed to JavaScript changes.
+
+11. LIGHTHOUSE SEO
+See the measurements above. A first post-deploy run scored 92 for SEO solely
+because Lighthouse timed out fetching robots.txt; direct curl and crawler checks
+returned the valid file. This transient result is retained in the raw evidence.
+No functionality, consent controls or useful content was removed just to obtain
+a Lighthouse score.
+
+12. ACCESSIBILITY AND MOBILE
+Axe WCAG 2 A/AA and 2.1 AA scans: zero detected violations across all 16 public
+pages, including a second fresh-visitor pass with the cookie notice visible.
+Fixed low-contrast supporting text, inline link identification and keyboard access
+to horizontally scrollable cookie tables. Corrected the cookie notice link label
+and made it permanently underlined. Consent choices and behavior were not changed.
+One H1 and one main landmark per public page; appropriate image alt attributes.
+Validated all 16 routes at 360, 390, 430, 768 and 1440 pixels with no horizontal
+overflow. Additional homepage checks covered 320, 1024 and 1920 pixels.
+Native FAQ controls also worked without JavaScript. Mobile menu open/Escape,
+pricing calculator and client-side metadata updates passed.
+Desktop/mobile screenshots were inspected and the approved hero remains intact.
+Automated accessibility success does not replace assistive-technology user testing.
+
+13. LIVE CRAWLER AND HTTP VERIFICATION
+All 16 canonical public pages: HTTP 200, meaningful no-JS HTML, unique title/meta,
+correct canonical/OG URL, valid JSON-LD syntax, no console/page errors in tests.
+Public sitemap and robots returned 200; social image is a branded 1200x630 PNG.
+Tested redirects resolve in one hop and preserve established auth entry behavior.
+Unknown URL: HTTP 404 with noindex. Private page shells: X-Robots-Tag noindex,
+nofollow plus matching HTML metadata.
+Unauthenticated /api/dashboard/stats, /api/reports/stats, /api/contacts, /api/wallet,
+/api/sms/campaigns-v2 and /api/auth/user all returned HTTP 401.
+No real SMS was sent, no payment attempted and no customer record changed in tests.
+
+14. DUPLICATE/THIN CONTENT FINDINGS
+Previously the public application shell did not provide route-specific initial
+content/metadata for all help and legal pages. Those routes now have snapshots.
+Unsupported plan tiers, active email marketing claims and placeholder documentation
+were replaced with accurate content.
+Retail, school, church, event and service-team examples are consolidated on a useful
+Use Cases page rather than cloned into near-identical keyword landing pages.
+/sms-campaigns remains an authenticated product route, not a public SEO route.
+The new guides give practical steps, limitations and relevant cross-links. FAQ
+answers are available through genuine user-operable details elements.
+
+15. PRIVATE-ROUTE AND RELEASE SAFEGUARDS
+Existing ProtectedRoute/AdminRoute wrappers and central-auth routing preserved.
+No database/schema migration or backend deployment. Source maps are blocked and
+not included in the public release. Credentials, local evidence, deployment access
+notes, customer records and .env files were not uploaded.
+Public snapshots contain illustrative demo data clearly labelled as such, not
+real customer data or claimed delivery performance.
+Deployment used certificate-validated FTPS, assets before entry documents, byte
+readback verification and local rollback copies. Previous assets were retained.
+Initial rollback: .sms-audit.local/seo-backup-20261002-234150
+Follow-up rollback: .sms-audit.local/seo-backup-20261003-000045
+Layout correction rollback: .sms-audit.local/seo-backup-20261003-002427
+
+16. REMAINING LIMITS AND FOLLOW-UP WORK
+- Google Search Console and Bing ownership verification/sitemap submission need
+  the owner's real tokens or DNS access. Nothing was fabricated or submitted.
+- Actual indexing, ranking, social-platform cache refresh and external rich-result
+  eligibility are not proven by these technical tests.
+- Field LCP/CLS/INP remain unmeasured. Collect sufficient real-user data.
+- Hosting response time is variable. Consider hosting/CDN investigation based on
+  repeated measurements, not a single score.
+- Approved high-resolution PNG logos and remaining public JavaScript/CSS provide
+  further optimization scope. Any logo-asset change needs to respect approved usage.
+- React still mounts the interactive application over the public snapshot. A future
+  genuine SSR/hydration architecture may reduce repeat render work, but was not
+  introduced here because it would require broader auth/rendering regression work.
+  A local hydrateRoot trial against browser-generated snapshots produced React
+  hydration errors. It was rejected and reverted, never deployed. A proper initial
+  server-rendered tree is required; suppressing hydration errors is not a fix.
+- Existing legal text, dates and careers opportunities need owner review for
+  factual currency. No legal-compliance guarantee or job authenticity was invented.
+- Existing hosting configuration emits some duplicate security headers. The strict
+  CSP remained active; host-level header consolidation was outside this scoped
+  release and should be tested separately.
+- TypeScript and the production build passed. The existing lint command hit a
+  dependency filesystem read error; Vitest workers timed out before running tests.
+  Those suites are NOT claimed as passing. The dedicated browser/SEO checks above
+  did run and pass. This was not an end-to-end payment/SMS business regression test.
+- If any private URLs are already indexed, review removal/noindex crawlability in
+  Search Console; blocking crawling and requesting deindexing are different actions.
+
+17. NEXT CONTENT OPPORTUNITIES
+Prioritise real support/search-query evidence after Search Console is verified:
+- A detailed worked guide to GSM, Unicode, personalisation and segment budgeting.
+- An illustrated Excel/CSV preparation and duplicate-handling walkthrough.
+- A scheduling checklist covering timezones, review and troubleshooting.
+- A delivery-status troubleshooting guide using anonymised, authorised examples.
+- Genuine customer case studies only with permission and documented outcomes.
+- Expand industry guides only when there are genuinely distinct workflows and
+  useful examples, not to repeat the same page for additional keywords.
+Maintain actual product and pricing changes without invented freshness dates.
+
+EVIDENCE AND REPRODUCTION
+Local raw evidence is under .sms-audit.local:
+seo-before.json, seo-after.json, seo-final-home.json, seo-final-pricing.json,
+seo-final-faq.json, seo-validation.json, seo-accessibility.json, seo-http-live.json,
+seo-home-1440.png and seo-home-390.png.
+seo-hydration-rejected.json records the failed local-only optimisation trial.
+These files are local audit artifacts and were not published on the website.
+See docs/verification/SEO_OPERATIONS.txt for build, tests, verification-token
+locations, sitemap submission and safe release guidance.
+Source manifest: src/seo/public-pages.json. It contains all current metadata.
+
+Reference guidance:
+https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
+https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
+https://web.dev/articles/vitals-measurement-getting-started
+https://web.dev/articles/vitals

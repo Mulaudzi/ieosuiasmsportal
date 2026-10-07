@@ -1,0 +1,13 @@
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+const source=readFileSync(new URL('../src/lib/contact-import-result.ts',import.meta.url),'utf8');
+const js=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.ES2020}}).outputText;
+const {contactImportResult}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+assert.deepEqual(contactImportResult({success:true,imported:7,duplicates:2,failed:1}),{imported:7,duplicates:2,failed:1});
+assert.deepEqual(contactImportResult({success:true,data:{imported:7,duplicates:2,failed:1}}),{imported:7,duplicates:2,failed:1});
+assert.deepEqual(contactImportResult({imported:0,duplicates:9,failed:0}),{imported:0,duplicates:9,failed:0});
+assert.deepEqual(contactImportResult({imported:'3',duplicates:'0',failed:'0'}),{imported:3,duplicates:0,failed:0});
+assert.throws(()=>contactImportResult({success:true}));
+assert.throws(()=>contactImportResult({imported:-1,duplicates:0,failed:0}));
+console.log('6 contact-import result checks passed');

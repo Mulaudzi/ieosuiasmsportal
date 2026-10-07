@@ -106,6 +106,7 @@ export default function Contacts() {
   const [targetGroupId,setTargetGroupId]=useState('');
   const [pagination, setPagination] = useState({ page: 1, total: 0, limit: 50 });
   const [sortOrder, setSortOrder] = useState("newest");
+  const [optedOutCount, setOptedOutCount] = useState(0);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -122,6 +123,7 @@ export default function Contacts() {
       
      // ---------- CONTACTS ----------
 if (contactsRes?.success) {
+  setOptedOutCount(Number((contactsRes.meta as { opted_out_total?: number | string } | undefined)?.opted_out_total ?? 0));
   const contactsData = Array.isArray(contactsRes.data)
     ? contactsRes.data
     : [];
@@ -348,7 +350,6 @@ if (groupsRes?.success) {
   };
 
   const totalContacts = groups.reduce((acc, g) => acc + (parseInt(String(g.contact_count || 0), 10)), 0);
-  const optedOutCount = contacts.filter(c => c.subscription_status === "unsubscribed").length;
 
   return (
     <>
@@ -382,7 +383,7 @@ if (groupsRes?.success) {
         subtitle="Manage your contact lists and groups"
         actions={
           <div className="flex gap-3">
-            <Button variant="outline" size="icon" onClick={loadData} disabled={loading}>
+            <Button aria-label="Refresh contacts" variant="outline" size="icon" onClick={loadData} disabled={loading}>
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             </Button>
             <Button variant="outline" className="gap-2" onClick={() => setImportModalOpen(true)}>
@@ -406,7 +407,7 @@ if (groupsRes?.success) {
             <div className="rounded-xl border border-border bg-card p-4">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="font-semibold text-foreground">Groups</h3>
-                <Button variant="ghost" size="icon" onClick={() => setCreateGroupModalOpen(true)}>
+                <Button aria-label="Create group" variant="ghost" size="icon" onClick={() => setCreateGroupModalOpen(true)}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -556,16 +557,10 @@ if (groupsRes?.success) {
               ) : contacts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Users className="h-12 w-12 text-muted-foreground/50" />
-                  <p className="mt-4 text-lg font-medium text-foreground">No contacts found</p>
+                  <p className="mt-4 text-lg font-medium text-foreground">{searchQuery ? 'No matching contacts' : 'No contacts yet.'}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {searchQuery ? "Try adjusting your search" : "Add contacts to get started"}
+                    {searchQuery ? "Try adjusting your search" : "Add a contact to start a campaign."}
                   </p>
-                  {!searchQuery && (
-                    <Button onClick={() => setAddContactModalOpen(true)} className="mt-4 gap-2">
-                      <UserPlus className="h-4 w-4" />
-                      Add Contact
-                    </Button>
-                  )}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -623,7 +618,7 @@ if (groupsRes?.success) {
                           <td className="px-4 py-4 text-muted-foreground">{formatDate(contact.created_at)}</td>
                           <td className="px-4 py-4">
                             <div className="flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => handleEditContact(contact)}>
+                              <Button aria-label="Edit contact" variant="ghost" size="icon" onClick={() => handleEditContact(contact)}>
                                 <Edit className="h-4 w-4" />
                               </Button>
                               <Button 

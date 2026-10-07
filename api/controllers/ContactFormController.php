@@ -16,6 +16,19 @@ use PHPMailer\PHPMailer\Exception;
 
 class ContactFormController
 {
+    private static function recipientForPurpose(string $purpose): ?string
+    {
+        return in_array($purpose, ['general', 'support', 'sales'], true)
+            ? 'support@ieosuia.com' : null;
+    }
+
+    private static function siteSubject(string $detail): string
+    {
+        // The site identity is server-owned, never taken from the submitted origin URL.
+        return '[IEOSUIA SMS Portal | sms.ieosuia.com] '
+            . trim(preg_replace('/[\r\n]+/', ' ', $detail));
+    }
+
     /**
      * Submit contact form - public endpoint with spam protection
      */
@@ -60,19 +73,13 @@ class ContactFormController
         }
         
         // Validate purpose and get recipient email
-        $purposeEmails = [
-            'general' => 'hello@ieosuia.com',
-            'support' => 'support@ieosuia.com',
-            'sales' => 'hello@ieosuia.com',
-        ];
-        
         $purpose = $data['purpose'];
-        if (!isset($purposeEmails[$purpose])) {
+        $recipientEmail = self::recipientForPurpose($purpose);
+        if ($recipientEmail === null) {
             Response::error('Invalid inquiry purpose', 400);
             return;
         }
         
-        $recipientEmail = $purposeEmails[$purpose];
         $ccEmail = 'info@ieosuia.com';
         
         // Sanitize inputs
@@ -87,7 +94,7 @@ class ContactFormController
             'support' => 'Support Request',
             'sales' => 'Sales Inquiry',
         ];
-        $subject = "[{$purposeLabels[$purpose]}] Contact Form - {$name}";
+        $subject = self::siteSubject("{$purposeLabels[$purpose]} - {$name}");
         
         // Build HTML email body
         $html = self::getContactEmailTemplate($name, $senderEmail, $message, $purpose, $purposeLabels[$purpose], $originUrl);
@@ -184,7 +191,7 @@ class ContactFormController
             }
             
             $appName = env('SMTP_FROM_NAME', 'IEOSUIA SMS Portal');
-            $subject = "🔔 New {$purposeLabel} from {$senderName}";
+            $subject = self::siteSubject("New {$purposeLabel} from {$senderName}");
             $frontendUrl = env('FRONTEND_URL', 'https://sms.ieosuia.com');
             
             $messagePreview = strlen($message) > 200 ? substr($message, 0, 200) . '...' : $message;
@@ -961,7 +968,7 @@ HTML;
     private static function sendConfirmationEmail(string $email, string $name, string $purpose, string $purposeLabel): array
     {
         $appName = env('SMTP_FROM_NAME', 'IEOSUIA SMS Portal');
-        $subject = "We received your message - {$appName}";
+        $subject = self::siteSubject('We received your message');
         
         $html = self::getConfirmationEmailTemplate($name, $purposeLabel);
         
@@ -1095,7 +1102,7 @@ HTML;
                                 Thank you for reaching out to us. We've received your <strong>{$purposeLabel}</strong> and our team will review it shortly.
                             </p>
                             <p style="color: #52525b; line-height: 1.6; margin: 0 0 24px; font-size: 15px;">
-                                We typically respond within <strong>24-48 business hours</strong>. If your matter is urgent, please don't hesitate to reach us via WhatsApp at <a href="https://wa.me/27799282775" style="color: #3b82f6;">+27 79 928 2775</a>.
+                                We typically respond within <strong>24-48 business hours</strong>. If your matter is urgent, please don't hesitate to call us at <a href="tel:+27638082493" style="color: #3b82f6;">+27 63 808 2493</a>.
                             </p>
                             <p style="color: #71717a; font-size: 13px; line-height: 1.5; margin: 0;">
                                 Best regards,<br>
@@ -1128,7 +1135,7 @@ HTML;
         $appName = env('SMTP_FROM_NAME', 'IEOSUIA SMS Portal');
         $adminEmail = 'admin@ieosuia.com';
         $frontendUrl = env('FRONTEND_URL', 'https://sms.ieosuia.com');
-        $subject = "🔔 New Contact Form: {$purposeLabel} from {$senderName}";
+        $subject = self::siteSubject("New Contact Form: {$purposeLabel} from {$senderName}");
         
         $date = date('F j, Y \a\t g:i A');
         

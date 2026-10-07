@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseContactCsv, prepareContactSheet, contactSheetCsv, ImportSheet } from "@/lib/contact-import-file";
 import { importContacts } from "@/lib/api";
+import { contactImportResult, ContactImportResult } from "@/lib/contact-import-result";
 import { toast } from "@/hooks/use-toast";
 
 interface ContactImportModalProps {
@@ -45,7 +47,11 @@ type ColumnMapping = {
 };
 
 export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] }: ContactImportModalProps) {
-  const [step, setStep] = useState<"upload" | "mapping" | "preview" | "importing">("upload");
+  const [step, setStep] = useState<"upload" | "mapping" | "preview" | "importing" | "result" | "reading" | "sheet">("upload");
+  const [result,setResult]=useState<ContactImportResult|null>(null);
+  const readGeneration=useRef(0);
+  const [sheets,setSheets]=useState<ImportSheet[]>([]);
+  const [sheetIndex,setSheetIndex]=useState("0");
   const [file, setFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvData, setCsvData] = useState<string[][]>([]);
@@ -56,13 +62,16 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
     email: "",
     group: "",
   });
-  const [skipFirstRow, setSkipFirstRow] = useState(true);
+  const skipFirstRow = true;
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");  // Existing group to assign contacts to
   const [parsedContacts, setParsedContacts] = useState<ParsedContact[]>([]);
 
   const resetState = () => {
+    readGeneration.current++;
+    setSheets([]);setSheetIndex("0");
     setStep("upload");
+    setResult(null);
     setFile(null);
     setCsvHeaders([]);
     setCsvData([]);
@@ -76,54 +85,46 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
     onOpenChange(false);
   };
 
-  const parseCSV = (text: string): { headers: string[]; data: string[][] } => {
-    const lines = text.split("\n").filter((line) => line.trim());
-    const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
-    const data = lines.slice(1).map((line) => 
-      line.split(",").map((cell) => cell.trim().replace(/"/g, ""))
-    );
-    return { headers, data };
+  const applySheet=(rows:unknown[][])=>{
+    const {headers,data}=prepareContactSheet(rows);
+    setCsvHeaders(headers);setCsvData(data);
+    const mapping:ColumnMapping={name:"",surname:"",phone:"",email:"",group:""};
+    headers.forEach(header=>{const h=header.toLowerCase();
+      if(/surname|last.?name/.test(h))mapping.surname=header;
+      else if(h.includes("name")&&!mapping.name)mapping.name=header;
+      if(/phone|mobile|cell|contact/.test(h)&&!mapping.phone)mapping.phone=header;
+      if(h.includes("email"))mapping.email=header;
+    });
+    setColumnMapping(mapping);setParsedContacts([]);setStep("mapping");
   };
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    if (!selectedFile.name.endsWith(".csv")) {
-      toast({
-        title: "Invalid file type",
-        description: "Please upload a CSV file.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setFile(selectedFile);
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const { headers, data } = parseCSV(text);
-      setCsvHeaders(headers);
-      setCsvData(data);
-      
-      // Auto-map common column names
-      const autoMapping: ColumnMapping = { name: "", surname: "", phone: "", email: "", group: "" };
-      headers.forEach((header) => {
-        const lowerHeader = header.toLowerCase();
-        if ((lowerHeader.includes("surname") || lowerHeader.includes("last_name") || lowerHeader.includes("lastname")) && !autoMapping.surname) {
-          autoMapping.surname = header;
-        } else if ((lowerHeader.includes("name") || lowerHeader.includes("first_name") || lowerHeader.includes("firstname")) && !autoMapping.name) {
-          autoMapping.name = header;
-        }
-        if ((lowerHeader.includes("phone") || lowerHeader.includes("mobile") || lowerHeader.includes("cell")) && !autoMapping.phone) autoMapping.phone = header;
-        if (lowerHeader.includes("email") && !autoMapping.email) autoMapping.email = header;
-        if ((lowerHeader.includes("group") || lowerHeader.includes("category")) && !autoMapping.group) autoMapping.group = header;
-      });
-      setColumnMapping(autoMapping);
-      setStep("mapping");
-    };
-    reader.readAsText(selectedFile);
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile=e.target.files?.[0];if(!selectedFile)return;
+    e.target.value="";
+    const generation=++readGeneration.current;
+    if(!/\.(csv|xlsx)$/i.test(selectedFile.name)){toast({title:"Unsupported file type",description:"Upload CSV or Excel .xlsx. For older .xls files, use Excel → Save As → Excel Workbook (.xlsx).",variant:"destructive"});return;}
+    if(selectedFile.size>5*1024*1024){toast({title:"File too large",description:"Use a file under 5 MB, with at most 10,000 contacts per sheet.",variant:"destructive"});return;}
+    setFile(selectedFile);setStep("reading");
+    try{
+      if(/\.csv$/i.test(selectedFile.name)){
+        const rows=parseContactCsv(await selectedFile.text());
+        if(generation===readGeneration.current)applySheet(rows);
+      }else{
+        const buffer=await selectedFile.arrayBuffer();
+        if(generation!==readGeneration.current)return;
+        const workbook=await new Promise<ImportSheet[]>((resolve,reject)=>{
+          const worker=new Worker(new URL("../../lib/contact-excel.worker.ts",import.meta.url),{type:"module"});
+          const timeout=window.setTimeout(()=>{worker.terminate();reject(new Error("Workbook took too long to read. Remove unused sheets and try a smaller file."));},15000);
+          const done=()=>{window.clearTimeout(timeout);worker.terminate();};
+          worker.onmessage=e=>{done();if(e.data.error)reject(new Error("Unable to read this workbook. Remove password protection, save as .xlsx and try again."));else resolve(e.data.sheets);};
+          worker.onerror=()=>{done();reject(new Error("Unable to read Excel. Please try a smaller .xlsx file or CSV."));};
+          worker.postMessage(buffer,[buffer]);
+        });
+        if(generation!==readGeneration.current)return;
+        if(!workbook.length)throw new Error("The workbook contains no worksheets.");
+        setSheets(workbook);setSheetIndex("0");setStep("sheet");
+      }
+    }catch(error){if(generation!==readGeneration.current)return;setStep("upload");setFile(null);toast({title:"Cannot read contact file",description:error instanceof Error?error.message:"Check the file and try again.",variant:"destructive"});}
   }, []);
 
   const handleFileDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -179,10 +180,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
         const idx = csvHeaders.indexOf(columnMapping.email);
         if (idx >= 0) contact.email = row[idx]?.trim();
       }
-      if (columnMapping.group) {
-        const idx = csvHeaders.indexOf(columnMapping.group);
-        if (idx >= 0) contact.group = row[idx]?.trim();
-      }
+
       return contact;
     });
     
@@ -204,13 +202,14 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
     try {
       // Create FormData for upload with column mappings
       const formData = new FormData();
-      formData.append('file', file);
+      const upload=new File([contactSheetCsv(csvHeaders,csvData)],'contacts.csv',{type:'text/csv'});
+      if(upload.size>5*1024*1024)throw new Error('The selected sheet exceeds 5 MB as contact data. Split it into smaller files.');
+      formData.append('file', upload);
       formData.append('column_mapping', JSON.stringify({
         name: columnMapping.name,
         surname: columnMapping.surname,
         phone: columnMapping.phone,
         email: columnMapping.email,
-        group: columnMapping.group,
       }));
       formData.append('skip_duplicates', skipDuplicates.toString());
       if (selectedGroupId) {
@@ -224,12 +223,14 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
       }
       
       if (response.success) {
+        const counts=contactImportResult(response);
+        setResult(counts);setStep("result");
         toast({
-          title: "Import successful",
-          description: `${response.data?.imported || 0} contacts imported${response.data?.duplicates ? `, ${response.data.duplicates} duplicates skipped` : ''}${response.data?.failed ? `, ${response.data.failed} failed` : ''}.`,
+          title: "Import complete",
+          description: `${counts.imported} contacts imported, ${counts.duplicates} duplicates skipped, ${counts.failed} rows failed.`,
         });
         onSuccess?.();
-        handleClose();
+
       } else {
         throw new Error(response.error || response.message || "Import failed");
       }
@@ -259,14 +260,17 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import Contacts</DialogTitle>
           <DialogDescription>
-            {step === "upload" && "Upload a CSV file to import contacts"}
-            {step === "mapping" && "Map your CSV columns to contact fields"}
+            {step === "upload" && "Upload an Excel (.xlsx) or CSV file to import contacts"}
+            {step === "mapping" && "Map your file columns to contact fields"}
             {step === "preview" && "Review contacts before importing"}
             {step === "importing" && "Importing your contacts..."}
+            {step === "result" && "Import results from the server"}
+            {step === "reading" && "Reading your file securely in this browser…"}
+            {step === "sheet" && "Choose the worksheet containing your contacts"}
           </DialogDescription>
         </DialogHeader>
 
@@ -278,22 +282,23 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
               <div className="mb-3 flex items-start gap-3">
                 <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-semibold text-blue-900 mb-2">CSV Format Guide</h4>
+                  <h4 className="font-semibold text-blue-900 mb-2">Get your import right the first time</h4>
+                  <a className="text-sm underline" href="/contact-import-template.csv" download>Download a blank CSV template (opens in Excel)</a>
                   <div className="text-sm text-blue-800 space-y-2">
-                    <p><strong>Required:</strong> Phone</p>
-                    <p><strong>Optional:</strong> Full Name, Email, Group</p>
+                    <p>Upload Excel (.xlsx) or CSV. Maximum 5 MB and 10,000 contacts per sheet.</p><p><strong>Required:</strong> Phone. Map your own headings in the next step.</p>
+                    <p><strong>Optional:</strong> Name, Surname and Email.</p><ol className="list-decimal pl-5 space-y-1"><li>Put unique headings in row 1 and one contact per row. Do not use title rows, merged cells or formulas.</li><li>In Excel, format Phone as Text before entering numbers. Use +27… or a full local number such as 0631540696. Formatting after a leading zero was lost will not restore it.</li><li>Save as .xlsx. Upload, choose the contact worksheet, map your headings, and select an existing group if needed.</li><li>Check the preview before importing. Keep duplicate skipping enabled and read the final imported/skipped/failed counts.</li></ol>
                     <p className="mt-3"><strong>Example CSV:</strong></p>
                     <code className="block bg-white p-2 rounded border border-blue-200 font-mono text-xs mt-1">
-                      Full Name,Phone,Email,Group<br/>
-                      John Doe,+27791234567,john@example.com,VIP<br/>
-                      Jane Smith,+27987654321,jane@example.com,Customers<br/>
-                      ,+27555111111,bob@example.com,
+                      Full Name,Phone,Email<br/>
+                      John Doe,+27791234567,john@example.com<br/>
+                      Jane Smith,+27987654321,jane@example.com<br/>
+                      ,+27555111111,bob@example.com
                     </code>
                     <div className="mt-3 space-y-1 text-xs">
                       <p>✓ Phone: Required - must include country code (e.g., +27, +1, +44)</p>
                       <p>✓ Full Name: Optional - can be left empty</p>
-                      <p>✓ Email: Optional - at least phone OR email recommended</p>
-                      <p>✓ Group: Optional - contact will have no group if left empty</p>
+                      <p>✓ Email: Optional. A phone number is always required.</p>
+                      <p>Choose an existing group in the next step; no Group column is required.</p>
                     </div>
                   </div>
                 </div>
@@ -303,19 +308,19 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
             <div
               className={cn(
                 "flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-colors",
-                "border-border hover:border-primary hover:bg-primary/5 cursor-pointer"
+                "relative border-border hover:border-primary hover:bg-primary/5 cursor-pointer"
               )}
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleFileDrop}
             >
               <Upload className="h-12 w-12 text-muted-foreground" />
               <p className="mt-4 text-lg font-medium text-foreground">
-                Drag & drop your CSV file here
+                Drag & drop your Excel or CSV file here
               </p>
               <p className="mt-1 text-sm text-muted-foreground">or click to browse</p>
               <input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx"
                 onChange={handleFileChange}
                 className="absolute inset-0 cursor-pointer opacity-0"
               />
@@ -326,6 +331,8 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
           </div>
         )}
 
+        {step==="reading"&&<div className="p-8 flex gap-3"><Loader2 className="animate-spin"/>Reading file…</div>}
+        {step==="sheet"&&<div className="space-y-4"><Label>Contact worksheet</Label><Select value={sheetIndex} onValueChange={setSheetIndex}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{sheets.map((s,i)=><SelectItem key={i} value={String(i)}>{s.sheet}</SelectItem>)}</SelectContent></Select><p className="text-sm">Only this worksheet will be imported. Row 1 must contain your column headings.</p><Button onClick={()=>{try{applySheet(sheets[Number(sheetIndex)].data);}catch(e){toast({title:"Check this worksheet",description:e instanceof Error?e.message:"Invalid sheet",variant:"destructive"});}}}>Use this worksheet</Button></div>}
         {/* Mapping Step */}
         {step === "mapping" && (
           <div className="space-y-6">
@@ -405,21 +412,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>Group Column</Label>
-                <Select value={columnMapping.group || "__none__"} onValueChange={(v) => setColumnMapping({ ...columnMapping, group: v === "__none__" ? "" : v })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select column" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— None —</SelectItem>
-                    {csvHeaders.map((h) => (
-                      <SelectItem key={h} value={h}>{h}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">From CSV columns for dynamic group assignment</p>
-              </div>
+
             </div>
 
             <div className="space-y-3 pt-4 border-t">
@@ -429,7 +422,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                   <SelectValue placeholder="Select a group..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__empty__">— No group (or use CSV column) —</SelectItem>
+                  <SelectItem value="__empty__">— No group —</SelectItem>
                   {groups
                     .filter(g => !g.is_virtual)  // Filter out virtual groups
                     .map((group) => (
@@ -440,7 +433,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Assign all imported contacts to this group. If you also select a Group Column above, the CSV column will take priority.
+                Assign new contacts to this existing group. CSV Group columns are ignored. Create groups in Contacts before importing.
               </p>
             </div>
 
@@ -449,9 +442,9 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                 <Checkbox
                   id="skipFirst"
                   checked={skipFirstRow}
-                  onCheckedChange={(c) => setSkipFirstRow(!!c)}
+                  disabled
                 />
-                <Label htmlFor="skipFirst">First row contains headers</Label>
+                <Label htmlFor="skipFirst">First row must contain column headings</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -542,7 +535,9 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
           </div>
         )}
 
+        {step==="result"&&result&&<div role="status" className="space-y-3 rounded-lg border p-5"><p className="text-lg font-semibold">{result.imported} contacts imported</p><p>{result.duplicates} duplicate contacts found and skipped.</p><p>{result.failed} rows could not be imported.</p>{result.duplicates>0&&<p className="text-sm text-muted-foreground">Existing contacts were kept. Duplicate rows were not added again.</p>}</div>}
         <DialogFooter>
+          {step==="result"&&<Button onClick={handleClose}>Done</Button>}
           {step === "upload" && (
             <Button variant="outline" onClick={handleClose}>
               Cancel
@@ -553,7 +548,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
               <Button variant="outline" onClick={resetState}>
                 Back
               </Button>
-              <Button onClick={proceedToPreview} disabled={!columnMapping.phone && !columnMapping.email}>
+              <Button onClick={proceedToPreview} disabled={!columnMapping.phone}>
                 Continue
               </Button>
             </>

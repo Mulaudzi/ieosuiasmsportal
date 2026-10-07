@@ -184,9 +184,9 @@ class WalletController {
         header('Content-Type: text/csv; charset=UTF-8');
         header('Content-Disposition: attachment; filename="payment-history-'.date('Y-m-d').'.csv"');
         $out=fopen('php://output','w');
-        fputcsv($out,['Gateway','Gateway Reference','Merchant Reference','Amount','Currency','Status','Gateway Status','Payment Method','Created At','Processed At','Error']);
+        fputcsv($out,['Gateway','Gateway Reference','Merchant Reference','Amount','Currency','Status','Gateway Status','Payment Method','Created At','Processed At','Error'], escape: '');
         $safe=static fn($value)=>is_string($value)&&preg_match('/^[=+\-@]/',$value)?"'".$value:$value;
-        while($row=$stmt->fetch(PDO::FETCH_NUM))fputcsv($out,array_map($safe,$row));
+        while($row=$stmt->fetch(PDO::FETCH_NUM))fputcsv($out,array_map($safe,$row), escape: '');
         fclose($out);exit;
     }
     

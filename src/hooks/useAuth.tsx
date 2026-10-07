@@ -101,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const handleLogout = () => {
+    try { const previous=JSON.parse(localStorage.getItem(USER_KEY)||'null');if(previous?.id)sessionStorage.removeItem(`sms-portal-entered:${previous.id}`); } catch { /* Optional animation preference. */ }
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
     }
@@ -436,6 +437,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async (): Promise<void> => {
+    try { sessionStorage.removeItem(`sms-portal-entered:${user?.id}`); } catch { /* Optional animation preference. */ }
     if (signingOutRef.current) return;
     signingOutRef.current = true;
     localStorage.setItem('ieosuia_explicit_logout', Date.now().toString());

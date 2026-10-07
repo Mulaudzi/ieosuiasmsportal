@@ -1,0 +1,100 @@
+IEOSUIA SMS Portal: public SEO operations
+Updated: 3 October 2026
+
+PUBLIC CONTENT SOURCE OF TRUTH
+src/seo/public-pages.json: public route names, titles and descriptions.
+src/seo/guides.json: product and workflow guides.
+src/seo/faq.json: visible FAQ questions and answers, also used by FAQ JSON-LD.
+src/seo/PublicSeo.tsx: canonical, social metadata, breadcrumbs and structured data.
+scripts/prerender-public.mjs: public snapshots, sitemap, private shell, 404 and llms.txt.
+public/.htaccess: Apache public-page mapping, existing auth redirects, private shell,
+canonical redirects, noindex headers, caching and security headers.
+
+BUILD AND VERIFY
+The normal npm run build runs Vite followed by scripts/prerender-home.mjs, which
+delegates to the full public prerenderer. Always start with fresh Vite output.
+The prerenderer must not be run twice on already-prerendered output.
+It requires Playwright and a browser. On Windows it uses installed Google Chrome;
+else install Playwright Chromium or set PRERENDER_BROWSER to a browser executable.
+
+Prerendering uses a clean guest browser, a strict public allowlist and no API data.
+Unexpected API or external requests fail the build. Never add authenticated routes
+to this allowlist or use a browser profile containing a real account session.
+
+When adding a useful public page, update the manifest, React route and Apache public
+route mapping together. Keep private /sms-campaigns reserved for customer campaigns.
+The sitemap and llms.txt are generated from the manifest at build time. The generated
+dist/sitemap.xml is authoritative, not a manually copied or dated sitemap.
+
+Tests against a deployed or correctly routed preview server:
+node scripts/test-public-seo.mjs https://sms.ieosuia.com
+node scripts/test-public-deployment.mjs https://sms.ieosuia.com
+node scripts/test-seo-private-boundary.mjs https://sms.ieosuia.com
+node scripts/test-seo-http.mjs
+node scripts/test-public-layout.mjs https://sms.ieosuia.com
+
+The private-boundary test uses a UI-only fixture and intercepts all API calls. It
+checks module loading and public/account navigation, not real-account authorization.
+Use actual unauthenticated read-only API checks separately to verify HTTP 401.
+
+Local preview matching public/private routing:
+node scripts/serve-seo-preview.mjs .footer-release.local/source/dist
+Default port: 4185. Set PORT to use another port. Vite's ordinary SPA preview does
+not reproduce the public-pages route mapping and is not enough for crawler tests.
+
+Optional isolated audit tools (not application dependencies):
+npm install --prefix .sms-audit.local/seo-tools --no-audit --no-fund --ignore-scripts lighthouse @axe-core/playwright
+node scripts/audit-public-accessibility.mjs https://sms.ieosuia.com
+Set TEST_FRESH_VISITOR=1 to audit with the cookie notice visible.
+Set CHROME_PATH to the installed Chrome executable when running Lighthouse CLI.
+node .sms-audit.local/seo-tools/node_modules/lighthouse/cli/index.js https://sms.ieosuia.com/ --output=json --output-path=.sms-audit.local/seo-current.json --only-categories=performance,accessibility,best-practices,seo --chrome-flags=--headless --quiet
+
+GOOGLE SEARCH CONSOLE AND BING WEBMASTER TOOLS
+No verification tokens or account access were provided. Ownership verification and
+sitemap submission have NOT been performed. Do not fabricate verification values.
+Prefer a DNS-verified domain property if the domain owner controls DNS. Follow the
+provider's ownership-verification instructions for the actual account/property.
+
+For HTML-meta verification of the SMS URL-prefix property, set the actual issued
+token in the build environment before the prerender step:
+GOOGLE_SITE_VERIFICATION -> meta name google-site-verification
+BING_SITE_VERIFICATION -> meta name msvalidate.01
+The prerenderer writes supplied tokens into public HTML. Absent tokens add nothing.
+Retain configured tokens on later builds so verification remains available.
+These verification identifiers are intentionally public; do not use API keys here.
+
+After verification, submit this exact sitemap in both services:
+https://sms.ieosuia.com/sitemap.xml
+Inspect the homepage, pricing, features, FAQ and documentation URLs. Request indexing
+where appropriate. Track indexed/excluded pages, crawl errors, search queries and
+Core Web Vitals. Ranking or indexing is not guaranteed by technical validation.
+
+CONTENT AND DATA HYGIENE
+Do not add fake ratings, customer totals, reviews, certificates or location pages.
+Keep Email Campaigns labelled Coming Soon until the product actually supports them.
+Update pricing copy only after verifying the product's actual billing behavior.
+Retain the difference between provider acceptance, confirmed delivery and unavailable
+DLR. Missing delivery evidence is not proof of failure or a reason to resend blindly.
+Use one factual FAQ source for visible answers and schema.
+Do not change legal review dates automatically. Add sitemap lastmod only when a
+reliable per-page modification source is maintained. No invented freshness dates.
+
+RELEASE SAFETY
+Use a reviewed, isolated release source when the main checkout has unrelated edits.
+Upload all referenced hashed assets and public HTML before switching entry documents
+and routing. Keep prior assets for visitors holding older HTML and retain rollback
+copies. Never upload .env, local audit files, deployment credentials or source maps.
+This SEO release does not require API deployment or database migrations.
+
+PERFORMANCE MONITORING
+Lighthouse provides lab diagnostics, not production INP or proof of field CWV.
+Use Search Console/CrUX field data where available. A page needs enough real visits
+before such data may exist. Consider consent-aware real-user monitoring separately;
+this change did not introduce tracking or analytics collection.
+Repeat Lighthouse under comparable conditions and report variability. Do not remove
+consent controls or useful content to increase a score.
+
+References:
+https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
+https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
+https://web.dev/articles/vitals-measurement-getting-started

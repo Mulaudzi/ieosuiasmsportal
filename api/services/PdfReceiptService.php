@@ -11,6 +11,13 @@ class PdfReceiptService {
      */
     public static function generateReceipt(array $payment, array $user): string {
         $companyName = env('COMPANY_NAME', 'IEOSUIA SMS Portal');
+        $brandLogo = htmlspecialchars($companyName);
+        foreach ([__DIR__ . '/../../branding/ieosuia-sms-portal-light.png', __DIR__ . '/../../src/assets/ieosuia-sms-portal-light.png'] as $logoPath) {
+            if (is_readable($logoPath)) {
+                $brandLogo = '<img src="data:image/png;base64,' . base64_encode(file_get_contents($logoPath)) . '" width="2172" height="724" alt="IEOSUIA SMS Portal" style="display:block;width:180px;max-width:100%;height:auto;aspect-ratio:3/1;object-fit:contain">';
+                break;
+            }
+        }
         $companyAddress = env('COMPANY_ADDRESS', '');
         $companyVat = env('COMPANY_VAT', '');
         $companyEmail = env('COMPANY_EMAIL', 'support@ieosuia.co.za');
@@ -84,7 +91,7 @@ class PdfReceiptService {
     <div class="container">
         <div class="header">
             <div>
-                <div class="logo">' . htmlspecialchars($companyName) . '</div>
+                <div class="logo">' . $brandLogo . '</div>
                 <div style="color: #6b7280; font-size: 13px; margin-top: 5px;">Payment Receipt</div>
             </div>
             <div class="receipt-info">

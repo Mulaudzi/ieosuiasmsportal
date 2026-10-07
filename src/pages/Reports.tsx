@@ -1,5 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { typicalTime } from '@/lib/portal-presentation';
+import { DeliveryStatusHelp } from "@/components/dashboard/DeliveryStatusHelp";
+import { deliveryChartStyle } from '@/lib/delivery-presentation';
+import { DeliveryOutcomeList } from '@/components/dashboard/DeliveryOutcomeList';
+import { Link, useSearchParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +25,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
 } from "recharts";
 import {
   Download,
@@ -36,7 +41,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { getReportStats, getReportChartData, getDeliveryBreakdown, exportReport, emailReport, handleApiError } from "@/lib/api";
+import { api, getReportStats, getReportChartData, getDeliveryBreakdown, exportReport, emailReport, handleApiError } from "@/lib/api";
 
 interface ReportStats {
   total_messages: number;
@@ -61,6 +66,7 @@ interface DeliveryData {
 }
 
 interface SmsStats {
+  skipped: number;
   total_sent: number;
   delivered: number;
   failed: number;
@@ -71,8 +77,11 @@ interface SmsStats {
 }
 
 export default function Reports() {
-  const [dateRange, setDateRange] = useState("7d");
+  const [urlParams]=useSearchParams();const downloaded=useRef(false);
+  const [dateRange, setDateRange] = useState(()=>["24h","7d","30d","90d"].includes(urlParams.get("range")||"")?urlParams.get("range")!:"7d");
   const [loading, setLoading] = useState(true);
+  const [typical,setTypical]=useState<string|null>(null);
+  useEffect(()=>{let active=true;setTypical(null);const load=async()=>{try{const r=await api.get<{seconds:number|null}>('/reports/confirmation-time',{range:dateRange});if(active)setTypical(r.success?typicalTime(((r.data??r) as {seconds:number|null}).seconds):null);}catch{if(active)setTypical(null);}};void load();const timer=setInterval(()=>void load(),30000);return()=>{active=false;clearInterval(timer);};},[dateRange]);
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat,setExportFormat]=useState<'csv'|'excel'|'pdf'>('pdf');
   const [isEmailing,setIsEmailing]=useState(false);
@@ -87,6 +96,7 @@ export default function Reports() {
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [deliveryData, setDeliveryData] = useState<DeliveryData[]>([]);
   const [smsStats, setSmsStats] = useState<SmsStats>({
+    skipped: 0,
     total_sent: 0,
     delivered: 0,
     failed: 0,
@@ -118,7 +128,7 @@ export default function Reports() {
 
       if (deliveryRes.success) {
         const payload = deliveryRes.data ?? deliveryRes;
-        setDeliveryData(payload.breakdown || []);
+        setDeliveryData((payload.breakdown || []).map(row=>({...row,status:deliveryChartStyle(row.status).label})).filter(row=>Number(row.count)>0 && !['Waiting to send','Pending dispatch'].includes(row.status)));
       }
     } catch (error) {
       handleApiError(error);
@@ -135,6 +145,8 @@ export default function Reports() {
     const timer = window.setInterval(() => void loadData(false), 30000);
     return () => window.clearInterval(timer);
   }, [loadData]);
+
+  useEffect(()=>{const format=urlParams.get('download');if(!downloaded.current&&(format==='csv'||format==='pdf')){downloaded.current=true;void exportReport('campaigns',format,dateRange).catch(handleApiError);}},[urlParams,dateRange]);
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -161,7 +173,7 @@ export default function Reports() {
       subtitle="Analytics and delivery reports for all your campaigns"
       actions={
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" size="icon" onClick={() => void loadData()} disabled={loading}>
+          <Button aria-label="Refresh reports" variant="outline" size="icon" onClick={() => void loadData()} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
           <Link to="/reports/compare">
@@ -200,7 +212,7 @@ export default function Reports() {
           {/* Summary Stats */}
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
             <MetricCard
-              title="Total Messages"
+              title="Total Sent"
               value={stats.total_messages}
               change={`${stats.delivery_rate.toFixed(1)}% delivery rate`}
               changeType="positive"
@@ -216,7 +228,7 @@ export default function Reports() {
               iconColor="success"
             />
             <MetricCard
-              title="Failed"
+              title="Not Delivered"
               value={stats.failed}
               change={`${((stats.failed / stats.total_messages) * 100 || 0).toFixed(1)}% failure rate`}
               changeType={stats.failed > 0 ? "negative" : "positive"}
@@ -224,21 +236,21 @@ export default function Reports() {
               iconColor="destructive"
             />
             <MetricCard
-              title="Pending"
+              title="Delivery not yet confirmed"
               value={stats.pending}
               change={`${((stats.pending / stats.total_messages) * 100 || 0).toFixed(1)}% pending`}
               changeType="neutral"
               icon={Clock}
               iconColor="info"
             />
-            <MetricCard
-              title="Avg. Delivery Time"
-              value={stats.avg_delivery_time}
-              change="Average speed"
+            {typical&&<MetricCard
+              title="Typical confirmation time"
+              value={typical}
+              change={`Most messages confirmed within ${typical}`}
               changeType="neutral"
               icon={Clock}
               iconColor="info"
-            />
+            />}
           </div>
 
           {/* Charts */}
@@ -296,7 +308,7 @@ export default function Reports() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="flex h-[350px] items-center justify-center">
-                    <p className="text-muted-foreground">No data available for this period</p>
+                    <p className="text-muted-foreground">No messages in this period</p>
                   </div>
                 )}
               </div>
@@ -314,7 +326,7 @@ export default function Reports() {
                     <BarChart data={deliveryData} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 20%, 91%)" />
                       <XAxis type="number" stroke="hsl(215, 16%, 47%)" fontSize={12} />
-                      <YAxis dataKey="status" type="category" stroke="hsl(215, 16%, 47%)" fontSize={12} width={100} />
+                      <YAxis dataKey="status" type="category" stroke="hsl(215, 16%, 47%)" fontSize={11} width={175} />
                       <Tooltip
                         contentStyle={{
                           backgroundColor: "hsl(0, 0%, 100%)",
@@ -322,12 +334,12 @@ export default function Reports() {
                           borderRadius: "0.5rem",
                         }}
                       />
-                      <Bar dataKey="count" fill="hsl(221, 83%, 53%)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="count" name="count" radius={[0, 4, 4, 0]}>{deliveryData.map(row=><Cell key={row.status} fill={deliveryChartStyle(row.status).color}/>)}</Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
                   <div className="flex h-[350px] items-center justify-center">
-                    <p className="text-muted-foreground">No data available for this period</p>
+                    <p className="text-muted-foreground">No messages in this period</p>
                   </div>
                 )}
               </div>
@@ -353,41 +365,14 @@ export default function Reports() {
                   <span className="text-muted-foreground">Total Sent</span>
                   <span className="font-semibold text-foreground">{smsStats.total_sent.toLocaleString()}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Delivered</span>
-                  <span className="font-semibold text-success">
-                    {smsStats.delivered.toLocaleString()} ({smsStats.total_sent > 0 ? ((smsStats.delivered / smsStats.total_sent) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Failed</span>
-                  <span className="font-semibold text-destructive">
-                    {smsStats.failed.toLocaleString()} ({smsStats.total_sent > 0 ? ((smsStats.failed / smsStats.total_sent) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Pending</span>
-                  <span className="font-semibold text-warning">
-                    {smsStats.pending.toLocaleString()} ({smsStats.total_sent > 0 ? ((smsStats.pending / smsStats.total_sent) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Awaiting delivery report</span>
-                  <span className="font-semibold text-warning">
-                    {smsStats.awaiting_delivery.toLocaleString()} ({smsStats.total_sent > 0 ? ((smsStats.awaiting_delivery / smsStats.total_sent) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Provider DLR unavailable</span>
-                  <span className="font-semibold text-destructive">
-                    {smsStats.dlr_unavailable.toLocaleString()} ({smsStats.total_sent > 0 ? ((smsStats.dlr_unavailable / smsStats.total_sent) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
+                <DeliveryOutcomeList counts={[smsStats.delivered,smsStats.awaiting_delivery,smsStats.dlr_unavailable,smsStats.failed,smsStats.skipped ?? 0]}/>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">SMS Credits Used</span>
                   <span className="font-semibold text-foreground">{smsStats.credits_used.toLocaleString()}</span>
                 </div>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">Skipped messages were not sent and are excluded from Total Sent. The unconfirmed total includes messages waiting to send and both confirmation states.</p>
+              <DeliveryStatusHelp />
             </div>
 
             {/* Email Stats */}

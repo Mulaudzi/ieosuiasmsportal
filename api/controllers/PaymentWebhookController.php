@@ -62,9 +62,10 @@ class PaymentWebhookController {
             if (($transaction['status'] ?? null) !== 'completed') {
                 $this->processSuccessfulPayment($transaction, $wallet, $amount, $paymentId);
             } else {
+                // upsertPayOSPayment already records receipt time and merged status.
+                // A replay must not replace the original financial completion time.
                 table('payments')->where('id', $paymentId)->update([
                     'status' => 'completed',
-                    'processed_at' => date('Y-m-d H:i:s'),
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]);
             }

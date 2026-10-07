@@ -4,6 +4,23 @@
  */
 
 class SettingsController {
+    public function smsPreferences(): void {
+        require_once __DIR__.'/../domain/SmsOptOut.php';
+        Response::success(['opt_out_text'=>SmsOptOut::text((int)Auth::id())]);
+    }
+
+    public function updateSmsPreferences(): void {
+        $input=Request::input();$text=$input['opt_out_text']??null;
+        if(!is_string($text)||mb_strlen(trim($text))>500){Response::error('Opt-out text must be at most 500 characters',422);return;}
+        $text=trim($text);
+        if($text===''){Response::error('Opt-out text cannot be empty',422);return;}
+        require_once __DIR__.'/../domain/TemplatePersonalizer.php';
+        try{TemplatePersonalizer::assertSupported($text);}catch(InvalidArgumentException $e){Response::error($e->getMessage(),422);return;}
+        $q=db()->prepare('INSERT INTO sms_preferences (user_id,opt_out_text,updated_at) VALUES (?,?,NOW()) ON DUPLICATE KEY UPDATE opt_out_text=VALUES(opt_out_text),updated_at=NOW()');
+        $q->execute([(int)Auth::id(),$text]);
+        Response::success(['opt_out_text'=>$text]);
+    }
+
     public function profile(): void {
         $user = Auth::user();
         $account = table('accounts')->where('user_id', $user['id'])->first();
@@ -14,6 +31,7 @@ class SettingsController {
                 'name' => $user['name'],
                 'email' => $user['email'],
                 'phone' => $user['phone'],
+                'avatar_url' => Auth::formatUserForFrontend($user)['avatar_url'],
             ],
             'account' => $account,
         ]);
@@ -26,6 +44,7 @@ class SettingsController {
             'name' => 'max:100',
             'phone' => 'max:20',
             'company_name' => 'max:100',
+            'industry' => 'max:100',
             'address' => 'max:255',
             'city' => 'max:100',
             'province' => 'max:100',
@@ -48,7 +67,7 @@ class SettingsController {
         // Update or create account
         $accountData = array_intersect_key($data, array_flip([
             'company_name', 'address', 'city', 'province', 
-            'postal_code', 'country', 'vat_number', 'website'
+            'postal_code', 'country', 'vat_number', 'website', 'industry'
         ]));
         
         if (!empty($accountData)) {
@@ -140,6 +159,8 @@ class SettingsController {
     }
     
     public function updatePassword(): void {
+        Response::error('Passwords are managed at https://auth.ieosuia.com/forgot-password. Use central IEOSUIA authentication to reset your password.',409);
+        return;
         $data = Request::validate([
             'current_password' => 'required',
             'password' => 'required|min:8|confirmed',

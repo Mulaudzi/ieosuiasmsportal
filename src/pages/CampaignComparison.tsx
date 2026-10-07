@@ -1,495 +1,264 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { format } from "date-fns";
+import { ChevronDown, ChevronUp, Clock, Crown, DollarSign, Loader2, Search, X } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  ArrowLeft,
-  BarChart3,
-  Check,
-  Crown,
-  Loader2,
-  MessageSquare,
-  Mail,
-  TrendingUp,
-  TrendingDown,
-  Clock,
-  DollarSign,
-  Users,
-  Zap,
-  RefreshCw,
-} from "lucide-react";
-import { Link } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { toast } from "@/hooks/use-toast";
-import { api, handleApiError } from "@/lib/api";
-import { format } from "date-fns";
+import {
+  ComparisonCampaign,
+  comparisonWinners,
+  confirmationTime,
+  costPerDelivery,
+  sentenceCase,
+} from "@/lib/campaign-comparison";
 
-interface Campaign {
-  id: string;
-  name: string;
-  type: "sms" | "email";
-  status: string;
-  total_recipients: number;
-  sent_count: number;
-  delivered_count: number;
-  failed_count: number;
-  delivery_rate: number;
-  failure_rate: number;
-  actual_cost: number;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  avg_delivery_time_seconds: number | null;
-  hourly_distribution: { hour: number; count: number; delivered: number }[];
-}
+interface ComparisonResponse { campaigns: ComparisonCampaign[] }
 
-interface ComparisonData {
-  campaigns: Campaign[];
-  comparison: {
-    best_delivery_rate: number;
-    best_delivery_campaign: string;
-    fastest_delivery: number;
-    fastest_campaign: string;
-    lowest_cost_per_delivery: number;
-    best_value_campaign: string;
-  };
-}
-
-interface CampaignOption {
-  id: string;
-  name: string;
-  type: string;
-  created_at: string;
-  sent_count: number;
-}
+const names = (campaigns: ComparisonCampaign[]) => campaigns.map(c => sentenceCase(c.name)).join(", ");
+const winnerCaption = (campaigns: ComparisonCampaign[]) =>
+  campaigns.length ? `${campaigns.length > 1 ? "Tied: " : ""}${names(campaigns)}` : "No qualifying campaign";
+const campaignDate = (date: string) => {
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime()) ? "Date unavailable" : format(parsed, "d MMM yyyy");
+};
 
 export default function CampaignComparison() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
-  const [availableCampaigns, setAvailableCampaigns] = useState<CampaignOption[]>([]);
+  const [availableCampaigns, setAvailableCampaigns] = useState<ComparisonCampaign[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [campaigns, setCampaigns] = useState<ComparisonCampaign[] | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(true);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
+  const [selectionError, setSelectionError] = useState("");
+  const [selectionReload, setSelectionReload] = useState(0);
+  const requestSequence = useRef(0);
+  const resultsTop = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadAvailableCampaigns();
-  }, []);
-
-  const loadAvailableCampaigns = async () => {
+    let active = true;
+    requestSequence.current++;
+    setCampaigns(null);
+    setSelectedIds([]);
+    setAvailableCampaigns([]);
+    setPickerOpen(true);
+    setLoading(false);
+    setError("");
+    setSelectionError("");
     setLoadingCampaigns(true);
+    api.get<ComparisonResponse>("/reports/compare", { selection: "1" })
+      .then(res => {
+        const payload = (res.data ?? res) as ComparisonResponse;
+        if (!res.success || !Array.isArray(payload.campaigns)) throw new Error("Invalid campaign list");
+        if (active) setAvailableCampaigns(payload.campaigns.map(c => ({ ...c, id: String(c.id) })));
+      })
+      .catch(() => { if (active) setSelectionError("Could not load campaigns. Please try again."); })
+      .finally(() => { if (active) setLoadingCampaigns(false); });
+    return () => { active = false; requestSequence.current++; };
+  }, [user?.id, selectionReload]);
+
+  const loadComparison = async (ids: string[]) => {
+    if (ids.length < 2 || ids.length > 5) return;
+    const sequence = ++requestSequence.current;
+    setLoading(true);
+    setError("");
+    // Do not display figures for an old selection while a new selection is loading.
+    setCampaigns(null);
     try {
-      const res = await api.get<{ campaigns: CampaignOption[] }>("/reports/campaigns?start_date=2020-01-01");
-      const payload = (res.data ?? res) as { campaigns?: CampaignOption[] };
-      if (res.success && payload.campaigns) {
-        // Only show completed campaigns with sent messages
-        const completed = payload.campaigns.filter((c: CampaignOption) => c.sent_count > 0);
-        setAvailableCampaigns(completed);
+      const res = await api.get<ComparisonResponse>("/reports/compare", { ids: ids.join(",") });
+      const payload = (res.data ?? res) as ComparisonResponse;
+      if (!res.success || !Array.isArray(payload.campaigns)) throw new Error("Invalid comparison");
+      const byId = new Map(payload.campaigns.map(c => [String(c.id), { ...c, id: String(c.id) }]));
+      if (payload.campaigns.length !== ids.length || byId.size !== ids.length || ids.some(id => !byId.has(id))) {
+        throw new Error("Incomplete comparison");
       }
-    } catch (error) {
-      handleApiError(error);
+      if (sequence !== requestSequence.current) return;
+      const rows = ids.map(id => byId.get(id)!);
+      setCampaigns(rows);
+      // Keep the picker counts in sync with the freshly read message records.
+      setAvailableCampaigns(current => current.map(c => byId.get(c.id) ?? c));
+      setSelectedIds(ids);
+      setPickerOpen(false);
+      resultsTop.current?.scrollIntoView({ block: "start", behavior: "auto" });
+    } catch {
+      if (sequence !== requestSequence.current) return;
+      setPickerOpen(true);
+      setError("Could not compare the selected campaigns. Check your selection and try again.");
     } finally {
-      setLoadingCampaigns(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   };
 
   const toggleCampaign = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(i => i !== id));
-    } else if (selectedIds.length < 5) {
-      setSelectedIds([...selectedIds, id]);
-    } else {
-      toast({
-        title: "Maximum 5 campaigns",
-        description: "You can compare up to 5 campaigns at a time.",
-        variant: "destructive",
-      });
-    }
+    setSelectedIds(current => current.includes(id)
+      ? current.filter(selected => selected !== id)
+      : current.length < 5 ? [...current, id] : current);
   };
 
-  const loadComparison = async () => {
-    if (selectedIds.length < 2) {
-      toast({
-        title: "Select more campaigns",
-        description: "Please select at least 2 campaigns to compare.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await api.get<ComparisonData>(`/reports/compare?ids=${selectedIds.join(",")}`);
-      if (res.success) {
-        setComparisonData((res.data ?? res) as unknown as ComparisonData);
-      }
-    } catch (error) {
-      handleApiError(error);
-    } finally {
+  const removeCampaign = (id: string) => {
+    const remaining = (campaigns ?? []).map(c => c.id).filter(selected => selected !== id);
+    setSelectedIds(remaining);
+    setError("");
+    if (remaining.length < 2) {
+      requestSequence.current++;
+      setCampaigns(null);
       setLoading(false);
+      setPickerOpen(true);
+    } else {
+      void loadComparison(remaining);
     }
   };
 
-  const filteredCampaigns = availableCampaigns.filter(c => 
-    typeFilter === "all" || c.type === typeFilter
+  const filteredCampaigns = availableCampaigns.filter(c =>
+    (typeFilter === "all" || c.type === typeFilter) &&
+    c.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
   );
-
-  const formatDuration = (seconds: number | null) => {
-    if (seconds === null) return "N/A";
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    return `${Math.round(seconds / 3600)}h`;
-  };
+  const winners = comparisonWinners(campaigns ?? []);
+  const metrics = [
+    { label: "Sent", value: (c: ComparisonCampaign) => c.sent_count.toLocaleString() },
+    { label: "Delivered", value: (c: ComparisonCampaign) => c.delivered_count.toLocaleString() },
+    { label: "Not delivered", value: (c: ComparisonCampaign) => c.failed_count.toLocaleString() },
+    { label: "Pending", value: (c: ComparisonCampaign) => c.pending_count.toLocaleString(), muted: true },
+    { label: "Delivery rate", value: (c: ComparisonCampaign) => c.delivery_rate === null ? "—" : `${c.delivery_rate}%`, winners: winners.rate },
+    { label: "Confirmation time", value: (c: ComparisonCampaign) => c.delivered_count > 0 ? confirmationTime(c.avg_delivery_time_seconds) : "—", winners: winners.time },
+    { label: "Cost per delivery", value: (c: ComparisonCampaign) => c.delivered_count > 0 ? costPerDelivery(c.cost_per_delivery) : "—", winners: winners.cost },
+  ];
 
   return (
     <DashboardLayout
-      title="Campaign Comparison"
-      subtitle="Compare performance metrics across multiple campaigns"
-      actions={
-        <Link to="/reports">
-          <Button variant="outline" className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Reports
-          </Button>
-        </Link>
-      }
+      title="Campaign comparison"
+      subtitle="Compare delivery, time, and cost across 2 to 5 campaigns."
+      actions={<Link to="/reports" className="ml-auto text-sm font-medium text-primary underline-offset-4 hover:underline">Back to Reports</Link>}
     >
-      {/* Campaign Selection */}
-      <div className="mb-8 rounded-xl border border-border bg-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-semibold text-foreground">Select Campaigns to Compare</h3>
-            <p className="text-sm text-muted-foreground">Choose 2-5 campaigns</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="sms">SMS</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button 
-              onClick={loadComparison} 
-              disabled={loading || selectedIds.length < 2}
-              className="gap-2"
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <BarChart3 className="h-4 w-4" />
-              )}
-              Compare ({selectedIds.length})
-            </Button>
-          </div>
-        </div>
+      <div ref={resultsTop} className="min-w-0 scroll-mt-24 space-y-4" aria-busy={loading}>
+        {loading && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />Updating comparison…</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
-        {loadingCampaigns ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="grid gap-2 max-h-64 overflow-y-auto">
-            {filteredCampaigns.map((campaign) => (
-              <label
-                key={campaign.id}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
-                  selectedIds.includes(campaign.id)
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                )}
-              >
-                <Checkbox
-                  checked={selectedIds.includes(campaign.id)}
-                  onCheckedChange={() => toggleCampaign(campaign.id)}
-                />
-                <div className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-lg",
-                  campaign.type === "sms" ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
-                )}>
-                  {campaign.type === "sms" ? <MessageSquare className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-foreground truncate">{campaign.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {format(new Date(campaign.created_at), "MMM d, yyyy")} • {campaign.sent_count.toLocaleString()} sent
-                  </p>
-                </div>
-              </label>
-            ))}
-            {filteredCampaigns.length === 0 && (
-              <p className="text-center py-8 text-muted-foreground">
-                No campaigns with sent messages found.
-              </p>
-            )}
-          </div>
+        {campaigns && (
+          <section aria-label="Comparison results" className="min-w-0 space-y-4">
+            <div className="flex flex-wrap gap-2" aria-label="Selected campaigns">
+              {campaigns.map(campaign => (
+                <span key={campaign.id} className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-card py-1 pl-3 pr-1 text-sm">
+                  <span className="min-w-0 break-words">{sentenceCase(campaign.name)}</span>
+                  <button type="button" aria-label={`Remove ${sentenceCase(campaign.name)}`} onClick={() => removeCampaign(campaign.id)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <X aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="min-w-0 rounded-xl border border-success/30 bg-success/5 p-4">
+                <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><Crown aria-hidden="true" className="h-5 w-5 shrink-0 text-success" />Best delivery rate</h2>
+                <p className={cn("text-2xl font-bold", winners.rate.length ? "text-success" : "text-muted-foreground")}>{winners.rate.length ? `${winners.rate[0].delivery_rate}%` : "—"}</p>
+                <p className="mt-1 break-words text-sm text-muted-foreground">{winnerCaption(winners.rate)}</p>
+                {winners.rate.length === 1 && <p className="mt-2 text-xs text-muted-foreground">Based on {winners.rate[0].sent_count.toLocaleString()} {winners.rate[0].sent_count === 1 ? "message" : "messages"}.</p>}
+                {winners.rate.length > 1 && <p className="mt-2 break-words text-xs text-muted-foreground">Based on {winners.rate.map(c => `${sentenceCase(c.name)}: ${c.sent_count.toLocaleString()} ${c.sent_count === 1 ? "message" : "messages"}`).join("; ")}.</p>}
+              </div>
+
+              <div className="min-w-0 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><Clock aria-hidden="true" className="h-5 w-5 shrink-0 text-primary" />Shortest confirmation time</h2>
+                <p className={cn("text-2xl font-bold", winners.time.length ? "text-primary" : "text-muted-foreground")}>{confirmationTime(winners.time[0]?.avg_delivery_time_seconds ?? null)}</p>
+                <p className="mt-1 break-words text-sm text-muted-foreground">{winnerCaption(winners.time)}</p>
+              </div>
+
+              <div className="min-w-0 rounded-xl border border-accent/30 bg-accent/5 p-4">
+                <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><DollarSign aria-hidden="true" className="h-5 w-5 shrink-0 text-accent" />Best value</h2>
+                <p className={cn("text-2xl font-bold", costPerDelivery(winners.cost[0]?.cost_per_delivery ?? null) !== "—" ? "text-accent" : "text-muted-foreground")}>{costPerDelivery(winners.cost[0]?.cost_per_delivery ?? null)}</p>
+                <p className="mt-1 break-words text-sm text-muted-foreground">per delivered message{": "}{winnerCaption(winners.cost)}</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground">Confirmed deliveries: {names(campaigns.filter(c => c.delivered_count > 0)) || "none"}; still pending: {names(campaigns.filter(c => c.pending_count > 0)) || "none"}.</p>
+
+            <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+              <div className="border-b border-border px-4 py-3"><h2 id="detailed-comparison" className="font-semibold text-foreground">Detailed comparison</h2></div>
+              <div className="overflow-x-auto" tabIndex={0} role="region" aria-labelledby="detailed-comparison">
+                <table className="w-full table-fixed" style={{ minWidth: 160 + campaigns.length * 220 }} aria-label="Detailed comparison">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th scope="col" className="w-40 px-4 py-3 text-left text-sm font-medium text-muted-foreground">Metric</th>
+                      {campaigns.map(campaign => (
+                        <th scope="col" key={campaign.id} className="whitespace-normal break-words px-4 py-3 text-center text-sm font-medium text-foreground">
+                          {sentenceCase(campaign.name)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {metrics.map(metric => (
+                      <tr key={metric.label}>
+                        <th scope="row" className="px-4 py-3 text-left text-sm font-normal text-muted-foreground">{metric.label}</th>
+                        {campaigns.map(campaign => {
+                          const value = metric.value(campaign);
+                          const muted = metric.muted || value === "—";
+                          const winner = !muted && metric.winners?.some(c => c.id === campaign.id);
+                          return <td key={campaign.id} className={cn("px-4 py-3 text-center text-sm font-medium", muted ? "text-muted-foreground" : winner ? "bg-accent/10 font-semibold text-accent" : "text-foreground")}>{value}</td>;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
         )}
+
+        <section className="min-w-0 rounded-xl border border-border bg-card" aria-label="Campaign selection">
+          {campaigns && <button type="button" aria-expanded={pickerOpen} aria-controls="campaign-picker" onClick={() => setPickerOpen(!pickerOpen)} className="flex w-full items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Change campaigns{pickerOpen ? <ChevronUp aria-hidden="true" className="h-4 w-4" /> : <ChevronDown aria-hidden="true" className="h-4 w-4" />}
+          </button>}
+          {(!campaigns || pickerOpen) && (
+            <div id="campaign-picker" className="space-y-4 p-4">
+              {!campaigns && <h2 className="font-semibold text-foreground">Select campaigns</h2>}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative min-w-0 flex-1 basis-48">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input aria-label="Search campaigns" placeholder="Search campaigns" value={search} onChange={event => setSearch(event.target.value)} className="pl-9" />
+                </div>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="w-32" aria-label="Campaign type"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">All Types</SelectItem><SelectItem value="sms">SMS</SelectItem></SelectContent>
+                </Select>
+              </div>
+
+              {loadingCampaigns ? <p role="status" className="py-4 text-center text-sm text-muted-foreground">Loading campaigns…</p> : selectionError ? (
+                <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{selectionError}</p><Button variant="outline" onClick={() => setSelectionReload(value => value + 1)}>Retry</Button></div>
+              ) : (
+                <div className="max-h-72 space-y-2 overflow-y-auto">
+                  {filteredCampaigns.map(campaign => {
+                    const selected = selectedIds.includes(campaign.id);
+                    const disabled = loading || (!selected && selectedIds.length >= 5);
+                    return <label key={campaign.id} className={cn("flex items-center gap-3 rounded-lg border p-3 transition-colors", selected ? "border-primary bg-primary/5" : "border-border", disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-primary/50")}>
+                      <Checkbox checked={selected} disabled={disabled} onCheckedChange={() => toggleCampaign(campaign.id)} aria-label={sentenceCase(campaign.name)} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words text-sm font-medium text-foreground">{sentenceCase(campaign.name)}</span>
+                        <span className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground"><span>{campaignDate(campaign.created_at)}</span><span>{campaign.sent_count.toLocaleString()} sent</span></span>
+                      </span>
+                    </label>;
+                  })}
+                  {!filteredCampaigns.length && <p className="py-6 text-center text-sm text-muted-foreground">{availableCampaigns.length ? "No campaigns match your search or filter." : "No campaigns yet."}</p>}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">{selectedIds.length} of 5 selected</p>
+                <Button onClick={() => void loadComparison([...selectedIds])} disabled={loading || loadingCampaigns || selectedIds.length < 2 || selectedIds.length > 5} className="gap-2">
+                  {loading && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}Compare ({selectedIds.length})
+                </Button>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
-
-      {/* Comparison Results */}
-      {comparisonData && (
-        <div className="space-y-6">
-          {/* Highlights */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-success/30 bg-success/5 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Crown className="h-5 w-5 text-success" />
-                <span className="font-medium text-foreground">Best Delivery Rate</span>
-              </div>
-              <p className="text-2xl font-bold text-success">
-                {comparisonData.comparison.best_delivery_rate}%
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {comparisonData.campaigns.find(c => c.id === comparisonData.comparison.best_delivery_campaign)?.name}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="h-5 w-5 text-primary" />
-                <span className="font-medium text-foreground">Fastest Delivery</span>
-              </div>
-              <p className="text-2xl font-bold text-primary">
-                {formatDuration(comparisonData.comparison.fastest_delivery)}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {comparisonData.campaigns.find(c => c.id === comparisonData.comparison.fastest_campaign)?.name || "N/A"}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-accent/30 bg-accent/5 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign className="h-5 w-5 text-accent" />
-                <span className="font-medium text-foreground">Best Value</span>
-              </div>
-              <p className="text-2xl font-bold text-accent">
-                R{comparisonData.comparison.lowest_cost_per_delivery?.toFixed(4) || "N/A"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                per delivered message
-              </p>
-            </div>
-          </div>
-
-          {/* Side by Side Comparison Table */}
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="border-b border-border px-6 py-4">
-              <h3 className="font-semibold text-foreground">Detailed Comparison</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-muted/50">
-                    <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Metric</th>
-                    {comparisonData.campaigns.map((campaign) => (
-                      <th key={campaign.id} className="px-4 py-3 text-center text-sm font-medium text-foreground min-w-[150px]">
-                        <div className="flex flex-col items-center gap-1">
-                          <div className={cn(
-                            "flex h-6 w-6 items-center justify-center rounded",
-                            campaign.type === "sms" ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
-                          )}>
-                            {campaign.type === "sms" ? <MessageSquare className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
-                          </div>
-                          <span className="truncate max-w-[140px]">{campaign.name}</span>
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {/* Status */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">Status</td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center">
-                        <span className={cn(
-                          "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
-                          c.status === "Completed" ? "bg-success/10 text-success" :
-                          c.status === "Sending" ? "bg-primary/10 text-primary" :
-                          "bg-muted text-muted-foreground"
-                        )}>
-                          {c.status}
-                        </span>
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Recipients */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                      <Users className="h-4 w-4" /> Recipients
-                    </td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center font-medium text-foreground">
-                        {c.total_recipients.toLocaleString()}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Sent */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">Sent</td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center font-medium text-foreground">
-                        {c.sent_count.toLocaleString()}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Delivered */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                      <Check className="h-4 w-4 text-success" /> Delivered
-                    </td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center font-medium text-success">
-                        {c.delivered_count.toLocaleString()}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Failed */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">Failed</td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center font-medium text-destructive">
-                        {c.failed_count.toLocaleString()}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Delivery Rate */}
-                  <tr className="bg-muted/30">
-                    <td className="px-4 py-3 text-sm font-medium text-foreground flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4" /> Delivery Rate
-                    </td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <span className={cn(
-                            "text-lg font-bold",
-                            c.id === comparisonData.comparison.best_delivery_campaign ? "text-success" : "text-foreground"
-                          )}>
-                            {c.delivery_rate}%
-                          </span>
-                          {c.id === comparisonData.comparison.best_delivery_campaign && (
-                            <Crown className="h-4 w-4 text-success" />
-                          )}
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Avg Delivery Time */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                      <Clock className="h-4 w-4" /> Avg Delivery Time
-                    </td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center">
-                        <span className={cn(
-                          "font-medium",
-                          c.id === comparisonData.comparison.fastest_campaign ? "text-primary" : "text-foreground"
-                        )}>
-                          {formatDuration(c.avg_delivery_time_seconds)}
-                        </span>
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Cost */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                      <DollarSign className="h-4 w-4" /> Total Cost
-                    </td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center font-medium text-foreground">
-                        R{Number(c.actual_cost || 0).toFixed(2)}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Cost per Delivery */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">Cost per Delivery</td>
-                    {comparisonData.campaigns.map((c) => {
-                      const costPer = c.delivered_count > 0 ? c.actual_cost / c.delivered_count : 0;
-                      return (
-                        <td key={c.id} className="px-4 py-3 text-center">
-                          <span className={cn(
-                            "font-medium",
-                            c.id === comparisonData.comparison.best_value_campaign ? "text-accent" : "text-foreground"
-                          )}>
-                            R{costPer.toFixed(4)}
-                          </span>
-                        </td>
-                      );
-                    })}
-                  </tr>
-
-                  {/* Date */}
-                  <tr>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">Created</td>
-                    {comparisonData.campaigns.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-center text-sm text-muted-foreground">
-                        {format(new Date(c.created_at), "MMM d, yyyy")}
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Insights */}
-          <div className="rounded-xl border border-border bg-gradient-to-br from-primary/5 to-accent/5 p-6">
-            <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              Performance Insights
-            </h3>
-            <div className="space-y-3 text-sm">
-              {comparisonData.comparison.best_delivery_campaign && (
-                <p className="text-muted-foreground">
-                  <span className="font-medium text-foreground">
-                    {comparisonData.campaigns.find(c => c.id === comparisonData.comparison.best_delivery_campaign)?.name}
-                  </span>{" "}
-                  achieved the highest delivery rate at{" "}
-                  <span className="text-success font-medium">{comparisonData.comparison.best_delivery_rate}%</span>.
-                </p>
-              )}
-              
-              {comparisonData.comparison.fastest_campaign && (
-                <p className="text-muted-foreground">
-                  <span className="font-medium text-foreground">
-                    {comparisonData.campaigns.find(c => c.id === comparisonData.comparison.fastest_campaign)?.name}
-                  </span>{" "}
-                  had the fastest average delivery time at{" "}
-                  <span className="text-primary font-medium">{formatDuration(comparisonData.comparison.fastest_delivery)}</span>.
-                </p>
-              )}
-
-              {comparisonData.comparison.best_value_campaign && (
-                <p className="text-muted-foreground">
-                  <span className="font-medium text-foreground">
-                    {comparisonData.campaigns.find(c => c.id === comparisonData.comparison.best_value_campaign)?.name}
-                  </span>{" "}
-                  provided the best value at{" "}
-                  <span className="text-accent font-medium">R{comparisonData.comparison.lowest_cost_per_delivery}</span> per delivered message.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </DashboardLayout>
   );
 }

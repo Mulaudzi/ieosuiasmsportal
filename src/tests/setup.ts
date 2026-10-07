@@ -35,12 +35,15 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
   disconnect: vi.fn(),
 }));
 
-// Mock localStorage
+// Stateful browser storage keeps auth and draft recovery tests realistic.
+const storedValues = new Map<string, string>();
 const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
+  getItem: vi.fn((key: string) => storedValues.get(String(key)) ?? null),
+  setItem: vi.fn((key: string, value: string) => { storedValues.set(String(key), String(value)); }),
+  removeItem: vi.fn((key: string) => { storedValues.delete(String(key)); }),
+  clear: vi.fn(() => { storedValues.clear(); }),
+  key: vi.fn((index: number) => [...storedValues.keys()][index] ?? null),
+  get length() { return storedValues.size; },
 };
 Object.defineProperty(window, "localStorage", {
   value: localStorageMock,
@@ -57,5 +60,6 @@ Object.defineProperty(navigator, "clipboard", {
 
 // Reset mocks between tests
 beforeEach(() => {
+  storedValues.clear();
   vi.clearAllMocks();
 });

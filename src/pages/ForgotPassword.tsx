@@ -1,3 +1,4 @@
+import { Logo } from "@/components/layout/Logo";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,8 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Mail, CheckCircle, KeyRound } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import smsPortalLogo from "@/assets/ieosuia-sms-portal-logo.png";
-import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
 
 type Step = "email" | "code" | "reset" | "success";
 
@@ -86,11 +85,7 @@ export default function ForgotPassword() {
       <div className="hidden lg:flex lg:w-1/2 bg-sidebar items-center justify-center p-12">
         <div className="max-w-md">
           <div className="mb-8">
-            <img 
-              src={smsPortalLogoWhite} 
-              alt="IEOSUIA SMS Portal" 
-              className="h-14 w-auto"
-            />
+            <Logo variant="navy" size="lg" linkTo="" />
           </div>
           <h1 className="text-4xl font-bold text-sidebar-primary-foreground mb-4">
             Reset Your Password
@@ -125,11 +120,7 @@ export default function ForgotPassword() {
       <div className="flex-1 flex items-center justify-center p-8 bg-background">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center justify-center mb-8">
-            <img 
-              src={smsPortalLogo} 
-              alt="IEOSUIA SMS Portal" 
-              className="h-12 w-auto"
-            />
+            <Logo variant="theme" size="lg" linkTo="" />
           </div>
 
           {step === "email" && (

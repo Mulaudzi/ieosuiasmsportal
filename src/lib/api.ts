@@ -153,7 +153,9 @@ export const downloadAuthenticated = async (endpoint: string, filename: string):
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = filename;
+  const disposition=response.headers?.get('Content-Disposition') || '';
+  const suggested=/^\/(sms\/campaigns-v2\/\d+\/export|reports\/export)(?:\?|$)/.test(endpoint) ? disposition.match(/filename="([^"\r\n]+)"/i)?.[1] : undefined;
+  anchor.download = suggested ? suggested.replace(/[\\/]/g,'-') : filename;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -162,8 +164,8 @@ export const downloadAuthenticated = async (endpoint: string, filename: string):
 };
 
 export interface SmsRecipientSource { manual: string[]; contact_ids: string[]; group_ids: string[]; excluded: string[]; }
-export interface SmsPreview { entered_count:number; valid_count:number; invalid_count:number; duplicate_count:number; opted_out_count:number; excluded_count:number; sendable_count:number; recipients:string[]; encoding:'gsm7'|'ucs2'; character_count:number; unit_count:number; segment_count:number; total_segments:number; required_credits:number; price_per_segment:number; estimated_charge:number; wallet_balance:number; available_balance:number; available_credits:number; sufficient_balance:boolean; invalid:string[]; }
-export interface SmsCampaignInput { name:string; content:string; sender_id?:string; scheduled_at?:string|null; send_now?:boolean; idempotency_key:string; recipients:SmsRecipientSource; }
+export interface SmsPreview { final_content:string; include_opt_out:boolean; entered_count:number; valid_count:number; invalid_count:number; duplicate_count:number; opted_out_count:number; excluded_count:number; sendable_count:number; recipients:string[]; encoding:'gsm7'|'ucs2'; character_count:number; unit_count:number; segment_count:number; total_segments:number; required_credits:number; price_per_segment:number; estimated_charge:number; wallet_balance:number; available_balance:number; available_credits:number; sufficient_balance:boolean; invalid:string[]; }
+export interface SmsCampaignInput { include_opt_out?:boolean; name:string; content:string; sender_id?:string; scheduled_at?:string|null; send_now?:boolean; idempotency_key:string; recipients:SmsRecipientSource; }
 
 // Auth
 export const login = (email: string, password: string) => api.post<{ user: any; token: string }>('/auth/login', { email, password }, false);
@@ -186,9 +188,10 @@ export const createEmailCampaign = (data: any) => api.post<any>('/email/campaign
 export const deleteCampaign = (id: string, type: 'sms' | 'email' = 'sms') => api.delete(`/${type}/campaigns/${id}`);
 export const duplicateCampaign = (id: string, type: 'sms' | 'email' = 'sms') => api.post<any>(`/${type}/campaigns/${id}/duplicate`);
 export const retryCampaign = (id: string) => api.post<any>(`/campaigns/${id}/retry`);
-export const exportCampaignMessages = (id: string, type: 'sms' | 'email' = 'sms') => {
+export const exportCampaignMessages = (id: string, type: 'sms' | 'email' = 'sms', filters: {state?:string;search?:string;format?:'csv'|'pdf'|'excel'} = {}) => {
   const endpoint = type === 'sms' ? `/sms/campaigns-v2/${id}/export` : `/email/campaigns/${id}/export`;
-  return downloadAuthenticated(endpoint, `${type}-campaign-${id}.csv`);
+  const query=new URLSearchParams(Object.entries(filters).filter(([,value])=>Boolean(value)&&value!=='all'));
+  return downloadAuthenticated(endpoint+(query.size?'?'+query.toString():''), `${type}-campaign-${id}.${filters.format==='excel'?'xls':filters.format||'csv'}`);
 };
 export const checkCampaignCredits = (recipientCount: number, type: 'sms' | 'email') => 
   api.post<any>('/campaigns/check-credits', { recipient_count: recipientCount, type });

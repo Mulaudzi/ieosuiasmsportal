@@ -17,7 +17,6 @@ import {
   Plus,
   Search,
   MessageSquare,
-  Mail,
   Edit,
   Trash2,
   Copy,
@@ -150,7 +149,6 @@ export default function Templates() {
   );
 
   const smsTemplates = filteredTemplates.filter((t) => t.type === "sms");
-  const emailTemplates = filteredTemplates.filter((t) => t.type === "email");
 
   return (
     <DashboardLayout
@@ -170,10 +168,6 @@ export default function Templates() {
               <MessageSquare className="h-4 w-4" />
               SMS Templates ({smsTemplates.length})
             </TabsTrigger>
-            <TabsTrigger value="email" className="gap-2">
-              <Mail className="h-4 w-4" />
-              Email Templates ({emailTemplates.length})
-            </TabsTrigger>
           </TabsList>
 
           <div className="relative max-w-sm flex-1">
@@ -188,7 +182,7 @@ export default function Templates() {
         </div>
 
         <TabsContent value="sms">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => <TemplateCardSkeleton key={i} />)
             ) : (
@@ -196,33 +190,33 @@ export default function Templates() {
                 {smsTemplates.map((template) => (
                   <div
                     key={template.id}
-                    className="group rounded-xl border border-border bg-card p-5 transition-all hover:border-primary/50 hover:shadow-lg"
+                    className="group h-full flex flex-col rounded-xl border border-border bg-card p-5 transition-all hover:border-primary/50 hover:shadow-lg"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <MessageSquare className="h-5 w-5" />
                       </div>
-                      <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(template)}>
+                      <div className="flex gap-1 opacity-100">
+                        <Button aria-label="Edit template" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(template)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(template)}>
+                        <Button aria-label="Duplicate template" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(template)}>
                           <Copy className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteConfirm(template)}>
+                        <Button aria-label="Delete template" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteConfirm(template)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     </div>
 
                     <h3 className="mt-4 font-semibold text-foreground">
-                      {template.name}
+                      {template.name?.trim() && template.name !== String(template.id) ? template.name : "SMS message template"}
                     </h3>
                     <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
                       {template.content}
                     </p>
 
-                    <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-xs text-muted-foreground">
+                    <div className="mt-auto flex items-center justify-between border-t border-border pt-4 text-xs text-muted-foreground">
                       <span>Used {template.usage_count || 0} times</span>
                       <span>Last used {formatLastUsed(template.updated_at)}</span>
                     </div>
@@ -237,70 +231,6 @@ export default function Templates() {
                   <Plus className="h-10 w-10 text-muted-foreground" />
                   <p className="mt-3 font-medium text-muted-foreground">
                     Create SMS Template
-                  </p>
-                </button>
-              </>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="email">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => <TemplateCardSkeleton key={i} />)
-            ) : (
-              <>
-                {emailTemplates.map((template) => (
-                  <div
-                    key={template.id}
-                    className="group rounded-xl border border-border bg-card p-5 transition-all hover:border-accent/50 hover:shadow-lg"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                        <Mail className="h-5 w-5" />
-                      </div>
-                      <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(template)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(template)}>
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteConfirm(template)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <h3 className="mt-4 font-semibold text-foreground">
-                      {template.name}
-                    </h3>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      HTML email template
-                    </p>
-
-                    <div className="mt-4 h-24 rounded-lg bg-muted/50 p-3">
-                      <div className="h-3 w-3/4 rounded bg-muted" />
-                      <div className="mt-2 h-2 w-full rounded bg-muted" />
-                      <div className="mt-1 h-2 w-5/6 rounded bg-muted" />
-                      <div className="mt-3 h-6 w-20 rounded bg-primary/20" />
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-xs text-muted-foreground">
-                      <span>Used {template.usage_count || 0} times</span>
-                      <span>Last used {formatLastUsed(template.updated_at)}</span>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Add New Card */}
-                <button 
-                  onClick={() => handleCreate("email")}
-                  className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-card/50 p-5 transition-colors hover:border-accent hover:bg-accent/5"
-                >
-                  <Plus className="h-10 w-10 text-muted-foreground" />
-                  <p className="mt-3 font-medium text-muted-foreground">
-                    Create Email Template
                   </p>
                 </button>
               </>

@@ -14,7 +14,14 @@ class ContactController {
         
         $pdo = db();
         
-        if ($search) {
+        if ($groupId === 'opted-out') {
+            $where="c.user_id=? AND EXISTS (SELECT 1 FROM opt_outs o WHERE o.user_id=c.user_id AND o.channel='sms' AND o.recipient=c.phone_normalized)";
+            $args=[$userId];
+            if($search){$where.=' AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)';$args=array_merge($args,array_fill(0,3,'%'.$search.'%'));}
+            $count=$pdo->prepare('SELECT COUNT(*) FROM contacts c WHERE '.$where);$count->execute($args);$total=(int)$count->fetchColumn();
+            $stmt=$pdo->prepare("SELECT c.*,GROUP_CONCAT(g.id) group_id,GROUP_CONCAT(g.name) group_name FROM contacts c LEFT JOIN group_contacts gc ON gc.contact_id=c.id LEFT JOIN contact_groups g ON g.id=gc.group_id AND g.user_id=c.user_id WHERE {$where} GROUP BY c.id ORDER BY c.created_at DESC LIMIT ? OFFSET ?");
+            $stmt->execute(array_merge($args,[$perPage,($page-1)*$perPage]));$contacts=$stmt->fetchAll();
+        } elseif ($search) {
             // Search with group information
             $stmt = $pdo->prepare("
                 SELECT c.*, 
@@ -106,7 +113,10 @@ class ContactController {
             $total = table('contacts')->where('user_id', $userId)->count();
         }
         
-        Response::paginate($contacts, $total, $page, $perPage);
+        $optouts=$pdo->prepare("SELECT recipient FROM opt_outs WHERE user_id=? AND channel='sms'");$optouts->execute([$userId]);$suppressed=array_flip($optouts->fetchAll(PDO::FETCH_COLUMN));
+        foreach($contacts as &$contact){$contact['subscription_status']=isset($suppressed[$contact['phone_normalized']??''])?'unsubscribed':($contact['subscription_status']??'subscribed');}unset($contact);
+        $count=$pdo->prepare("SELECT COUNT(*) FROM contacts c WHERE c.user_id=? AND EXISTS (SELECT 1 FROM opt_outs o WHERE o.user_id=c.user_id AND o.channel='sms' AND o.recipient=c.phone_normalized)");$count->execute([$userId]);
+        Response::success(['data'=>$contacts,'meta'=>['current_page'=>$page,'per_page'=>$perPage,'total'=>$total,'last_page'=>ceil($total/$perPage),'opted_out_total'=>(int)$count->fetchColumn()]]);
     }
     
     public function store(): void {
@@ -353,7 +363,7 @@ class ContactController {
                 return;
             }
             
-            $header = fgetcsv($handle, 0, ',', '"', '\\');
+            $header = fgetcsv($handle, 0, ',', '"', '');
             if (!$header || empty($header)) {
                 fclose($handle);
                 Response::error('CSV file is empty or invalid', 400);
@@ -361,9 +371,9 @@ class ContactController {
             }
             
             $header = array_map('strtolower', array_map('trim', $header));
-            $headerOriginal = array_map('trim', fgetcsv($handle, 0, ',', '"', '\\') !== false ? array_keys(array_combine($header, $header)) : $header);
+            $headerOriginal = array_map('trim', fgetcsv($handle, 0, ',', '"', '') !== false ? array_keys(array_combine($header, $header)) : $header);
             rewind($handle);
-            fgetcsv($handle, 0, ',', '"', '\\'); // skip header again
+            fgetcsv($handle, 0, ',', '"', ''); // skip header again
             
             $imported = 0;
             $failed = 0;
@@ -372,7 +382,7 @@ class ContactController {
             $pdo = db();
             $rowNumber = 1; // For error reporting (0-indexed in fgetcsv)
             
-            while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
+            while (($row = fgetcsv($handle, 0, ',', '"', '')) !== false) {
                 $rowNumber++;
                 
                 // Skip empty rows
@@ -540,7 +550,7 @@ class ContactController {
             
             // Generate CSV
             $output = fopen('php://temp', 'r+');
-            fputcsv($output, ['Name', 'Surname', 'Phone', 'Email', 'Country Code', 'Status', 'Created At']);
+            fputcsv($output, ['Name', 'Surname', 'Phone', 'Email', 'Country Code', 'Status', 'Created At'], escape: '');
             
             foreach ($contacts as $contact) {
                 fputcsv($output, [
@@ -551,7 +561,7 @@ class ContactController {
                     $this->csvCell($contact['country_code'] ?? '+27'),
                     $this->csvCell($contact['subscription_status'] ?? 'subscribed'),
                     $this->csvCell($contact['created_at']),
-                ]);
+                ], escape: '');
             }
             
             rewind($output);

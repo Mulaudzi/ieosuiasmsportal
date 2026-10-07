@@ -13,6 +13,7 @@ import {
   Bug,
   Loader2,
   X,
+  PanelLeftClose, PanelLeftOpen, CircleHelp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,9 +39,11 @@ const adminNavigation = [
 interface SidebarProps {
   mobile?: boolean;
   onNavigate?: () => void;
+  collapsed?: boolean;
+  onCollapse?: () => void;
 }
 
-export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
+export function Sidebar({ mobile = false, onNavigate, collapsed = false, onCollapse }: SidebarProps) {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { smsCredits, pricePerCredit, isLoading: walletLoading } = useWallet();
@@ -61,14 +64,15 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
 
   return (
     <aside className={cn(
-      mobile ? "h-full w-full bg-sidebar" : "fixed left-0 top-0 z-40 hidden h-[100dvh] w-64 bg-sidebar lg:block"
+      'portal-sidebar', collapsed && 'is-collapsed', mobile ? "h-full w-full bg-sidebar" : "fixed left-0 top-0 z-40 hidden h-[100dvh] w-64 bg-sidebar lg:block"
     )}>
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4 sm:px-6">
+        <div className="sidebar-logo flex h-16 items-center justify-between border-b border-sidebar-border px-4 sm:px-6">
           <Link to="/dashboard" onClick={onNavigate}>
             <LogoSidebar size="md" />
           </Link>
+          {!mobile && <button type="button" title={collapsed?'Expand sidebar':'Collapse sidebar'} aria-label={collapsed?'Expand sidebar':'Collapse sidebar'} onClick={onCollapse} className="rounded p-1 text-sidebar-foreground hover:bg-sidebar-accent">{collapsed?<PanelLeftOpen size={18}/>:<PanelLeftClose size={18}/>}</button>}
           {mobile && (
             <button
               type="button"
@@ -92,6 +96,8 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
             return (
               <Link
                 key={item.name}
+                data-tour={item.name==='Contacts'?'contacts':undefined}
+                title={item.name}
                 to={item.href}
                 onClick={onNavigate}
                 className={cn(
@@ -100,9 +106,9 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
                 )}
               >
                 <item.icon className="h-5 w-5 flex-shrink-0" />
-                <span className="flex-1">{item.name}</span>
+                <span className="sidebar-label flex-1">{item.name}</span>
                 {isActive && (
-                  <ChevronRight className="h-4 w-4 opacity-60" />
+                  <ChevronRight className="sidebar-chevron h-4 w-4 opacity-60" />
                 )}
               </Link>
             );
@@ -122,6 +128,7 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
                 return (
                   <Link
                     key={item.name}
+                    title={item.name}
                     to={item.href}
                     onClick={onNavigate}
                     className={cn(
@@ -130,7 +137,7 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
                     )}
                   >
                     <item.icon className="h-5 w-5 flex-shrink-0" />
-                    <span className="flex-1">{item.name}</span>
+                    <span className="sidebar-label flex-1">{item.name}</span>
                     {isActive && (
                       <ChevronRight className="h-4 w-4 opacity-60" />
                     )}
@@ -142,23 +149,24 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
         </nav>
 
         {/* Credit Balance Card */}
-        <div className="mx-3 mb-4 rounded-xl bg-sidebar-accent p-4">
+        <Link to="/support" title="Need help" className="nav-item mx-3 mb-2"><CircleHelp className="h-5 w-5 shrink-0"/><span className="sidebar-label">Need help</span></Link>
+        <div data-tour="credits" className="sidebar-credit mx-3 mb-4 rounded-xl bg-sidebar-accent p-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-sidebar-foreground/80">
               SMS Credits
             </span>
             <Wallet className="h-4 w-4 text-primary" />
           </div>
-          <p className="mt-1 text-2xl font-bold text-sidebar-primary-foreground">
+          <p className="credit-balance mt-1 text-2xl font-bold text-sidebar-primary-foreground">
             {walletLoading ? (
               <Loader2 className="h-6 w-6 animate-spin" />
             ) : (
               smsCredits.toLocaleString()
             )}
           </p>
-          <p className="text-xs text-sidebar-muted">1 credit = 1 segment · R{pricePerCredit.toFixed(2)}</p>
           <Link
             to="/wallet"
+            title="Buy Credits"
             onClick={onNavigate}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
@@ -168,7 +176,7 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
 
         {/* User Section */}
         <div className="border-t border-sidebar-border p-3">
-          <div className="flex items-center gap-3 rounded-lg px-3 py-2">
+          <div className="sidebar-user flex items-center gap-3 rounded-lg px-3 py-2">
             <Link 
               to="/settings"
               onClick={onNavigate}
@@ -176,7 +184,7 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
             >
               {user ? getInitials(user.name) : 'U'}
             </Link>
-            <Link to="/settings" onClick={onNavigate} className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
+            <Link to="/settings" onClick={onNavigate} className="sidebar-user-details flex-1 min-w-0 hover:opacity-80 transition-opacity">
               <p className="truncate text-sm font-medium text-sidebar-primary-foreground">
                 {user?.name || 'User'}
               </p>

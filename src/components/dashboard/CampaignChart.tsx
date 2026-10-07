@@ -72,7 +72,7 @@ export function CampaignChart({ range = "7d" }: { range?: string }) {
         </div>
         <div className="flex items-center justify-center h-[300px] text-muted-foreground">
           <div className="text-center">
-            <p>No message data available yet</p>
+            <p>No messages in this period</p>
             <p className="text-sm">Send your first campaign to see stats here</p>
           </div>
         </div>

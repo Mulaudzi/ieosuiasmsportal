@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { DeliveryStatusHelp } from "@/components/dashboard/DeliveryStatusHelp";
+import { deliveryChartStyle } from '@/lib/delivery-presentation';
+import { DeliveryOutcomeList } from './DeliveryOutcomeList';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { api } from "@/lib/api";
 import { Loader2 } from "lucide-react";
@@ -16,6 +19,7 @@ interface DashboardStats {
   total_pending: number;
   total_awaiting_delivery: number;
   total_dlr_unavailable: number;
+  total_skipped: number;
   delivery_rate: number;
 }
 
@@ -23,6 +27,7 @@ export function DeliveryStats({ range = "7d" }: { range?: string }) {
   const [data, setData] = useState<DeliveryData[]>([]);
   const [successRate, setSuccessRate] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [waitingToSend,setWaitingToSend] = useState(0);
 
   useEffect(() => {
     void loadDeliveryStats();const timer=window.setInterval(()=>void loadDeliveryStats(false),30000);return()=>window.clearInterval(timer);
@@ -41,18 +46,14 @@ export function DeliveryStats({ range = "7d" }: { range?: string }) {
         const pending = stats.total_pending || 0;
 
         const deliveredPct = Math.round((delivered / total) * 100);
-        const failedPct = Math.round((failed / total) * 100);
-        const pendingPct = Math.round((pending / total) * 100);
-        const awaitingPct = Math.round((awaiting / total) * 100);
-        const unavailablePct = Math.round((unavailable / total) * 100);
-
+        setWaitingToSend(Math.max(0,pending-awaiting-unavailable));
         setData([
-          { name: "Delivered", value: deliveredPct, color: "hsl(160, 84%, 39%)" },
-          { name: "Pending dispatch", value: Math.max(0,pendingPct-awaitingPct-unavailablePct), color: "hsl(38, 92%, 50%)" },
-          { name: "Awaiting DLR", value: awaitingPct, color: "hsl(38, 92%, 50%)" },
-          { name: "DLR unavailable", value: unavailablePct, color: "hsl(0, 72%, 51%)" },
-          { name: "Failed", value: failedPct, color: "hsl(0, 72%, 51%)" },
-        ].filter(d => d.value > 0));
+          { name: "Delivered", value: delivered },
+          { name: "Delivery Confirmation Pending", value: awaiting },
+          { name: "Delivery Status Unavailable", value: unavailable },
+          { name: "Not Delivered", value: failed },
+          { name: "Skipped", value: stats.total_skipped || 0 },
+        ].map(d=>({...d,color:deliveryChartStyle(d.name).color})));
         
         setSuccessRate(stats.delivery_rate || deliveredPct);
       }
@@ -72,7 +73,7 @@ export function DeliveryStats({ range = "7d" }: { range?: string }) {
     );
   }
 
-  if (data.length === 0) {
+  if (data.every(item=>item.value===0) && waitingToSend===0) {
     return (
       <div className="metric-card h-full">
         <div className="mb-4">
@@ -81,7 +82,7 @@ export function DeliveryStats({ range = "7d" }: { range?: string }) {
         </div>
         <div className="flex items-center justify-center h-40 text-muted-foreground">
           <div className="text-center">
-            <p>No delivery data yet</p>
+            <p>No messages in this period</p>
             <p className="text-sm">Send messages to see stats</p>
           </div>
         </div>
@@ -96,12 +97,12 @@ export function DeliveryStats({ range = "7d" }: { range?: string }) {
         <p className="text-sm text-muted-foreground">Overall message delivery performance</p>
       </div>
 
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col items-center gap-6 sm:flex-row">
         <div className="relative h-40 w-40">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={data}
+                data={data.filter(item=>item.value>0)}
                 cx="50%"
                 cy="50%"
                 innerRadius={50}
@@ -109,7 +110,7 @@ export function DeliveryStats({ range = "7d" }: { range?: string }) {
                 paddingAngle={2}
                 dataKey="value"
               >
-                {data.map((entry, index) => (
+                {data.filter(item=>item.value>0).map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
@@ -122,29 +123,21 @@ export function DeliveryStats({ range = "7d" }: { range?: string }) {
               />
             </PieChart>
           </ResponsiveContainer>
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <p className="text-2xl font-bold text-foreground">{successRate}%</p>
-              <p className="text-xs text-muted-foreground">Success</p>
+              <p className="text-xs text-muted-foreground">Confirmed</p>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 space-y-3">
-          {data.map((item) => (
-            <div key={item.name} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div
-                  className="h-3 w-3 rounded-full"
-                  style={{ backgroundColor: item.color }}
-                />
-                <span className="text-sm text-muted-foreground">{item.name}</span>
-              </div>
-              <span className="text-sm font-medium text-foreground">{item.value}%</span>
-            </div>
-          ))}
+        <div className="w-full min-w-0 flex-1 space-y-3">
+          <DeliveryOutcomeList counts={data.map(item=>item.value)} tooltips={false}/>
+          {waitingToSend>0&&<p className="text-xs text-muted-foreground">Waiting to send: {waitingToSend.toLocaleString()}</p>}
+          <p className="text-xs text-muted-foreground">Skipped messages were not sent and are excluded from Total Sent and delivery rate.</p>
         </div>
       </div>
+      <DeliveryStatusHelp />
     </div>
   );
 }

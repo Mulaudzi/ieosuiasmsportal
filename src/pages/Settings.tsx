@@ -1,3 +1,5 @@
+import { GetStartedChecklist } from '@/components/dashboard/GetStartedChecklist';
+import { SmsOptOutSettings } from '@/components/settings/SmsOptOutSettings';
 import { useState, useRef, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,7 @@ type OrganizationFormData = z.infer<typeof organizationSchema>;
 type SecurityFormData = z.infer<typeof securitySchema>;
 
 export default function Settings() {
+  const legacyPasswordFormEnabled = false;
   const { user, token, updateUser, isEmailVerified } = useAuth();
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -743,7 +746,12 @@ export default function Settings() {
 
         {/* Security Tab */}
         <TabsContent value="security">
-          <form onSubmit={securityForm.handleSubmit(handleSecuritySubmit)}>
+          <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+            <h3 className="text-lg font-semibold">Password and account security</h3>
+            <p>Your password is managed by central IEOSUIA authentication, not the SMS Portal. Use the secure reset page and enter your account email.</p>
+            <Button asChild><a href="https://auth.ieosuia.com/forgot-password">Reset IEOSUIA password</a></Button>
+          </div>
+          {legacyPasswordFormEnabled && <form onSubmit={securityForm.handleSubmit(handleSecuritySubmit)}>
             <div className="rounded-xl border border-border bg-card p-6">
               <h3 className="text-lg font-semibold text-foreground">
                 Security Settings
@@ -811,7 +819,7 @@ export default function Settings() {
                 </Button>
               </div>
             </div>
-          </form>
+          </form>}
         </TabsContent>
 
         {/* Notifications Tab */}
@@ -877,178 +885,7 @@ export default function Settings() {
         </TabsContent>}
 
         {/* Get Started Tab */}
-        <TabsContent value="get-started">
-          <div className="rounded-xl border border-border bg-card p-6">
-            <h3 className="text-lg font-semibold text-foreground">
-              Get Started
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Learn the basics and get up to speed
-            </p>
-
-            <div className="mt-6 space-y-4">
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-muted/50">
-                <Zap className="h-5 w-5 text-yellow-500 mt-1 flex-shrink-0" />
-                <div>
-                  <h4 className="font-medium text-foreground">
-                    Quick Start Guide
-                  </h4>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Learn how to create your first campaign in 5 minutes
-                  </p>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="mt-2">
-                        Open Guide
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-xl">
-                      <DialogHeader>
-                        <DialogTitle>Quick Start Tutorial</DialogTitle>
-                        <DialogDescription>
-                          Track your progress as you set up and send your first campaign.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        {/* Progress */}
-                        <div>
-                          <div className="flex items-center justify-between text-sm">
-                            <p className="font-medium text-foreground">Your Progress</p>
-                            <p className="text-muted-foreground">{completedCount}/{totalCount} ({progressPct}%)</p>
-                          </div>
-                          <div className="mt-2 h-2 w-full rounded bg-muted">
-                            <div
-                              className="h-2 rounded bg-primary transition-all duration-300"
-                              style={{ width: `${progressPct}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Animated Demo */}
-                        <div className="rounded-lg bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 p-4">
-                          <p className="text-xs font-semibold text-primary uppercase tracking-wide">The Flow</p>
-                          <div className="mt-3 space-y-2 text-xs text-foreground">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">1</div>
-                              <span>Profile Setup</span>
-                            </div>
-                            <div className="ml-3 h-3 border-l-2 border-primary/40"></div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">2</div>
-                              <span>Organize Contacts</span>
-                            </div>
-                            <div className="ml-3 h-3 border-l-2 border-primary/40"></div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">3</div>
-                              <span>Create & Test Campaign</span>
-                            </div>
-                            <div className="ml-3 h-3 border-l-2 border-primary/40"></div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">4</div>
-                              <span>Send & Monitor</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Checklist with Descriptions */}
-                        <div className="space-y-3 max-h-72 overflow-y-auto">
-                          {tutorialItems.map((item, idx) => (
-                            <div key={item.key} className="rounded-lg border border-border p-3 hover:bg-muted/50 transition-colors">
-                              <div className="flex items-start gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={!!tutorialStatus[item.key]}
-                                  onChange={() => toggleTutorialStep(item.key)}
-                                  className="h-4 w-4 accent-primary mt-0.5 flex-shrink-0"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-medium ${tutorialStatus[item.key] ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                                      Step {idx + 1}: {item.label}
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
-                                </div>
-                                {item.href && (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => (window.location.href = item.href!)}
-                                    className="flex-shrink-0"
-                                  >
-                                    Go →
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Sample template */}
-                        <div className="rounded-lg border border-border/50 bg-muted/30 p-3">
-                          <p className="text-xs font-semibold text-foreground uppercase">Quick Template</p>
-                          <p className="text-xs text-muted-foreground mt-1">Copy and customize this starting point:</p>
-                          <div className="mt-2 rounded bg-card border border-border p-2 text-xs font-mono text-foreground leading-relaxed">
-                            Hello {'{first_name}'}, just a reminder: your appointment is on {'{date}'} at {'{time}'}. Reply STOP to unsubscribe.
-                          </div>
-                        </div>
-                      </div>
-                      <DialogFooter className="gap-2">
-                        <Button type="button" variant="outline" onClick={resetTutorial}>Reset</Button>
-                        <Button type="button" variant="secondary" onClick={markAllTutorial}>Mark all done</Button>
-                        <Button variant="default">Close</Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-muted/50">
-                <Shield className="h-5 w-5 text-green-500 mt-1 flex-shrink-0" />
-                <div>
-                  <h4 className="font-medium text-foreground">
-                    Compliance Resources
-                  </h4>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Understand GDPR and best practices for compliance
-                  </p>
-                  <Dialog open={gdprDialogOpen} onOpenChange={setGdprDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="mt-2">
-                        Learn More
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>GDPR Compliance Overview</DialogTitle>
-                        <DialogDescription>
-                          Key principles and how we help you comply.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-3 text-sm">
-                        <ul className="list-disc list-inside space-y-2">
-                          <li>Lawful basis: Obtain consent or use legitimate interest.</li>
-                          <li>Transparency: Clearly state messaging purpose and frequency.</li>
-                          <li>Data minimization: Only store data necessary for messaging.</li>
-                          <li>Opt-out: Honor STOP/UNSUBSCRIBE automatically and promptly.</li>
-                          <li>Retention: Define and adhere to data retention policies.</li>
-                          <li>Security: Protect data in transit and at rest.</li>
-                        </ul>
-                        <p className="text-muted-foreground">
-                          Your account processes opt-out requests automatically within 24 hours.
-                        </p>
-                      </div>
-                      <DialogFooter>
-                        <Button variant="default" onClick={() => setGdprDialogOpen(false)}>Close</Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
+        <TabsContent value="get-started"><GetStartedChecklist /></TabsContent>
 
         {/* Compliance Tab */}
         <TabsContent value="compliance">
@@ -1061,18 +898,7 @@ export default function Settings() {
             </p>
 
             <div className="mt-6 space-y-6">
-              <div>
-                <Label htmlFor="optOutText">Default Opt-Out Text</Label>
-                <Textarea
-                  id="optOutText"
-                  defaultValue="Reply STOP to unsubscribe"
-                  className="mt-1.5"
-                  rows={2}
-                />
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  This text will be appended to SMS messages
-                </p>
-              </div>
+              <SmsOptOutSettings />
 
               <div className="flex items-center justify-between">
                 <div>
@@ -1103,9 +929,9 @@ export default function Settings() {
                   Compliance Notice
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Your account is configured to comply with GDPR and local
-                  privacy regulations. All opt-out requests are processed
-                  automatically within 24 hours.
+                  Adding opt-out text does not activate reply processing or
+                  certify compliance. Confirm that your sender supports replies
+                  and that opt-out requests are handled before using reply-based instructions.
                 </p>
               </div>
             </div>

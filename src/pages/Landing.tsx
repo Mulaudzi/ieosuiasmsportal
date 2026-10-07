@@ -1,534 +1,87 @@
+import { SocialLinks } from "@/components/layout/SocialLinks";
+import { WhatsAppButton } from "@/components/layout/WhatsAppButton";
+import { EcosystemSection } from "@/components/marketing/EcosystemSection";
+import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/layout/Logo";
-import { Footer } from "@/components/layout/Footer";
-import {
-  MessageSquare,
-  Mail,
-  Users,
-  BarChart3,
-  Shield,
-  Zap,
-  Check,
-  ArrowRight,
-  MessageCircle,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ArrowRight, ArrowUpRight, BarChart3, CalendarClock, Check, FileText, Layers, Loader2, Mail, MessageSquare, Users, Wallet } from "lucide-react";
+import { AudiencePreview, CampaignPreview, DeliveryPreview } from "@/components/marketing/PlatformPreviews";
+import "./Landing.css";
 
-const features = [
-  {
-    icon: MessageSquare,
-    title: "Bulk SMS",
-    description: "Send thousands of SMS messages instantly with high delivery rates.",
-  },
-  {
-    icon: Mail,
-    title: "Email Campaigns",
-    description: "Create beautiful email campaigns with our drag-and-drop builder.",
-  },
-  {
-    icon: Users,
-    title: "Contact Management",
-    description: "Import, organize, and segment your contacts effortlessly.",
-  },
-  {
-    icon: BarChart3,
-    title: "Real-time Analytics",
-    description: "Track delivery rates, opens, and clicks with detailed reports.",
-  },
-  {
-    icon: Shield,
-    title: "Compliance Built-in",
-    description: "Automatic opt-out handling and POPIA/GDPR compliance.",
-  },
-  {
-    icon: Zap,
-    title: "Instant Delivery",
-    description: "Lightning-fast message delivery with carrier-grade infrastructure.",
-  },
+const modules = [
+  { icon: MessageSquare, name: "Campaigns", text: "Create, review and manage every send.", href: "#workflow" },
+  { icon: Users, name: "Contacts & groups", text: "Build audiences from your saved contact lists.", href: "#audiences" },
+  { icon: FileText, name: "Templates", text: "Save reusable messages and personalise them.", href: "#workflow" },
+  { icon: CalendarClock, name: "Scheduling", text: "Send now or choose a time for later.", href: "#workflow" },
+  { icon: BarChart3, name: "Delivery reports", text: "Follow recipient statuses and campaign results.", href: "#reporting" },
+  { icon: Wallet, name: "Credits & usage", text: "Review your balance and campaign requirements.", href: "#pricing" },
 ];
-
 const steps = [
-  { step: 1, title: "Create Account", description: "Register and set up your business profile" },
-  { step: 2, title: "Add Contacts", description: "Import your contacts via CSV or add them manually" },
-  { step: 3, title: "Create Campaign", description: "Design your message with customizable templates" },
-  { step: 4, title: "Send & Track", description: "Send messages and monitor delivery in real-time" },
+  ["Build your audience", "Import contacts from Excel or CSV, or select an existing group."],
+  ["Compose your message", "Write your SMS or start with a saved template. Review personalisation and your opt-out footer."],
+  ["Schedule or send", "Check recipients and credits, then send immediately or schedule a time."],
+  ["Track delivery", "Monitor delivered, pending and failed messages in your campaign reports."],
 ];
-
-const pricing = [
-  {
-    name: "Platform Access",
-    price: "R0",
-    description: "Create and configure your account. SMS sending requires prepaid SMS credits.",
-    features: [
-      "Purchase credits when needed",
-      "IEOSUIA branding included",
-      "SMS sending requires SMS credits",
-      "No credit card required",
-    ],
-    allFeatures: [
-      "Purchase credits when needed",
-      "IEOSUIA branding included",
-      "SMS sending requires SMS credits",
-      "No credit card required",
-      "Basic contact management",
-      "Basic dashboard",
-      "Email support",
-    ],
-    cta: "Try Now",
-    popular: false,
-  },
-  {
-    name: "Pro",
-    price: "R0.35",
-    period: "/segment",
-    description: "Pay R0.35 including VAT for each billable SMS segment. No subscription required.",
-    features: [
-      "Pay-as-you-Go pricing",
-      "No subscriptions or contracts",
-      "Server-calculated segment pricing",
-      "SMS & Email sending",
-      "Priority support",
-      "No watermark",
-    ],
-    allFeatures: [
-      "Pay-as-you-Go pricing",
-      "No subscriptions or contracts",
-      "Server-calculated segment pricing",
-      "SMS & Email sending",
-      "Priority support",
-      "No watermark",
-      "Full template customization",
-      "Advanced reports",
-      "A/B Testing",
-      "Schedule recommendations",
-      "Campaign comparison",
-    ],
-    cta: "Sign Up Now",
-    popular: true,
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    description: "For high-volume senders who need full features and VIP support.",
-    features: [
-      "Custom pricing",
-      "Priority account management",
-      "Exclusive features",
-      "Multi-user access",
-      "Multi-business support",
-      "Dedicated support",
-    ],
-    allFeatures: [
-      "Custom pricing",
-      "Priority account management",
-      "Exclusive features",
-      "Multi-user access",
-      "Multi-business support",
-      "Dedicated support",
-      "White-labeling",
-      "Custom integrations",
-      "SLA guarantee",
-      "Role-based permissions",
-    ],
-    cta: "Contact Sales",
-    popular: false,
-  },
+const useCases = [
+  ["01", "Retail", "Share a new collection or promotion with your customer group."],
+  ["02", "Schools", "Send timetable changes and reminders to parent contact lists."],
+  ["03", "Churches & communities", "Keep members informed about gatherings and community notices."],
+  ["04", "Events", "Schedule reminders and send last-minute venue updates to guests."],
+  ["05", "Internal teams", "Send shift reminders or operational notices to the right team."],
+  ["06", "Customer notifications", "Send service reminders, order updates and collection notices."],
 ];
-
-const smsPricing = [
-  { volume: "All prepaid volumes", price: "R0.35 per segment" },
-];
-
-const emailPricing = [
-  { volume: "< 500", price: "R0.13" },
-  { volume: "500 – 1,000", price: "R0.12" },
-  { volume: "1,001 – 5,000", price: "R0.10" },
-  { volume: "5,001 – 10,000", price: "R0.09" },
-  { volume: "10,001 – 50,000", price: "R0.08" },
-  { volume: "50,001 – 250,000", price: "R0.07" },
-  { volume: "250,001 – 500,000", price: "R0.06" },
-  { volume: "500,000+", price: "Contact Sales" },
-];
-
-const pricingFaqs = [
-  {
-    question: "How does the Pay-as-you-Go pricing work?",
-    answer: "Add ZAR funds to your wallet and pay R0.35 including VAT for each billable SMS segment. Longer or Unicode messages may use multiple segments.",
-  },
-  {
-    question: "Are there any hidden fees?",
-    answer: "No hidden fees. The prices shown include carrier costs. VAT/BST/Tax may be added at checkout depending on your location.",
-  },
-  {
-    question: "When can I start sending SMS?",
-    answer: "Purchase SMS credits, create your campaign, and review its exact credit requirement before queueing it.",
-  },
-  {
-    question: "Is volume pricing available?",
-    answer: "The launch rate is R0.35 per segment for all prepaid volumes. Enterprise pricing requires an approved quotation.",
-  },
-  {
-    question: "Do credits expire?",
-    answer: "No, your credits never expire as long as your account remains active. Use them whenever you need.",
-  },
-  {
-    question: "Can I upgrade or downgrade my plan?",
-    answer: "With Pay-as-you-Go pricing, there's no plan to upgrade or downgrade. Simply buy more credits as needed. Enterprise customers can contact sales for custom arrangements.",
-  },
+const faqs = [
+  ["What can I manage in the portal?", "SMS campaigns, contacts, groups, reusable templates, scheduling, delivery reports and prepaid credits. Email campaigns are coming soon and are not available for sending yet."],
+  ["Can I import my existing contacts?", "Yes. Import an Excel (.xlsx) or CSV file, choose your worksheet, map the columns and assign contacts to an existing group. The import flow identifies duplicates and reports the result."],
+  ["How are SMS credits calculated?", "One credit covers one billable SMS segment at R0.35. Longer messages, Unicode characters, personalisation and opt-out text can increase the segment count. Review the calculated requirement before sending."],
+  ["Is there a subscription or a minimum purchase?", "Messaging is prepaid, with no monthly subscription. The minimum purchase is R10. At R0.35 per segment, this covers 28 whole credits, with the remaining value retained in your wallet."],
+  ["Does sent mean delivered?", "No. Sent means the SMS provider accepted the message. Delivered means delivery was confirmed. Messages without confirmation remain pending, including those whose delivery report is unavailable."],
+  ["How are opt-outs handled?", "Opted-out numbers are excluded from future campaigns. You can review opt-outs in your contacts and choose whether to include the opt-out footer when preparing a message."],
 ];
 
 export default function Landing() {
-  const navigate = useNavigate();
   const { isAuthenticated, isLoading } = useAuth();
-  const [showAllFeatures, setShowAllFeatures] = useState(false);
-  const [showDetailedPricing, setShowDetailedPricing] = useState(false);
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
-
-  // Redirect logged-in users to dashboard
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [isAuthenticated, isLoading, navigate]);
-
-  // Show loading spinner while checking auth
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
+  const navigate = useNavigate();
+  useEffect(() => { if (!isLoading && isAuthenticated) navigate("/dashboard", { replace: true }); }, [isLoading, isAuthenticated, navigate]);
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center" role="status"><Loader2 className="h-7 w-7 animate-spin mr-3"/>Loading...</div>;
+  return <div className="sms-home">
+    <a href="#main" className="home-skip">Skip to content</a>
+    <main id="main">
+      <section className="home-hero">
+        <div className="ops-wrap ops-hero-grid">
+          <div className="ops-hero-copy"><p className="ops-eyebrow"><span className="ops-status-dot"/> THE IEOSUIA COMMUNICATIONS WORKSPACE</p><h1>Build audiences.<br/>Send campaigns.<br/><em>Track delivery.</em></h1><p className="ops-lead">Manage contacts, SMS campaigns, schedules and delivery from one place. Keep every message organised, from the first recipient to the final report.</p><div className="ops-actions"><Link to="/register" className="ops-button">Start Messaging <ArrowRight size={18}/></Link><a href="#platform" className="ops-text-link">Explore the Platform <ArrowUpRight size={17}/></a></div><div className="ops-hero-facts"><span><Check size={14}/> Prepaid SMS</span><span><Check size={14}/> Scheduled campaigns</span><span><Check size={14}/> Recipient-level reports</span></div></div>
+          <CampaignPreview/>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo size="md" linkTo="/landing" />
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
-            <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">How it Works</a>
-            <Link to="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
-            <Link to="/contact" className="text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/login">
-              <Button variant="ghost">Login</Button>
-            </Link>
-            <Link to="/register">
-              <Button>Get Started</Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="pt-32 pb-20 px-4 bg-gradient-to-b from-primary/5 to-background">
-        <div className="container mx-auto text-center max-w-4xl">
-          <div className="inline-flex items-center gap-2 bg-primary/10 rounded-full px-4 py-2 mb-6">
-            <Zap className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">Your Story, Beautifully Told</span>
-          </div>
-          <h1 className="text-4xl md:text-6xl font-bold text-foreground leading-tight mb-6">
-            Professional Messaging
-            <br />
-            <span className="text-primary">Made Simple</span>
-          </h1>
-          <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Send bulk SMS and email campaigns, track delivery reports, and grow your business with our powerful messaging platform built for South African businesses.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/register">
-              <Button size="lg" className="gap-2 text-lg px-8">
-                Create Account
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-            </Link>
-            <Link to="/login">
-              <Button size="lg" variant="outline" className="text-lg px-8">
-                Login to Dashboard
-              </Button>
-            </Link>
-          </div>
-          <p className="mt-6 text-sm text-muted-foreground">
-              No subscription required • R0.35 per SMS segment • POPIA-aware controls
-          </p>
-        </div>
+        <div className="ops-wrap ops-hero-baseline"><span>BUILT AROUND YOUR MESSAGING OPERATION</span><div><span>Campaigns</span><i/><span>Audiences</span><i/><span>Delivery</span><i/><span>Insights</span></div></div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-20 px-4 bg-muted/30">
-        <div className="container mx-auto max-w-6xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Everything You Need to Communicate
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              A complete messaging platform designed for businesses of all sizes.
-            </p>
-          </div>
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature) => (
-              <div key={feature.title} className="bg-card rounded-xl p-6 border border-border hover:shadow-lg transition-shadow">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary mb-4">
-                  <feature.icon className="h-6 w-6" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">{feature.title}</h3>
-                <p className="text-muted-foreground">{feature.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+      <section id="platform" className="ops-section ops-wrap ops-platform">
+        <div className="ops-section-intro"><p className="ops-kicker">01 / THE PLATFORM</p><h2>Your messaging operation,<br/>in one place.</h2><p>A South African business SMS workspace for the people you need to reach. Manage bulk SMS campaign preparation, contact groups and delivery reporting in one place.</p><div className="ops-platform-note"><Layers size={21}/><span>Built for bulk SMS.<br/><strong>Designed around the whole campaign.</strong></span></div></div>
+        <div className="ops-module-directory">{modules.map(({icon:Icon,name,text,href})=><a href={href} className="ops-module" key={name}><Icon size={21} strokeWidth={1.6}/><span><h3>{name}</h3><p>{text}</p></span><ArrowUpRight size={16}/></a>)}</div>
       </section>
 
-      {/* How it Works */}
-      <section id="how-it-works" className="py-20 px-4">
-        <div className="container mx-auto max-w-6xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              How It Works
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Get started in minutes with our simple 4-step process.
-            </p>
-          </div>
-          <div className="grid gap-8 md:grid-cols-4">
-            {steps.map((step, index) => (
-              <div key={step.step} className="relative text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground text-2xl font-bold mx-auto mb-4">
-                  {step.step}
-                </div>
-                {index < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-8 left-[60%] w-[80%] h-0.5 bg-border" />
-                )}
-                <h3 className="text-lg font-semibold text-foreground mb-2">{step.title}</h3>
-                <p className="text-sm text-muted-foreground">{step.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <section id="features" className="ops-workflow-section"><div id="workflow" className="ops-wrap ops-section">
+        <div className="ops-section-heading"><div><p className="ops-kicker">02 / CAMPAIGN WORKFLOW</p><h2>A clear path from audience to outcome.</h2></div><p>Prepare the details once.<br/>Follow the campaign from start to finish.</p></div>
+        <ol className="ops-workflow">{steps.map(([title,text],i)=><li key={title}><span className="ops-step-number">0{i+1}</span><h3>{title}</h3><p>{text}</p></li>)}</ol>
+      </div></section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-20 px-4 bg-muted/30">
-        <div className="container mx-auto max-w-6xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Simple, Transparent Pricing
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Pay only for what you send. No hidden fees, no surprises.
-            </p>
-          </div>
-          <div className="grid gap-8 md:grid-cols-3">
-            {pricing.map((plan) => (
-              <div
-                key={plan.name}
-                className={cn(
-                  "relative bg-card rounded-xl p-8 border-2 transition-shadow hover:shadow-lg",
-                  plan.popular ? "border-primary shadow-md" : "border-border"
-                )}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="bg-primary text-primary-foreground text-sm font-medium px-4 py-1 rounded-full">
-                      Recommended
-                    </span>
-                  </div>
-                )}
-                <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold text-foreground mb-2">{plan.name}</h3>
-                  <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-4xl font-bold text-foreground">{plan.price}</span>
-                    {plan.period && <span className="text-muted-foreground">{plan.period}</span>}
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{plan.description}</p>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {(showAllFeatures ? plan.allFeatures : plan.features).map((feature) => (
-                    <li key={feature} className="flex items-start gap-3">
-                      <Check className="h-5 w-5 text-success shrink-0 mt-0.5" />
-                      <span className="text-sm text-muted-foreground">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link to={plan.name === "Enterprise" ? "/contact" : "/register"}>
-                  <Button className="w-full" variant={plan.popular ? "default" : "outline"}>
-                    {plan.cta}
-                  </Button>
-                </Link>
-                {plan.popular && (
-                  <p className="text-xs text-muted-foreground text-center mt-3">
-                    Excl. VAT/BST/Tax (Includes carrier costs)
-                  </p>
-                )}
-                {plan.name === "Enterprise" && (
-                  <p className="text-xs text-muted-foreground text-center mt-3">
-                    T&C's apply
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-          
-          {/* Show More Features Button */}
-          <div className="text-center mt-8">
-            <Button
-              variant="ghost"
-              onClick={() => setShowAllFeatures(!showAllFeatures)}
-              className="gap-2"
-            >
-              {showAllFeatures ? (
-                <>
-                  <ChevronUp className="h-4 w-4" />
-                  Show Less Features
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-4 w-4" />
-                  Compare All Features
-                </>
-              )}
-            </Button>
-          </div>
+      <section id="audiences" className="ops-wrap ops-section ops-audience-section"><AudiencePreview/><div className="ops-section-intro"><p className="ops-kicker">03 / AUDIENCES & CONTACTS</p><h2>A contact list is just the beginning.</h2><p>Organise people into groups that make sense for your business. Choose who receives each campaign without rebuilding your contact list.</p><ul className="ops-checklist"><li><Check/>Import Excel and CSV contact files</li><li><Check/>Select groups or individual recipients</li><li><Check/>Identify duplicate numbers before sending</li><li><Check/>Keep opt-outs excluded from future campaigns</li></ul><a href="#workflow" className="ops-text-link">See the campaign workflow <ArrowRight size={17}/></a></div></section>
 
-          {/* Detailed Pricing Tables */}
-          <div className="text-center mt-8">
-            <Button
-              variant="outline"
-              onClick={() => setShowDetailedPricing(!showDetailedPricing)}
-              className="gap-2"
-            >
-              {showDetailedPricing ? (
-                <>
-                  <ChevronUp className="h-4 w-4" />
-                  Hide Detailed Pricing
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-4 w-4" />
-                  View Detailed Pricing Tiers
-                </>
-              )}
-            </Button>
-          </div>
+      <section id="reporting" className="ops-reporting"><div className="ops-wrap ops-section ops-reporting-grid"><div className="ops-section-intro"><p className="ops-kicker">04 / DELIVERY & REPORTING</p><h2>Know what was sent.<br/><em>See what was delivered.</em></h2><p>Go beyond a campaign total. Review recipient-level delivery states, revisit campaign history and export your reports.</p><div className="ops-report-capabilities"><span>Sent, delivered, pending & failed</span><span>Delivery rate & campaign history</span><span>PDF, CSV & Excel exports</span></div><p className="ops-report-caveat">Delivery is shown as confirmed only when a provider report is received.</p></div><DeliveryPreview/></div></section>
 
-          {showDetailedPricing && (
-            <div className="mt-12 grid gap-8 md:grid-cols-2">
-              {/* SMS Pricing Table */}
-              <div className="bg-card rounded-xl p-6 border border-border">
-                <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5 text-primary" />
-                  SMS Pricing (Pro Plan)
-                </h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-3 text-foreground font-medium">Volume</th>
-                        <th className="text-right py-3 text-foreground font-medium">Price per SMS</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-muted-foreground">
-                      {smsPricing.map((tier, index) => (
-                        <tr key={index} className="border-b border-border/50">
-                          <td className="py-3">{tier.volume}</td>
-                          <td className="py-3 text-right font-medium text-foreground">{tier.price}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-xs text-muted-foreground mt-4">
-                  * SMS sending requires sufficient prepaid SMS credits
-                </p>
-              </div>
+      <section id="use-cases" className="ops-wrap ops-section"><div className="ops-section-heading"><div><p className="ops-kicker">05 / EVERYDAY OPERATIONS</p><h2>The right update.<br/>The right contact group.</h2></div><p>Use SMS for the practical messages<br/>your people need to receive.</p></div><div className="ops-use-cases">{useCases.map(([number,title,text])=><article key={title}><span>{number}</span><h3>{title}</h3><p>{text}</p></article>)}</div></section>
 
-              {/* Email Pricing Table */}
-              <div className="bg-card rounded-xl p-6 border border-border">
-                <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <Mail className="h-5 w-5 text-primary" />
-                  Email Pricing (Pro Plan)
-                </h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-3 text-foreground font-medium">Volume</th>
-                        <th className="text-right py-3 text-foreground font-medium">Price per Email</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-muted-foreground">
-                      {emailPricing.map((tier, index) => (
-                        <tr key={index} className="border-b border-border/50">
-                          <td className="py-3">{tier.volume}</td>
-                          <td className="py-3 text-right font-medium text-foreground">{tier.price}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-xs text-muted-foreground mt-4">
-                  * For 500,000+ emails, <Link to="/contact?purpose=sales" className="text-primary hover:underline">contact our sales team</Link>
-                </p>
-              </div>
-            </div>
-          )}
+      <section id="pricing" className="ops-prepaid"><div className="ops-wrap ops-prepaid-grid"><div><p className="ops-kicker">CREDITS, WITHOUT THE COMPLICATION</p><h2>Simple prepaid messaging.</h2><p>Buy the credits you need. Review campaign costs before sending. No monthly subscription.</p></div><div className="ops-rate"><strong>R0.35</strong><span>per billable SMS segment</span></div><div className="ops-minimum"><strong>Start with R10</strong><p>One credit per segment. Longer or Unicode messages can require more credits.</p><Link to="/register" className="ops-text-link">Get started <ArrowRight size={16}/></Link></div></div></section>
 
-          {/* Pricing FAQs */}
-          <div className="mt-16">
-            <h3 className="text-2xl font-bold text-foreground text-center mb-8">Pricing FAQs</h3>
-            <div className="max-w-3xl mx-auto space-y-4">
-              {pricingFaqs.map((faq, index) => (
-                <div
-                  key={index}
-                  className="bg-card rounded-xl border border-border overflow-hidden"
-                >
-                  <button
-                    onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
-                    className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/50 transition-colors"
-                  >
-                    <span className="font-medium text-foreground">{faq.question}</span>
-                    {expandedFaq === index ? (
-                      <ChevronUp className="h-5 w-5 text-muted-foreground shrink-0" />
-                    ) : (
-                      <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" />
-                    )}
-                  </button>
-                  {expandedFaq === index && (
-                    <div className="px-4 pb-4">
-                      <p className="text-muted-foreground">{faq.answer}</p>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
+      <section className="ops-wrap ops-section ops-channels"><div className="ops-section-intro"><p className="ops-kicker">ROOM TO GROW</p><h2>SMS today.<br/>More communication channels next.</h2><p>Your SMS workspace is ready. Email campaigns will follow as the platform develops.</p></div><div className="ops-channel-list"><div><MessageSquare size={24}/><span><h3>SMS campaigns</h3><p>Contacts, scheduling and delivery reporting.</p></span><b className="ops-available">Available now</b></div><div><Mail size={24}/><span><h3>Email campaigns</h3><p>Not available for sending in this release.</p></span><b className="ops-coming">Coming Soon</b></div></div></section>
 
-      {/* WhatsApp Button */}
-      <a
-        href="https://wa.me/27799282775"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg hover:bg-[#128C7E] transition-colors"
-        aria-label="Chat on WhatsApp"
-      >
-        <MessageCircle className="h-7 w-7" />
-      </a>
+      <section id="faq" className="ops-faq-section"><div className="ops-wrap ops-section ops-faq"><div className="ops-section-intro"><p className="ops-kicker">BEFORE YOU START</p><h2>A few useful answers.</h2><p>Need help with your setup?<br/><Link to="/contact" className="ops-text-link">Talk to our team <ArrowUpRight size={16}/></Link></p></div><div className="ops-faq-list">{faqs.map(([question,answer])=><details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></div></section>
 
-      <Footer variant="full" />
-    </div>
-  );
+      <section className="ops-wrap ops-final"><div><p className="ops-kicker">YOUR NEXT CAMPAIGN STARTS HERE</p><h2>Bring your messaging<br/>under one roof.</h2></div><div><Link to="/register" className="ops-button">Start Messaging <ArrowRight size={18}/></Link><p>Already have an account? <Link to="/login">Sign In</Link></p></div></section>
+      <EcosystemSection />
+    </main>
+    <footer className="ops-footer"><div className="ops-wrap"><div className="ops-footer-grid"><div className="ops-footer-brand"><Logo variant="navy" size="lg"/><p>The IEOSUIA workspace for<br/>audiences, campaigns and delivery.</p><a href="tel:+27638082493">+27 63 808 2493</a><SocialLinks className="mt-3" /></div><nav aria-label="Product links"><h2>Product</h2><Link to="/features">SMS platform features</Link><Link to="/use-cases">Business SMS use cases</Link><Link to="/contact-management">Contact management</Link><Link to="/scheduled-sms">Scheduled SMS</Link><Link to="/delivery-reports">Delivery reports</Link><Link to="/pricing">SMS credit pricing</Link><Link to="/faq">SMS questions</Link></nav><nav aria-label="Support links"><h2>Support</h2><Link to="/support">Help centre</Link><Link to="/documentation">Documentation</Link><Link to="/contact">Contact us</Link></nav><nav aria-label="Company links"><h2>Company</h2><a href="https://ieosuia.com" target="_blank" rel="noopener noreferrer">IEOSUIA <ArrowUpRight size={12}/></a><Link to="/careers">Careers</Link></nav></div><div className="ops-footer-bottom"><span>© {new Date().getFullYear()} IEOSUIA. All rights reserved.</span><nav aria-label="Legal links"><Link to="/privacy-policy">Privacy</Link><Link to="/terms-of-service">Terms</Link><Link to="/popia-compliance">POPIA</Link><Link to="/cookie-policy">Cookies</Link></nav></div></div></footer>
+    <WhatsAppButton />
+  </div>;
 }

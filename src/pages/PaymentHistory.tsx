@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { RefreshCw, CreditCard, Download, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, handleApiError, exportPaymentHistory, downloadPaymentReceipt } from '@/lib/api';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { WalletActivity } from '@/components/wallet/WalletActivity';
 import { toast } from 'sonner';
 
 interface Payment {
@@ -312,4 +313,7 @@ const PaymentHistory = () => {
   );
 };
 
-export default PaymentHistory;
+export default function PaymentHistoryPage(){
+  const [params]=useSearchParams();
+  return params.get('view')==='activity'?<DashboardLayout title="Payment History" actions={<Link className="text-sm text-primary" to="/wallet">Back to Wallet</Link>}><WalletActivity full/></DashboardLayout>:<PaymentHistory/>;
+}

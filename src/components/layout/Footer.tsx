@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { Facebook, Youtube, Instagram } from "lucide-react";
-import smsPortalLogoWhite from "@/assets/ieosuia-sms-portal-logo-white.png";
+import { SocialLinks } from "./SocialLinks";
+import { Logo } from "./Logo";
 
 interface FooterProps {
   variant?: "full" | "simple";
@@ -12,10 +12,10 @@ export function Footer({ variant = "full" }: FooterProps) {
       <footer className="bg-sidebar py-8 px-4">
         <div className="container mx-auto max-w-6xl text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <img src={smsPortalLogoWhite} alt="IEOSUIA SMS Portal" className="h-8 w-auto" />
+            <Logo variant="navy" size="sm" linkTo="" />
           </div>
           <p className="text-sm text-sidebar-muted mb-4">
-            Professional bulk SMS and email messaging platform for businesses.
+            Business SMS campaigns, contacts and delivery reports. Email Campaigns: Coming Soon.
           </p>
           <div className="flex flex-wrap justify-center gap-4 md:gap-6 text-sm text-sidebar-muted mb-4">
             <Link to="/terms-of-service" className="hover:text-sidebar-primary-foreground">Terms of Service</Link>
@@ -24,38 +24,13 @@ export function Footer({ variant = "full" }: FooterProps) {
             <Link to="/cookie-policy" className="hover:text-sidebar-primary-foreground">Cookie Policy</Link>
             <Link to="/support" className="hover:text-sidebar-primary-foreground">Support</Link>
             <Link to="/contact" className="hover:text-sidebar-primary-foreground">Contact</Link>
-            <Link to="/landing" className="hover:text-sidebar-primary-foreground">Home</Link>
+            <Link to="/features" className="hover:text-sidebar-primary-foreground">SMS Features</Link>
+            <Link to="/use-cases" className="hover:text-sidebar-primary-foreground">Use Cases</Link>
+            <Link to="/faq" className="hover:text-sidebar-primary-foreground">SMS Questions</Link>
+            <Link to="/" className="hover:text-sidebar-primary-foreground">Home</Link>
           </div>
           {/* Social Links */}
-          <div className="flex justify-center gap-4 mb-4">
-            <a 
-              href="https://www.instagram.com/ieosuia/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-sidebar-muted hover:text-sidebar-primary-foreground transition-colors"
-              aria-label="Instagram"
-            >
-              <Instagram className="h-5 w-5" />
-            </a>
-            <a 
-              href="https://www.facebook.com/iegroupSA" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-sidebar-muted hover:text-sidebar-primary-foreground transition-colors"
-              aria-label="Facebook"
-            >
-              <Facebook className="h-5 w-5" />
-            </a>
-            <a 
-              href="https://www.youtube.com/@ieosuia" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-sidebar-muted hover:text-sidebar-primary-foreground transition-colors"
-              aria-label="YouTube"
-            >
-              <Youtube className="h-5 w-5" />
-            </a>
-          </div>
+          <SocialLinks className="justify-center mb-4" linkClassName="text-sidebar-muted hover:text-sidebar-primary-foreground" />
           <p className="text-sm text-sidebar-muted">
             © {new Date().getFullYear()} IEOSUIA. All rights reserved.
           </p>
@@ -71,48 +46,20 @@ export function Footer({ variant = "full" }: FooterProps) {
           {/* Brand */}
           <div>
             <div className="flex items-center gap-3 mb-4">
-              <img src={smsPortalLogoWhite} alt="IEOSUIA SMS Portal" className="h-10 w-auto" />
+              <Logo variant="navy" linkTo="" />
             </div>
             <p className="text-sm text-sidebar-muted mb-4">
-              Professional bulk SMS and email messaging platform for South African businesses.
+              Business SMS campaigns, contacts and delivery reports for South Africa. Email Campaigns: Coming Soon.
             </p>
             {/* Social Links */}
-            <div className="flex gap-3">
-              <a 
-                href="https://www.instagram.com/ieosuia/" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-accent text-sidebar-muted hover:text-sidebar-primary-foreground transition-colors"
-                aria-label="Instagram"
-              >
-                <Instagram className="h-4 w-4" />
-              </a>
-              <a 
-                href="https://www.facebook.com/iegroupSA" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-accent text-sidebar-muted hover:text-sidebar-primary-foreground transition-colors"
-                aria-label="Facebook"
-              >
-                <Facebook className="h-4 w-4" />
-              </a>
-              <a 
-                href="https://www.youtube.com/@ieosuia" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-accent text-sidebar-muted hover:text-sidebar-primary-foreground transition-colors"
-                aria-label="YouTube"
-              >
-                <Youtube className="h-4 w-4" />
-              </a>
-            </div>
+            <SocialLinks linkClassName="bg-sidebar-accent text-sidebar-muted hover:text-sidebar-primary-foreground" />
           </div>
           
           {/* Product */}
           <div>
           <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Product</h4>
             <ul className="space-y-2 text-sm text-sidebar-muted">
-              <li><Link to="/landing#features" className="hover:text-sidebar-primary-foreground">Features</Link></li>
+              <li><Link to="/features" className="hover:text-sidebar-primary-foreground">Features</Link></li>
               <li><Link to="/pricing" className="hover:text-sidebar-primary-foreground">Pricing</Link></li>
               <li><Link to="/documentation" className="hover:text-sidebar-primary-foreground">Documentation</Link></li>
               <li><Link to="/login" className="hover:text-sidebar-primary-foreground">Login</Link></li>
@@ -125,7 +72,7 @@ export function Footer({ variant = "full" }: FooterProps) {
             <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Company</h4>
             <ul className="space-y-2 text-sm text-sidebar-muted">
               <li><Link to="/support" className="hover:text-sidebar-primary-foreground">Help Center</Link></li>
-              <li><a href="https://www.youtube.com/@ieosuia" target="_blank" rel="noopener noreferrer" className="hover:text-sidebar-primary-foreground">Tutorials</a></li>
+              <li><Link to="/documentation" className="hover:text-sidebar-primary-foreground">Guides</Link></li>
               <li><Link to="/careers" className="hover:text-sidebar-primary-foreground">Careers</Link></li>
               <li><Link to="/contact" className="hover:text-sidebar-primary-foreground">Contact Us</Link></li>
             </ul>

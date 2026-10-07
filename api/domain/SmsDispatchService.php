@@ -59,7 +59,7 @@ final class SmsDispatchService
         $optedOut = table('opt_outs')->where('user_id',$message['user_id'])->where('channel','sms')->where('recipient',$message['destination'])->first();
         if ($optedOut) { self::markSkipped($message, 'Recipient opted out'); return; }
 
-        try { $result = $provider->send($message['destination'],$message['content'],$message['sender_id'] ?? null,'portal-message-'.$message['id']); }
+        try { $result = $provider->send($message['destination'],$message['content'],$current['sender_id'] ?? null,'portal-message-'.$message['id']); }
         catch (Throwable $e) { $result = ['success'=>false,'error'=>$e->getMessage()]; }
 
         $pdo->beginTransaction();
@@ -96,7 +96,7 @@ final class SmsDispatchService
     {
         $stmt=$pdo->prepare("SELECT COUNT(*) total,SUM(state='pending' OR state='retry') queued,SUM(state='processing') processing,SUM(state IN ('sent','delivered')) sent,SUM(state='delivered') delivered,SUM(state='failed') failed,SUM(state='skipped') skipped,COALESCE(SUM(actual_charge),0) actual FROM sms_messages WHERE campaign_id=?");$stmt->execute([$campaignId]);$x=$stmt->fetch();
         $terminal=(int)$x['sent']+(int)$x['failed']+(int)$x['skipped'];$done=$terminal===(int)$x['total'];$state=$done?((int)$x['failed']>0?'partially_failed':'completed'):'processing';
-        $u=$pdo->prepare('UPDATE sms_campaigns SET state=?,queued_count=?,processing_count=?,sent_count=?,delivered_count=?,failed_count=?,skipped_count=?,actual_cost=?,completed_at=IF(?,NOW(),completed_at),updated_at=NOW() WHERE id=?');
+        $u=$pdo->prepare('UPDATE sms_campaigns SET state=?,queued_count=?,processing_count=?,sent_count=?,delivered_count=?,failed_count=?,skipped_count=?,actual_cost=?,completed_at=IF(?,COALESCE(completed_at,NOW()),completed_at),updated_at=NOW() WHERE id=?');
         $u->execute([$state,$x['queued'],$x['processing'],$x['sent'],$x['delivered'],$x['failed'],$x['skipped'],$x['actual'],$done?1:0,$campaignId]);
     }
 }

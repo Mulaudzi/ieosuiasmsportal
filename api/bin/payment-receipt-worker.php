@@ -7,7 +7,13 @@ require_once __DIR__.'/../services/PaymentReceiptService.php';
 require_once __DIR__.'/../services/OperationalLogger.php';
 
 $runId=OperationalLogger::startRun('payment-receipt-worker',gethostname());
-$result=PaymentReceiptService::dispatchDue((int)(getenv('PAYMENT_EMAIL_BATCH_SIZE')?:25));
+try{$result=PaymentReceiptService::dispatchDue((int)(getenv('PAYMENT_EMAIL_BATCH_SIZE')?:25));}
+catch(Throwable){$result=['processed'=>0,'sent'=>0,'failed'=>1];}
+require_once __DIR__.'/../services/PurchaseAlertService.php';
+try{$alerts=PurchaseAlertService::dispatchDue();}
+catch(Throwable){$alerts=['processed'=>0,'sent'=>0,'failed'=>1];}
+$result['purchase_alerts']=$alerts;
+$result['processed']+=$alerts['processed'];$result['failed']+=$alerts['failed'];
 $heartbeat=db()->prepare("INSERT INTO service_heartbeats(service_name,instance_id,metadata_json,last_seen_at) VALUES('payment-receipt-worker',?,?,NOW()) ON DUPLICATE KEY UPDATE instance_id=VALUES(instance_id),metadata_json=VALUES(metadata_json),last_seen_at=NOW()");
 $heartbeat->execute([gethostname(),json_encode($result)]);
 OperationalLogger::finishRun($runId,($result['failed']>0||!empty($result['migration_required']))?'failed':'completed',$result['processed'],$result['failed']);

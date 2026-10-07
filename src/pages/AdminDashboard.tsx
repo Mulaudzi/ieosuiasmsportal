@@ -1741,7 +1741,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
               <div>
                 <p className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
                   <XCircle className="h-4 w-4 text-destructive" />
-                  Failed Messages
+                  Not Delivered
                 </p>
                 <div className="flex gap-1">
                   <div className="flex flex-col gap-1 text-[10px] text-muted-foreground pr-1">

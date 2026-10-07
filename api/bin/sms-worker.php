@@ -8,6 +8,10 @@ require_once __DIR__.'/../services/OperationalLogger.php';
 
 $once=in_array('--once',$argv,true);
 $batch=max(1,min(100,(int)(getenv('SMS_WORKER_BATCH_SIZE')?:50)));
+// Cron invocations drain several small batches instead of stopping after 50 messages.
+// Keep the global lock and provider rate limit; finish a claimed batch before stopping.
+$runUntil=microtime(true)+max(10,min(55,(int)(getenv('SMS_WORKER_RUN_SECONDS')?:55)));
+if($once)$batch=min($batch,10);
 $rate=max(1,(int)(getenv('SMS_PROVIDER_RATE_PER_SECOND')?:10));
 $minimumInterval=1/$rate;
 $provider=ProviderFactory::make();
@@ -51,6 +55,6 @@ do {
     SmsDispatchService::releaseLease($lease,'Worker could not complete this message; retry scheduled');
     $activeLease=null;
     OperationalLogger::finishRun($runId,$failed?'failed':'completed',$processed,$failed,$failed?'One or more messages failed to finalize':'Batch completed');
-    if($once)break;
+    if($once&&(!$messages||microtime(true)>=$runUntil))break;
     if(!$messages)sleep(2);
 } while(true);

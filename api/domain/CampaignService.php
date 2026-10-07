@@ -5,12 +5,17 @@ require_once __DIR__ . '/SmsSegmentCalculator.php';
 require_once __DIR__ . '/SmsPricing.php';
 require_once __DIR__ . '/WalletService.php';
 require_once __DIR__ . '/TemplatePersonalizer.php';
+require_once __DIR__ . '/SmsReportingService.php';
+require_once __DIR__ . '/SmsOptOut.php';
 
 final class CampaignService
 {
     public static function preview(int $userId, array $input): array
     {
         $content = trim((string) ($input['content'] ?? ''));
+        $includeOptOut=$input['include_opt_out']??false;
+        if(!is_bool($includeOptOut))throw new InvalidArgumentException('include_opt_out must be true or false');
+        $content=SmsOptOut::compose($content,$includeOptOut,$includeOptOut?SmsOptOut::text($userId):'');
         if ($content === '') throw new InvalidArgumentException('Message content is required');
         TemplatePersonalizer::assertSupported($content);
         $analysis = SmsSegmentCalculator::analyze($content);
@@ -29,6 +34,8 @@ final class CampaignService
         $balance = (float) ($wallet['balance'] ?? 0);
         $available = round($balance - (float) ($wallet['reserved'] ?? 0), 4);
         return array_merge($resolved, $analysis, [
+            'final_content' => $content,
+            'include_opt_out' => $includeOptOut,
             'encoding' => $hasUnicode?'ucs2':$analysis['encoding'],
             'segment_count' => max(1,$maximumSegments?:$analysis['segment_count']),
             'total_segments' => $totalSegments,
@@ -51,6 +58,7 @@ final class CampaignService
         if($existing)return $existing;
 
         $preview = self::preview($userId, $input);
+        $input['content']=$preview['final_content'];
         if ($preview['sendable_count'] < 1) throw new InvalidArgumentException('No sendable recipients');
         if (!$preview['sufficient_balance']) throw new DomainException('Insufficient available balance');
         $name = trim((string) ($input['name'] ?? ''));
@@ -67,7 +75,7 @@ final class CampaignService
         $pdo->beginTransaction();
         try {
             $stmt = $pdo->prepare('INSERT INTO sms_campaigns (user_id,idempotency_key,name,content,sender_id,state,encoding,segments_per_message,recipient_count,queued_count,total_segments,price_per_segment,estimated_cost,scheduled_at,queued_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,IF(?=1,NOW(),NULL),NOW(),NOW())');
-            $stmt->execute([$userId,$idempotency,$name,$input['content'],$input['sender_id'] ?? env('SMS_DEFAULT_SENDER','IEOSUIA'),$state,$preview['encoding'],$preview['segment_count'],$preview['sendable_count'],$sendNow?$preview['sendable_count']:0,$preview['total_segments'],$preview['price_per_segment'],$preview['estimated_charge'],$schedule,$sendNow?1:0]);
+            $stmt->execute([$userId,$idempotency,$name,$input['content'],!empty($preview['include_opt_out'])?'REPLY':($input['sender_id'] ?? env('SMS_DEFAULT_SENDER','IEOSUIA')),$state,$preview['encoding'],$preview['segment_count'],$preview['sendable_count'],$sendNow?$preview['sendable_count']:0,$preview['total_segments'],$preview['price_per_segment'],$preview['estimated_charge'],$schedule,$sendNow?1:0]);
             $campaignId = (int) $pdo->lastInsertId();
             $message = $pdo->prepare('INSERT INTO sms_messages (campaign_id,user_id,destination,content,encoding,segment_count,estimated_charge,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,\'pending\',NOW(),NOW())');
             $profiles=self::recipientProfiles($userId,$preview['recipients']);
@@ -109,7 +117,7 @@ final class CampaignService
     {
         $campaign = table('sms_campaigns')->where('id',$campaignId)->where('user_id',$userId)->first();
         if (!$campaign) throw new RuntimeException('Campaign not found');
-        return $campaign;
+        return SmsReportingService::campaignRecords($userId,[$campaign])[0];
     }
 
     private static function recipientProfiles(int $userId,array $destinations):array

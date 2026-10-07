@@ -8,7 +8,7 @@ final class LogicSmsDeliveryStatus
         return match($value){
             'CREATE','CREATED','QUEUED','SENT','SUBMITTED','ACCEPTED'=>'sent',
             'DELIVERED','DELIVRD','DELIVERY_SUCCESS','SUCCESS'=>'delivered',
-            'FAILED','UNDELIVERED','UNDELIV','REJECTED','EXPIRED','ERROR'=>'failed',
+            'FAILED','UNDELIVERED','UNDELIV','REJECTED','EXPIRED','ERROR','INVALID'=>'failed',
             default=>'unknown',
         };
     }

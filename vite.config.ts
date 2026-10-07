@@ -2,6 +2,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { readFileSync } from "node:fs";
 
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
@@ -14,7 +15,22 @@ export default defineConfig(() => ({
   preview: {
     port: 8080,
   },
-  plugins: [react()],
+  plugins: [react(), {
+    name: "receipt-branding",
+    generateBundle() {
+      // Stable server-rendered receipt asset; identical bytes to the supplied PNG.
+      this.emitFile({
+        type: "asset",
+        fileName: "branding/ieosuia-sms-portal-light.png",
+        source: readFileSync(path.resolve(__dirname, "src/assets/ieosuia-sms-portal-light.png")),
+      });
+      this.emitFile({
+        type: "asset",
+        fileName: "branding/ieosuia-sms-portal-navy.png",
+        source: readFileSync(path.resolve(__dirname, "src/assets/ieosuia-sms-portal-navy.png")),
+      });
+    },
+  }],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -22,6 +38,7 @@ export default defineConfig(() => ({
   },
   // Ensure proper base path
   base: "/",
+  build: { sourcemap: false },
   // Vitest configuration
   test: {
     globals: true,

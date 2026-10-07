@@ -1,5 +1,6 @@
+import { SocialLinks } from "@/components/layout/SocialLinks";
 import { Link, useSearchParams } from "react-router-dom";
-import { Logo } from "@/components/layout/Logo";
+import { SignedInPublicHeader } from "@/components/layout/PublicChrome";
 import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -35,7 +36,7 @@ const purposeOptions: PurposeOption[] = [
     label: "General / Friendly Inquiry",
     description: "Say hello, ask a question, or provide feedback",
     icon: Smile,
-    email: "hello@ieosuia.com",
+    email: "support@ieosuia.com",
   },
   {
     id: "support",
@@ -49,7 +50,7 @@ const purposeOptions: PurposeOption[] = [
     label: "Sales / Quotes / Partnerships",
     description: "Discuss pricing, volume discounts, or partnerships",
     icon: ShoppingBag,
-    email: "hello@ieosuia.com",
+    email: "support@ieosuia.com",
   },
 ];
 
@@ -73,7 +74,7 @@ export default function Contact() {
   }, [searchParams]);
 
   const getEmailRecipient = () => {
-    return purposeOptions.find(p => p.id === purpose)?.email || "hello@ieosuia.com";
+    return purposeOptions.find(p => p.id === purpose)?.email || "support@ieosuia.com";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -126,17 +127,7 @@ export default function Contact() {
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
-      <nav className="bg-background border-b border-border">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo size="md" linkTo="/landing" />
-          <Link to="/landing">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Home
-            </Button>
-          </Link>
-        </div>
-      </nav>
+      <SignedInPublicHeader />
 
       {/* Hero Section */}
       <section className="py-16 px-4 bg-gradient-to-b from-primary/5 to-background">
@@ -145,7 +136,7 @@ export default function Contact() {
             Contact Us
           </h1>
           <p className="text-xl text-muted-foreground">
-            Get in touch with our team. We're here to help with any questions about our SMS and email messaging services.
+            Get help with IEOSUIA SMS Portal, your account, campaigns or credits. All enquiries go to support@ieosuia.com.
           </p>
         </div>
       </section>
@@ -166,13 +157,13 @@ export default function Contact() {
                   <div>
                     <h3 className="font-semibold text-foreground text-lg">Email</h3>
                     <p className="text-muted-foreground mt-1">
-                      <strong>General:</strong> hello@ieosuia.com
+                      <strong>General:</strong> support@ieosuia.com
                     </p>
                     <p className="text-muted-foreground">
                       <strong>Support:</strong> support@ieosuia.com
                     </p>
                     <p className="text-muted-foreground">
-                      <strong>Sales:</strong> hello@ieosuia.com
+                      <strong>Sales:</strong> support@ieosuia.com
                     </p>
                     <p className="text-xs text-muted-foreground mt-2 italic">
                       Use the form to ensure your message reaches the right team
@@ -185,12 +176,9 @@ export default function Contact() {
                     <Phone className="h-6 w-6" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground text-lg">Phone (Calls Only)</h3>
+                    <h3 className="font-semibold text-foreground text-lg">Phone</h3>
                     <p className="text-muted-foreground mt-1">
-                      <a href="tel:+27799282775" className="hover:text-primary">079 928 2775</a>
-                    </p>
-                    <p className="text-muted-foreground">
-                      <a href="tel:+27631540696" className="hover:text-primary">063 154 0696</a>
+                      <a href="tel:+27638082493" className="hover:text-primary">+27 63 808 2493</a>
                     </p>
                     <p className="text-sm text-muted-foreground mt-2">
                       <em>Note: We do not have a landline at the moment.</em>
@@ -203,20 +191,8 @@ export default function Contact() {
                     <MessageCircle className="h-6 w-6" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground text-lg">WhatsApp</h3>
-                    <p className="text-muted-foreground mt-1">
-                      <a 
-                        href="https://wa.me/27799282775" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        +27 79 928 2775
-                      </a>
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Click to chat with us on WhatsApp
-                    </p>
+                    <h3 className="font-semibold text-foreground text-lg">Follow IEOSUIA</h3>
+                    <SocialLinks linkClassName="text-primary hover:text-foreground" />
                   </div>
                 </div>
 
@@ -360,17 +336,6 @@ export default function Contact() {
           </div>
         </div>
       </section>
-
-      {/* WhatsApp Button */}
-      <a
-        href="https://wa.me/27799282775"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg hover:bg-[#128C7E] transition-colors"
-        aria-label="Chat on WhatsApp"
-      >
-        <MessageCircle className="h-7 w-7" />
-      </a>
 
       <Footer variant="full" />
     </div>

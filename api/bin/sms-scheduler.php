@@ -17,3 +17,12 @@ try{
 }catch(Throwable $e){
     if($pdo->inTransaction())$pdo->rollBack();OperationalLogger::log('error','sms-scheduler','scheduler_failed',$e->getMessage());OperationalLogger::finishRun($runId,'failed',0,1,$e->getMessage());fwrite(STDERR,'Scheduler failed'.PHP_EOL);exit(1);
 }
+
+// Keep notification work outside the campaign scheduling transaction.
+require_once __DIR__.'/../core/QueryBuilder.php';
+require_once __DIR__.'/../services/PurchaseAlertService.php';
+$alertRun=OperationalLogger::startRun('purchase-alert-worker',$instance);
+try{
+    $alerts=PurchaseAlertService::dispatchDue(2);
+    OperationalLogger::finishRun($alertRun,$alerts['failed']?'failed':'completed',$alerts['processed'],$alerts['failed']);
+}catch(Throwable){OperationalLogger::finishRun($alertRun,'failed',0,1,'Purchase alert processing failed');}

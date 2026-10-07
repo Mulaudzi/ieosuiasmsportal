@@ -4,6 +4,12 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
+// Public-page buttons stay unchanged; only the portal opts into these hints.
+export const PortalButtonHints = React.createContext(false);
+function buttonText(children: React.ReactNode): string {
+  return React.Children.toArray(children).map(child=>typeof child==='string'||typeof child==='number'?String(child):React.isValidElement<{children?:React.ReactNode}>(child)?buttonText(child.props.children):'').join(' ').replace(/\s+/g,' ').trim();
+}
+
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
@@ -38,8 +44,10 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const hints=React.useContext(PortalButtonHints);
+    const title=props.title ?? (hints&&!props.disabled ? props['aria-label'] || buttonText(props.children) || undefined : undefined);
     const Comp = asChild ? Slot : "button";
-    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
+    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} title={title} />;
   },
 );
 Button.displayName = "Button";

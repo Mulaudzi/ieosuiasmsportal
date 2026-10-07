@@ -314,3 +314,24 @@ This project is proprietary software owned by IEOSUIA (Pty) Ltd.
 ## 📞 Support
 
 For support, email support@ieosuia.com or visit https://ieosuia.com
+
+## Public homepage rendering
+
+`npm run build` builds the SPA, then runs `scripts/prerender-home.mjs` in a clean,
+guest-only browser context. The generated `dist/index.html` contains the real
+homepage content. `dist/app.html` stays an empty SPA entry for deep links.
+Deploy both files and `dist/.htaccess` together, alongside the generated assets,
+robots.txt, sitemap.xml, favicon PNG and social-preview.png. Do not substitute
+the prerendered homepage for the SPA fallback.
+
+The build requires Chromium: run `npx playwright install chromium` on build
+machines, or set `PRERENDER_BROWSER` to an installed Chrome/Chromium executable.
+On Windows the build also detects the standard installed Chrome location.
+Prerendering rejects external requests and API requests and never uses a real
+account. No production credentials are needed.
+
+Run `node scripts/test-public-deployment.mjs https://sms.ieosuia.com` for raw HTML,
+JavaScript-disabled content, metadata, responsive navigation and crawler checks.
+Set `TEST_DIST` to a build directory to also scan its JavaScript/CSS and asset
+names. Production source maps are disabled and Apache rejects `.map` requests.
+Keep any separately generated debug maps private rather than uploading them.

@@ -1,4 +1,8 @@
+import { campaignStatusConfig, sendingStatusHint } from '@/lib/campaign-status';
+import { MetricHint } from '@/components/dashboard/MetricHint';
+import { CampaignDeliveryBar } from '@/components/dashboard/CampaignDeliveryBar';
 import { useState, useEffect, useCallback } from "react";
+import { DeliveryStatusHelp } from "@/components/dashboard/DeliveryStatusHelp";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,19 +50,7 @@ interface CampaignStats {
   credits_used: number;
 }
 
-const statusConfig: Record<string, { label: string; class: string }> = {
-  delivered: { label: "Delivered", class: "status-delivered" },
-  pending: { label: "Pending", class: "status-pending" },
-  sending: { label: "Sending", class: "status-pending" },
-  queued: { label: "Scheduled", class: "status-queued" },
-  failed: { label: "Failed", class: "status-failed" },
-  draft: { label: "Draft", class: "bg-muted text-muted-foreground" },
-  scheduled: { label: "Scheduled", class: "status-queued" },
-  processing: { label: "Processing", class: "status-pending" },
-  completed: { label: "Dispatch complete", class: "status-delivered" },
-  partially_failed: { label: "Partially failed", class: "status-failed" },
-  cancelled: { label: "Cancelled", class: "bg-muted text-muted-foreground" },
-};
+const statusConfig = campaignStatusConfig;
 
 export default function SmsCampaigns() {
   const navigate = useNavigate();
@@ -67,12 +59,14 @@ export default function SmsCampaigns() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page,setPage]=useState(1);
   const count = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 
   const loadCampaigns = useCallback(async (showLoading=true) => {
     if(showLoading)setLoading(true);
     try {
       const response = await getSmsCampaigns({
+        page,
         status: statusFilter !== "all" ? statusFilter : undefined,
         search: searchQuery || undefined,
       });
@@ -87,7 +81,9 @@ export default function SmsCampaigns() {
     } finally {
       if(showLoading)setLoading(false);
     }
-  }, [statusFilter, searchQuery]);
+  }, [statusFilter, searchQuery, page]);
+
+  useEffect(()=>setPage(1),[statusFilter,searchQuery]);
 
   useEffect(() => {
     void loadCampaigns();
@@ -122,7 +118,7 @@ export default function SmsCampaigns() {
       subtitle="Create and manage your SMS campaigns"
       actions={
         <div className="flex gap-3">
-          <Button variant="outline" size="icon" onClick={()=>void loadCampaigns()} disabled={loading}>
+          <Button aria-label="Refresh campaigns" variant="outline" size="icon" onClick={()=>void loadCampaigns()} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
           <Link to="/sms-campaigns/new">
@@ -134,6 +130,7 @@ export default function SmsCampaigns() {
         </div>
       }
     >
+      <DeliveryStatusHelp />
       {/* Filters */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-md">
@@ -153,11 +150,12 @@ export default function SmsCampaigns() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="sending">Sending</SelectItem>
-              <SelectItem value="queued">Scheduled</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="completed">Sending complete</SelectItem>
+              <SelectItem value="queued">Queued</SelectItem>
+              <SelectItem value="processing">Processing</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
+              <SelectItem value="partially_failed">Partially delivered</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
               <SelectItem value="draft">Draft</SelectItem>
             </SelectContent>
           </Select>
@@ -167,19 +165,19 @@ export default function SmsCampaigns() {
       {/* Campaign Stats */}
       <div className="mb-6 grid gap-4 sm:grid-cols-4">
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Total Campaigns</p>
+          <p className="text-sm text-muted-foreground">Total Campaigns<MetricHint label="Total Campaigns"/></p>
           <p className="mt-1 text-2xl font-bold">{stats.total}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Messages Sent</p>
+          <p className="text-sm text-muted-foreground">Total Sent<MetricHint label="Total Sent"/></p>
           <p className="mt-1 text-2xl font-bold">{count(stats.sent).toLocaleString()}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Scheduled</p>
+          <p className="text-sm text-muted-foreground">Scheduled<MetricHint label="Scheduled"/></p>
           <p className="mt-1 text-2xl font-bold">{stats.scheduled}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">SMS Credits Used</p>
+          <p className="text-sm text-muted-foreground">SMS Credits Used<MetricHint label="SMS Credits Used"/></p>
           <p className="mt-1 text-2xl font-bold">{count(stats.credits_used).toLocaleString()}</p>
         </div>
       </div>
@@ -212,7 +210,7 @@ export default function SmsCampaigns() {
               <thead>
                 <tr className="border-b border-border bg-muted/50">
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Campaign</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Status</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Sending status<MetricHint label="Sending status" text={sendingStatusHint}/></th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Recipients</th>
                   <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Delivery breakdown</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">SMS Credits Used</th>
@@ -229,7 +227,7 @@ export default function SmsCampaigns() {
                           <MessageSquare className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="font-medium text-foreground">{campaign.name}</p>
+                          <p className="line-clamp-2 min-w-40 font-medium text-foreground">{campaign.name}</p>
                           {campaign.scheduled_at && (
                             <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                               <Calendar className="h-3 w-3" />
@@ -240,18 +238,18 @@ export default function SmsCampaigns() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn("status-badge", statusConfig[campaign.status]?.class || "bg-muted")}>
-                        {statusConfig[campaign.status]?.label || campaign.status}
+                      <span className={cn("status-badge", statusConfig[campaign.status.toLowerCase()]?.class || "bg-muted")}>
+                        {statusConfig[campaign.status.toLowerCase()]?.label || campaign.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-foreground">{count(campaign.recipient_count).toLocaleString()}</td>
-                    <td className="px-4 py-4"><div className="flex min-w-max flex-wrap gap-2 text-xs"><span className="rounded-full bg-success/10 px-2 py-1 text-success">Delivered {count(campaign.delivered_count)}</span><span className="rounded-full bg-warning/10 px-2 py-1 text-warning">Awaiting DLR {count(campaign.awaiting_delivery_count)}</span>{count(campaign.dlr_unavailable_count)>0&&<span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">DLR unavailable {count(campaign.dlr_unavailable_count)}</span>}{count(campaign.failed_count)>0&&<span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">Failed {count(campaign.failed_count)}</span>}{count(campaign.skipped_count)>0&&<span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">Skipped {count(campaign.skipped_count)}</span>}</div></td>
+                    <td className="px-4 py-4"><CampaignDeliveryBar delivered={count(campaign.delivered_count)} failed={count(campaign.failed_count)} total={count(campaign.recipient_count)} counts={[count(campaign.delivered_count),count(campaign.awaiting_delivery_count),count(campaign.dlr_unavailable_count),count(campaign.failed_count),count(campaign.skipped_count)]}/></td>
                     <td className="px-6 py-4 text-foreground">{count(campaign.credits_used).toLocaleString()}</td>
                     <td className="px-6 py-4 text-muted-foreground">{formatDate(campaign.created_at)}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleView(campaign.id)}>
-                          <Eye className="h-4 w-4" />
+                        <Button title="View campaign" aria-label="View campaign" variant="ghost" size="icon" onClick={() => handleView(campaign.id)}>
+                          <Eye aria-label="View campaign" className="h-4 w-4" />
                         </Button>
                       </div>
                     </td>
@@ -262,6 +260,7 @@ export default function SmsCampaigns() {
           </div>
         )}
       </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Showing {campaigns.length} of {stats.total} campaigns. Totals cover all matching campaigns.</p><div className="flex gap-2"><Button variant="outline" disabled={page<=1||loading} onClick={()=>setPage(p=>p-1)}>Previous</Button><Button variant="outline" disabled={page*20>=stats.total||loading} onClick={()=>setPage(p=>p+1)}>Next</Button></div></div>
     </DashboardLayout>
   );
 }

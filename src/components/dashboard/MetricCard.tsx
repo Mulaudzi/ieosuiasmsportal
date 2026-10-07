@@ -1,3 +1,4 @@
+import { MetricHint } from '@/components/dashboard/MetricHint';
 import { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +9,8 @@ interface MetricCardProps {
   changeType?: "positive" | "negative" | "neutral";
   icon: LucideIcon;
   iconColor?: "primary" | "success" | "warning" | "destructive" | "info" | "accent";
+  prominent?: boolean;
+  footer?: React.ReactNode;
 }
 
 const iconColorClasses = {
@@ -26,13 +29,15 @@ export function MetricCard({
   changeType = "neutral",
   icon: Icon,
   iconColor = "primary",
+  prominent = false,
+  footer,
 }: MetricCardProps) {
   return (
     <div className="metric-card animate-fade-in">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-foreground">
+          <p className="text-sm font-medium text-muted-foreground">{title}<MetricHint label={title}/></p>
+          <p className={cn("mt-2 font-bold tracking-tight text-foreground",prominent?"text-4xl sm:text-5xl":"text-3xl")}>
             {value.toLocaleString()}
           </p>
           {change && (
@@ -54,6 +59,7 @@ export function MetricCard({
           <Icon className="h-6 w-6" />
         </div>
       </div>
+      {footer&&<div className="mt-3">{footer}</div>}
     </div>
   );
 }

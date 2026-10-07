@@ -1,12 +1,16 @@
 import { Sidebar } from "./Sidebar";
+import { PortalEntrance } from './PortalEntrance';
 import { BarChart3, LayoutDashboard, Menu, MessageSquare, Search, Users, Wallet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { NotificationBell } from "./NotificationBell";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Button, PortalButtonHints } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { DarkModeControl, Tutorial, usePortalPreference } from './PortalPreferences';
+import './PortalWorkspace.css';
+import { useAuth } from '@/hooks/useAuth';
 
 const mobileNavigation = [
   { name: "Home", href: "/dashboard", icon: LayoutDashboard },
@@ -20,6 +24,7 @@ interface DashboardLayoutProps {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  campaignStep?: number;
 }
 
 export function DashboardLayout({
@@ -27,16 +32,22 @@ export function DashboardLayout({
   title,
   subtitle,
   actions,
+  campaignStep,
 }: DashboardLayoutProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(()=>{const close=()=>setMenuOpen(false);window.addEventListener('sms:dashboard-tour',close);return()=>window.removeEventListener('sms:dashboard-tour',close);},[]);
   const location = useLocation();
+  const { user,logout } = useAuth();
+  const [dark,setDark] = usePortalPreference('dark');
+  const [collapsed,setCollapsed] = usePortalPreference('sidebar-collapsed');
+  useEffect(()=>{document.documentElement.toggleAttribute('data-portal-dark',dark);return()=>document.documentElement.removeAttribute('data-portal-dark');},[dark]);
 
   return (
-    <div className="min-h-[100dvh] min-w-0 bg-background">
-      <Sidebar />
+    <PortalButtonHints.Provider value={true}><div className="portal-shell min-h-[100dvh] min-w-0 bg-background text-foreground">
+      <Sidebar collapsed={collapsed} onCollapse={()=>setCollapsed(!collapsed)} />
 
       {/* Main Content */}
-      <div className="min-w-0 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0 lg:pl-64">
+      <div className={cn("portal-workspace min-w-0 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0 lg:pl-64",collapsed&&'is-collapsed')}>
         {/* Top Header */}
         <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-2 border-b border-border bg-background/90 px-3 py-2 backdrop-blur-xl sm:px-4 lg:px-6">
           <div className="flex min-w-0 items-center gap-2 sm:gap-4">
@@ -46,8 +57,15 @@ export function DashboardLayout({
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[86vw] max-w-72 border-0 bg-sidebar p-0">
-                <Sidebar mobile onNavigate={() => setMenuOpen(false)} />
+              <SheetContent side="left" className="w-[86vw] max-w-72">
+                <SheetTitle className="sr-only">More navigation</SheetTitle><SheetDescription className="sr-only">Portal pages, help and display preferences</SheetDescription>
+                <nav aria-label="More navigation" className="flex flex-col gap-3 pt-8">
+                  {['Templates','Reports','Settings'].map(label=><Link key={label} className="rounded-lg p-3 hover:bg-muted" to={'/'+label.toLowerCase()} onClick={()=>setMenuOpen(false)}>{label}</Link>)}
+                  <Link className="rounded-lg p-3 hover:bg-muted" title="Need help" to="/support">Need help</Link>
+                  <Tutorial title={title} step={campaignStep}/><DarkModeControl checked={dark} onChange={setDark}/>
+                  {user?.role==='admin'&&<><Link to="/guymhan">Operations</Link><Link to="/guymhan/users">Platform Managers</Link></>}
+                  <Button variant="ghost" onClick={()=>void logout()}>Sign out</Button>
+                </nav>
               </SheetContent>
             </Sheet>
             <div className="relative hidden sm:block">
@@ -61,6 +79,7 @@ export function DashboardLayout({
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-2"><DarkModeControl checked={dark} onChange={setDark}/><Tutorial title={title} step={campaignStep}/></div>
             <NotificationBell />
           </div>
         </header>
@@ -79,14 +98,14 @@ export function DashboardLayout({
         </div>
 
         {/* Page Content */}
-        <main className="min-w-0 p-3 sm:p-4 lg:p-6">{children}</main>
+        <PortalEntrance>{children}</PortalEntrance>
       </div>
 
       <nav aria-label="Mobile dashboard navigation" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-card/95 px-1 pt-1.5 backdrop-blur-xl lg:hidden" style={{ paddingBottom: "max(0.4rem, env(safe-area-inset-bottom))" }}>
         {mobileNavigation.map((item) => {
           const active = item.href === "/dashboard" ? location.pathname === item.href : location.pathname.startsWith(item.href);
           return (
-            <Link key={item.href} to={item.href} aria-current={active ? "page" : undefined} className={cn("flex min-w-0 min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold", active ? "bg-primary/10 text-primary" : "text-muted-foreground")}>
+            <Link key={item.href} to={item.href} data-tour={item.href==='/wallet'?'credits':item.href==='/contacts'?'contacts':undefined} aria-current={active ? "page" : undefined} className={cn("flex min-w-0 min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold", active ? "bg-primary/10 text-primary" : "text-muted-foreground")}>
               <item.icon className="h-5 w-5" />
               <span className="max-w-full truncate">{item.name}</span>
             </Link>
@@ -97,6 +116,6 @@ export function DashboardLayout({
           <span>More</span>
         </button>
       </nav>
-    </div>
+    </div></PortalButtonHints.Provider>
   );
 }

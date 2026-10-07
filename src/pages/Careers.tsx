@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Logo } from "@/components/layout/Logo";
+import { SignedInPublicHeader } from "@/components/layout/PublicChrome";
 import { Footer } from "@/components/layout/Footer";
 import {
   ArrowLeft,
@@ -41,19 +41,7 @@ export default function Careers() {
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo size="md" />
-          <div className="flex items-center gap-3">
-            <Link to="/login">
-              <Button variant="ghost">Login</Button>
-            </Link>
-            <Link to="/register">
-              <Button>Get Started</Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <SignedInPublicHeader />
 
       {/* Hero */}
       <section className="py-20 px-4 bg-gradient-to-b from-primary/5 to-background">

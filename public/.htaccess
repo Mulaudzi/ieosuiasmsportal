@@ -1,6 +1,29 @@
 Options -MultiViews
 
 RewriteEngine On
+DirectoryIndex index.html
+ErrorDocument 404 /404.html
+
+# Resolve public aliases directly to HTTPS to avoid redirect chains.
+RewriteRule ^landing/?$ https://sms.ieosuia.com/ [R=301,L,NE]
+RewriteCond %{THE_REQUEST} \s/+index\.html[?\s] [NC]
+RewriteRule ^index\.html$ https://sms.ieosuia.com/ [R=301,L,NE]
+RewriteRule ^(features|use-cases|contact-management|scheduled-sms|delivery-reports|faq|pricing|documentation|support|contact|careers|privacy-policy|terms-of-service|cookie-policy|popia-compliance)/+$ https://sms.ieosuia.com/$1 [R=301,L,NE]
+RewriteCond %{THE_REQUEST} \s/+public-pages/ [NC]
+RewriteRule ^public-pages/([a-z-]+)\.html$ https://sms.ieosuia.com/$1 [R=301,L,NE]
+
+# Canonical host and protocol. Do not rewrite API requests or POST bodies.
+RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+RewriteCond %{REQUEST_URI} !^/api(?:/|$)
+RewriteCond %{HTTPS} !=on [OR]
+RewriteCond %{HTTP_HOST} !^sms\.ieosuia\.com$ [NC]
+RewriteRule ^ https://sms.ieosuia.com%{REQUEST_URI} [R=301,L,NE]
+
+# Source maps are private debugging artifacts, not public routes.
+RewriteRule \.map$ - [R=404,L,NC]
+
+# Legacy browser icon requests must never serve the old template favicon.
+RewriteRule ^favicon\.ico$ /ieosuia-icon.png [R=302,L,NE]
 
 # Central identity entry points: redirect before the React shell can render.
 RewriteRule ^login/?$ /api/auth/ieosuia/start [R=302,L,NE]
@@ -9,9 +32,11 @@ RewriteRule ^guymhan/login/?$ /api/auth/ieosuia/start?account_type=admin [R=302,
 
 RewriteRule ^assets/ - [L]
 RewriteRule ^api(?:/|$) - [L]
+RewriteRule ^(features|use-cases|contact-management|scheduled-sms|delivery-reports|faq|pricing|documentation|support|contact|careers|privacy-policy|terms-of-service|cookie-policy|popia-compliance)$ public-pages/$1.html [L]
+RewriteRule ^(?:dashboard|sms-campaigns|email-campaigns|contacts|templates|wallet|payment|reports|settings|profile|guymhan|auth|verify-email|verify-email-reminder|forgot-password)(?:/.*)?$ app.html [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.html [L]
+RewriteRule ^ - [R=404,L]
 
 <IfModule mod_headers.c>
   Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://payos.ieosuia.com; upgrade-insecure-requests"
@@ -20,10 +45,20 @@ RewriteRule ^ index.html [L]
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
   Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
-  <FilesMatch "^(index\.html)?$">
+  <FilesMatch "\.html$">
     Header always set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+  <FilesMatch "^(app|404)\.html$">
+    Header always set X-Robots-Tag "noindex, nofollow"
   </FilesMatch>
   <FilesMatch "\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?)$">
     Header always set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
+  <Files "social-preview-communications.png">
+    Header unset Cache-Control
+    Header always unset Cache-Control
+    Header always set Cache-Control "public, max-age=3600"
+    Header unset Expires
+    Header always unset Expires
+  </Files>
 </IfModule>

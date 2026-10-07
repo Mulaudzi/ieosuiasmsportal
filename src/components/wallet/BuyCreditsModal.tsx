@@ -209,15 +209,18 @@ export function BuyCreditsModal({
                   </p>
                 </div>
 
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[10, 35, 70, 350].map((presetAmount) => (
                     <Button
                       key={presetAmount}
                       variant={amount === presetAmount ? "default" : "outline"}
                       size="sm"
+                      className="h-auto flex-col py-3"
+                      title={`Buy R${presetAmount} of SMS credits`}
                       onClick={() => setAmount(presetAmount)}
                     >
                       R{presetAmount.toLocaleString()}
+                      <span className="text-xs font-normal">{Math.floor((presetAmount + 0.000001) / pricePerCredit)} credits</span>
                     </Button>
                   ))}
                 </div>

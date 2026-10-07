@@ -240,6 +240,12 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->delete('/attachments/{id}', 'CampaignController@deleteAttachment');
     
     // Wallet
+    // Read-only portal presentation; existing sending and billing endpoints are unchanged.
+    $router->get('/portal/overview', 'PortalPresentationController@overview');
+    $router->get('/reports/confirmation-time', 'PortalPresentationController@confirmation');
+    $router->get('/wallet/activity', 'PortalPresentationController@activity');
+    $router->get('/sms/campaigns-v2/{id}/recipient-view', 'PortalPresentationController@recipients');
+    $router->get('/sms/campaigns-v2/{id}/recipient-export', 'PortalPresentationController@export');
     $router->get('/wallet', 'WalletController@index');
     $router->get('/wallet/stats', 'WalletController@stats');
     $router->get('/wallet/transactions', 'WalletController@transactions');
@@ -251,6 +257,8 @@ $router->group(['middleware' => 'auth'], function($router) {
     
     // Settings
     $router->get('/settings/profile', 'SettingsController@profile');
+    $router->get('/settings/sms', 'SettingsController@smsPreferences');
+    $router->put('/settings/sms', 'SettingsController@updateSmsPreferences');
     $router->put('/settings/profile', 'SettingsController@updateProfile');
     $router->post('/settings/branding', 'SettingsController@uploadBranding');
     $router->put('/settings/password', 'SettingsController@updatePassword');

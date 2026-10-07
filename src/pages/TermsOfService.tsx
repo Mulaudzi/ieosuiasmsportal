@@ -1,15 +1,13 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { Logo } from "@/components/layout/Logo";
+import { SignedInPublicHeader } from "@/components/layout/PublicChrome";
 import { Footer } from "@/components/layout/Footer";
 
 export default function TermsOfService() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="flex-1 max-w-4xl mx-auto px-6 py-12">
-        <div className="mb-8">
-          <Logo size="md" linkTo="/landing" />
-        </div>
+        <SignedInPublicHeader />
 
         <Link to="/landing" className="inline-flex items-center gap-2 text-primary hover:underline mb-8">
           <ArrowLeft className="h-4 w-4" />

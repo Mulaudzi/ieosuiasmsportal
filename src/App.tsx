@@ -1,3 +1,7 @@
+import { lazy, Suspense } from "react";
+import { PublicSeo } from "./seo/PublicSeo";
+import "./seo/public-seo.css";
+import PublicGuide from "./pages/PublicGuide";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,25 +11,26 @@ import { AuthProvider, ProtectedRoute } from "@/hooks/useAuth";
 import { AdminRoute } from "@/components/auth/AdminRoute";
 
 import { CookieConsent } from "@/components/CookieConsent";
+import { PublicChrome } from "@/components/layout/PublicChrome";
 import Landing from "./pages/Landing";
 import VerifyEmail from "./pages/VerifyEmail";
 import VerifyEmailReminder from "./pages/VerifyEmailReminder";
 import ForgotPassword from "./pages/ForgotPassword";
-import Dashboard from "./pages/Dashboard";
-import SmsCampaigns from "./pages/SmsCampaigns";
-import CreateSmsCampaign from "./pages/CreateSmsCampaign";
-import CampaignDetails from "./pages/CampaignDetails";
-import EmailCampaigns from "./pages/EmailCampaigns";
-import Contacts from "./pages/Contacts";
-import Templates from "./pages/Templates";
-import Wallet from "./pages/Wallet";
-import PaymentHistory from "./pages/PaymentHistory";
-import PaymentSuccess from "./pages/PaymentSuccess";
-import PaymentFailed from "./pages/PaymentFailed";
-import Reports from "./pages/Reports";
-import CampaignComparison from "./pages/CampaignComparison";
-import Settings from "./pages/Settings";
-import Profile from "./pages/Profile";
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const SmsCampaigns = lazy(() => import("./pages/SmsCampaigns"));
+const CreateSmsCampaign = lazy(() => import("./pages/CreateSmsCampaign"));
+const CampaignDetails = lazy(() => import("./pages/CampaignDetails"));
+const EmailCampaigns = lazy(() => import("./pages/EmailCampaigns"));
+const Contacts = lazy(() => import("./pages/Contacts"));
+const Templates = lazy(() => import("./pages/Templates"));
+const Wallet = lazy(() => import("./pages/Wallet"));
+const PaymentHistory = lazy(() => import("./pages/PaymentHistory"));
+const PaymentSuccess = lazy(() => import("./pages/PaymentSuccess"));
+const PaymentFailed = lazy(() => import("./pages/PaymentFailed"));
+const Reports = lazy(() => import("./pages/Reports"));
+const CampaignComparison = lazy(() => import("./pages/CampaignComparison"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Profile = lazy(() => import("./pages/Profile"));
 import NotFound from "./pages/NotFound";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
@@ -37,11 +42,11 @@ import Careers from "./pages/Careers";
 import Contact from "./pages/Contact";
 import CentralAuthRedirect from "@/components/auth/CentralAuthRedirect";
 
-import AdminDashboard from "./pages/AdminDashboard";
-import AdminOperations from "./pages/AdminOperations";
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const AdminOperations = lazy(() => import("./pages/AdminOperations"));
 import Pricing from "./pages/Pricing";
-import AdminManagement from "./pages/AdminManagement";
-import AdminOperationalLogs from "./pages/AdminOperationalLogs";
+const AdminManagement = lazy(() => import("./pages/AdminManagement"));
+const AdminOperationalLogs = lazy(() => import("./pages/AdminOperationalLogs"));
 
 const queryClient = new QueryClient();
 
@@ -53,7 +58,11 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <CookieConsent />
+          <PublicChrome />
+          <PublicSeo />
+          <Suspense fallback={<div role="status" className="p-8">Loading page...</div>}>
           <Routes>
+            {["features","use-cases","contact-management","scheduled-sms","delivery-reports","faq"].map(path => <Route key={path} path={"/"+path} element={<PublicGuide/>}/>)}
             <Route path="/" element={<Landing />} />
             <Route path="/landing" element={<Navigate to="/" replace />} />
             <Route path="/pricing" element={<Pricing />} />
@@ -64,14 +73,14 @@ const App = () => (
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/verify-email-reminder" element={<ProtectedRoute><VerifyEmailReminder /></ProtectedRoute>} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/terms-of-service" element={<TermsOfService />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/cookie-policy" element={<CookiePolicy />} />
-            <Route path="/popia-compliance" element={<PopiaCompliance />} />
-            <Route path="/support" element={<Support />} />
+            <Route path="/terms-of-service" element={<main className="public-legacy"><TermsOfService /></main>} />
+            <Route path="/privacy-policy" element={<main className="public-legacy"><PrivacyPolicy /></main>} />
+            <Route path="/cookie-policy" element={<main className="public-legacy"><CookiePolicy /></main>} />
+            <Route path="/popia-compliance" element={<main className="public-legacy"><PopiaCompliance /></main>} />
+            <Route path="/support" element={<main className="public-legacy"><Support /></main>} />
             <Route path="/documentation" element={<Documentation />} />
-            <Route path="/careers" element={<Careers />} />
-            <Route path="/contact" element={<Contact />} />
+            <Route path="/careers" element={<main className="public-legacy"><Careers /></main>} />
+            <Route path="/contact" element={<main className="public-legacy"><Contact /></main>} />
             
             {/* User Dashboard Routes */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -102,6 +111,7 @@ const App = () => (
             
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

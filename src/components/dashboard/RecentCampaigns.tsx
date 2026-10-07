@@ -1,6 +1,8 @@
+import { campaignStatusConfig, sendingStatusHint } from '@/lib/campaign-status';
+import { MetricHint } from '@/components/dashboard/MetricHint';
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { MessageSquare, Mail, MoreHorizontal, Eye, Loader2 } from "lucide-react";
+import { MessageSquare, Mail, Eye, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -18,20 +20,7 @@ interface Campaign {
   created_at: string;
 }
 
-const statusConfig: Record<string, { label: string; class: string }> = {
-  Delivered: { label: "Delivered", class: "status-delivered" },
-  Sent: { label: "Sent", class: "status-delivered" },
-  Sending: { label: "Sending", class: "status-pending" },
-  Scheduled: { label: "Scheduled", class: "status-queued" },
-  Draft: { label: "Draft", class: "status-queued" },
-  Failed: { label: "Failed", class: "status-failed" },
-  Cancelled: { label: "Cancelled", class: "status-failed" },
-  completed: { label: "Dispatch complete", class: "status-delivered" },
-  partially_failed: { label: "Partially failed", class: "status-failed" },
-  processing: { label: "Processing", class: "status-pending" },
-  scheduled: { label: "Scheduled", class: "status-queued" },
-  draft: { label: "Draft", class: "status-queued" },
-};
+const statusConfig = campaignStatusConfig;
 
 export function RecentCampaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -111,7 +100,7 @@ export function RecentCampaigns() {
 
       <div className="space-y-4">
         {campaigns.map((campaign) => {
-          const status = statusConfig[campaign.status] || { label: campaign.status, class: "status-queued" };
+          const status = statusConfig[campaign.status.toLowerCase()] || { label: campaign.status, class: "status-queued" };
           const campaignType = campaign.type || "sms";
           
           return (
@@ -137,7 +126,7 @@ export function RecentCampaigns() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="truncate font-medium text-foreground">{campaign.name}</p>
-                  <span className={cn("status-badge", status.class)}>{status.label}</span>
+                  <span className={cn("status-badge", status.class)}>{status.label}</span><MetricHint label="Sending status" text={sendingStatusHint}/>
                 </div>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {(campaign.delivered_count || 0).toLocaleString()} / {(campaign.sent_count || campaign.recipients || 0).toLocaleString()} recipients • {formatDate(campaign.created_at)}
@@ -146,13 +135,10 @@ export function RecentCampaigns() {
 
               <div className="flex items-center gap-2">
                 <Link to={`/${campaignType}-campaigns/${campaign.id}`}>
-                  <Button variant="ghost" size="icon">
+                  <Button title="View campaign" aria-label="View campaign" variant="ghost" size="icon">
                     <Eye className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Button variant="ghost" size="icon">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
               </div>
             </div>
           );

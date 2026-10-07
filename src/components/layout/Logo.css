@@ -1,0 +1,9 @@
+.portal-logo-link { display: inline-flex; max-width: 100%; min-width: 0; flex-shrink: 0; }
+.portal-logo { display: block; max-width: 100%; aspect-ratio: 3 / 1; }
+.portal-logo--sm { width: clamp(108px, 22vw, 132px); }
+.portal-logo--md { width: clamp(126px, 26vw, 168px); }
+.portal-logo--lg { width: clamp(156px, 32vw, 204px); }
+.portal-logo img { display: block; width: 100%; height: auto; max-width: 100%; aspect-ratio: 3 / 1; object-fit: contain; }
+.portal-logo .portal-logo__navy { display: none; }
+.dark .portal-logo .portal-logo__light { display: none; }
+.dark .portal-logo .portal-logo__navy { display: block; }

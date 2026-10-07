@@ -1,0 +1,18 @@
+<?php
+function env($key,$fallback=null){return $fallback;}
+require_once __DIR__.'/../services/SmsReportDocument.php';
+function verify($condition,$message){if(!$condition)throw new RuntimeException($message);}
+$messages=[];foreach(['delivered','sent','sent','failed','skipped'] as $i=>$state)$messages[]=['campaign'=>'Sample & report','destination'=>'+27638082493','state'=>$state,'segment_count'=>2,'sent_at'=>$state==='skipped'?null:'2026-10-05 10:00:00','last_error'=>$i===2?'DLR lookup: Cannot Find Message':null];
+$period=['start'=>'2026-09-27','end'=>'2026-10-04'];$r=SmsReportDocument::snapshot('Sample & report',$period,$messages,11);
+verify($r['total']===5&&array_values($r['counts'])===[1,1,1,1,1],'Counts overlap or missing');
+$f=fopen('php://temp','w+');fwrite($f,SmsReportDocument::csv($r));rewind($f);verify(fgetcsv($f,escape:'')===SmsReportDocument::HEADERS,'CSV headers');$rows=[];while(($row=fgetcsv($f,escape:''))!==false)$rows[]=$row;fclose($f);verify(count($rows)===5,'CSV full recipient list');verify($rows[2][2]==='Delivery Status Unavailable','Unavailable remapped');verify($rows[4][4]==='','Skipped has sent time');
+$html=SmsReportDocument::email($r);verify(!str_contains($html,'+27638082493'),'Email leaks full number');verify(str_contains($html,'+27 63 *** 2493'),'Email masking');verify(str_contains($html,'All recipients'),'Small campaign sample heading');verify(!str_contains($html,'<th>Details'),'Email includes Details');verify(str_contains($html,'download=pdf')&&str_contains($html,'download=csv'),'File links missing');
+$last=-1;foreach(['SMS delivery report','Period:','Campaign name:','Summary','<h2 style="font-size:16px">All recipients','View full report','Download PDF','Both files contain'] as $part){$pos=strpos($html,$part);verify($pos!==false&&$pos>$last,'Email order: '.$part);$last=$pos;}
+$empty=SmsReportDocument::snapshot('Empty',$period,[],1);verify(substr_count(SmsReportDocument::email($empty),'font-size:28px')===6,'Zero tiles hidden');
+$large=SmsReportDocument::snapshot('Large report',$period,array_fill(0,1000,$messages[2]),12);$largeHtml=SmsReportDocument::email($large);verify(str_contains($largeHtml,'Showing 5 of 1000'),'Sample heading');verify(substr_count($largeHtml,'+27 63 *** 2493')===5,'Email must only show five');verify(str_contains(SmsReportDocument::note($large),'This is not a confirmed failure.'),'Unavailable note');
+$pdf=SmsReportDocument::pdf($large);verify(str_starts_with($pdf,'%PDF-1.4'),'Not a PDF');verify(substr_count($pdf,'/Type /Page ')>1,'PDF not paginated');verify(substr_count($pdf,'(+27638082493)')===1000,'PDF loses recipients');verify(!str_contains($pdf,'DLR lookup'),'PDF raw diagnostics');
+$attack=$r;$attack['rows'][0][0]="\t=HYPERLINK(\"https://invalid\")";verify(str_contains(SmsReportDocument::csv($attack),"'\t="),'Formula injection');
+$args=[42];$sql=SmsReportDocument::filter('dlr_unavailable','%_',$args);verify(str_contains($sql,"m.state='sent'")&&!str_contains($sql,"m.state='failed'"),'Filter mapping');verify(count($args)===4&&$args[1]==='%!%!_%','Search escapes wildcards');
+try{$args=[];SmsReportDocument::filter("' OR 1=1",'',$args);throw new RuntimeException('Filter injection accepted');}catch(InvalidArgumentException $e){}
+if(in_array('--artifacts',$argv,true)){file_put_contents(__DIR__.'/../../.sms-audit.local/report-email-preview.html',$html);file_put_contents(__DIR__.'/../../.sms-audit.local/report-pagination-preview.pdf',$pdf);}
+echo "PASS: shared six-column CSV, five outcomes, six zero-safe tiles, masked five-row email, 1000-recipient paginated PDF, safe spreadsheet values and filters\n";
