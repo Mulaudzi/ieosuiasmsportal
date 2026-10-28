@@ -8,6 +8,7 @@ require_once __DIR__ . '/../services/PayOSService.php';
 require_once __DIR__ . '/../domain/WalletService.php';
 require_once __DIR__ . '/../domain/SmsPricing.php';
 require_once __DIR__ . '/../domain/PaymentState.php';
+require_once __DIR__ . '/../domain/CreditPurchaseSettlement.php';
 require_once __DIR__ . '/../services/PaymentReceiptService.php';
 
 class PaymentWebhookController {
@@ -41,6 +42,11 @@ class PaymentWebhookController {
             Response::error('Wallet not found', 404);
         }
 
+        $initiatedPayment = table('payments')->where('transaction_id', $transaction['id'])->first();
+        if ($initiatedPayment && $initiatedPayment['gateway'] !== 'payos') {
+            Response::error('This payment requires bank verification.', 409);
+        }
+
         $internalReference = $payOS->getInternalReference($payload);
         if ($internalReference && $this->hasColumn('wallet_transactions', 'payos_reference')) {
             table('wallet_transactions')->where('id', $transaction['id'])->update([
@@ -50,6 +56,9 @@ class PaymentWebhookController {
         }
 
         $amount = (float) ($payload['amount'] ?? $transaction['amount']);
+        if (!is_finite($amount) || abs($amount-(float)$transaction['amount'])>.0001) {
+            Response::error('Callback amount does not match the initiated payment.',422);
+        }
         if (strtoupper((string)($payload['currency'] ?? 'ZAR')) !== 'ZAR') {
             Response::error('Unsupported payment currency', 422);
         }
@@ -124,7 +133,7 @@ class PaymentWebhookController {
 
             // Canonical wallet units are currency amounts. Commercial SMS pricing
             // converts that balance into segments during campaign preview.
-            WalletService::creditPayment($pdo, (int)$wallet['user_id'], $paymentId, $amount, (string)$transaction['reference']);
+            $credits = CreditPurchaseSettlement::credit($pdo, $payment, $amount);
             
             // Update transaction status
             table('wallet_transactions')->where('id', $transaction['id'])->update([
@@ -135,7 +144,7 @@ class PaymentWebhookController {
             // Update payment record
             table('payments')->where('id', $paymentId)->update([
                 'status' => 'completed',
-                'credits_added' => max(0, (int) floor(($amount + 0.000001) / SmsPricing::pricePerSegment())),
+                'credits_added' => $credits,
                 'processed_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
@@ -169,6 +178,19 @@ class PaymentWebhookController {
     }
 
     private function updateFailedPaymentState(array $transaction, int $paymentId, string $paymentStatus, ?string $errorMessage = null): void {
+        $pdo=db();$pdo->beginTransaction();
+        try {
+        $lock=$pdo->prepare('SELECT status FROM wallet_transactions WHERE id=? FOR UPDATE');$lock->execute([$transaction['id']]);
+        if ($lock->fetchColumn()==='completed') {$pdo->commit();return;}
+        $lock=$pdo->prepare('SELECT status FROM payments WHERE id=? FOR UPDATE');$lock->execute([$paymentId]);
+        if ($lock->fetchColumn()==='completed') {$pdo->commit();return;}
+        // Only a verified terminal cancellation/failure callback closes a checkout.
+        // A request/transport error during initiation never releases its reservation.
+        $order=CreditPurchaseSettlement::order($pdo,$paymentId,true);
+        if ($order && $order['payment_method']==='payos' && in_array($order['status'],['awaiting_payment','awaiting_verification'],true)) {
+            CustomerCashBalance::release($pdo,(int)$order['id']);
+            $pdo->prepare("UPDATE credit_purchase_orders SET status='voided',updated_at=NOW() WHERE id=?")->execute([$order['id']]);
+        }
         table('wallet_transactions')->where('id', $transaction['id'])->update([
             'status' => 'failed',
             'updated_at' => date('Y-m-d H:i:s'),
@@ -180,6 +202,8 @@ class PaymentWebhookController {
             'processed_at' => date('Y-m-d H:i:s'),
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
+        $pdo->commit();
+        } catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
     }
 
     private function upsertPayOSPayment(array $transaction, array $wallet, array $payload, string $paymentStatus, float $amount, ?string $internalReference, string $event): int {
@@ -197,6 +221,10 @@ class PaymentWebhookController {
                 ->where('gateway', 'payos')
                 ->where('merchant_reference', $transaction['reference'])
                 ->first();
+        }
+
+        if ($existing && ((int)$existing['transaction_id']!==(int)$transaction['id'] || (int)$existing['user_id']!==(int)$wallet['user_id'])) {
+            Response::error('PayOS reference belongs to a different payment.',409);
         }
 
         $effectiveStatus = PaymentState::merge($existing['status'] ?? null, $paymentStatus);

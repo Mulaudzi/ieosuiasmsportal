@@ -1,4 +1,16 @@
 RewriteEngine On
+
+# Payment proofs are limited to 5 MB by the controller. LiteSpeed uses these
+# per-directory values; .user.ini provides the equivalent CGI/FPM setting.
+<IfModule lsapi_module>
+    php_value upload_max_filesize 6M
+    php_value post_max_size 8M
+</IfModule>
+<IfModule LiteSpeed>
+    php_value upload_max_filesize 6M
+    php_value post_max_size 8M
+</IfModule>
+
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.php [QSA,L]

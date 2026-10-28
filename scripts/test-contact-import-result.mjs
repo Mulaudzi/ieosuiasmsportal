@@ -10,4 +10,8 @@ assert.deepEqual(contactImportResult({imported:0,duplicates:9,failed:0}),{import
 assert.deepEqual(contactImportResult({imported:'3',duplicates:'0',failed:'0'}),{imported:3,duplicates:0,failed:0});
 assert.throws(()=>contactImportResult({success:true}));
 assert.throws(()=>contactImportResult({imported:-1,duplicates:0,failed:0}));
-console.log('6 contact-import result checks passed');
+assert.deepEqual(contactImportResult({imported:1,duplicates:3,failed:0,existing_added_to_group:2}),{imported:1,duplicates:3,failed:0,existing_added_to_group:2});
+assert.throws(()=>contactImportResult({imported:1,duplicates:3,failed:0,existing_added_to_group:-1}));
+assert.deepEqual(contactImportResult({imported:1,duplicates:0,failed:0,corrected:1,rejected:2}),{imported:1,duplicates:0,failed:0,corrected:1,rejected:2});
+assert.throws(()=>contactImportResult({imported:1,duplicates:0,failed:0,corrected:-1}));
+console.log('10 contact-import result checks passed');

@@ -7,6 +7,15 @@ class Auth {
     private static $user = null;
     private static $tokenChecked = false;
 
+    public static function centralAdminConfig(): array {
+        return ['enabled'=>env('AUTH_CENTRAL_ADMIN_ENABLED','false'),'issuer'=>env('AUTH_ISSUER','https://auth.ieosuia.com'),'client_id'=>env('AUTH_ADMIN_CLIENT_ID',''),'client_secret'=>env('AUTH_ADMIN_CLIENT_SECRET','')];
+    }
+    private static function verifyCentralAdmin(array $user,array $payload): void {
+        if (($user['role']??'')!=='admin') return;
+        require_once __DIR__.'/../domain/CentralAdminAccess.php';
+        CentralAdminAccess::verify((string)($user['identity_uuid']??''),(int)($payload['central_admin_version']??0),'admin',($payload['central_admin_managed']??false)===true,'sms',self::centralAdminConfig());
+    }
+
     public static function ensureRevocationTable(): void {
         db()->exec("CREATE TABLE IF NOT EXISTS revoked_auth_tokens (token_hash CHAR(64) PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, token_type ENUM('customer','admin') NOT NULL, expires_at DATETIME NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_revoked_auth_tokens_user (user_id,token_type), INDEX idx_revoked_auth_tokens_expiry (expires_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     }
@@ -41,6 +50,8 @@ class Auth {
             Response::error('Session has been invalidated', 401);
         }
         
+        try { self::verifyCentralAdmin($user,$payload); }
+        catch (RuntimeException $e) { Response::error($e->getMessage(),$e->getCode()===503?503:401); }
         self::$user = $user;
         self::$tokenChecked = true;
     }
@@ -69,6 +80,7 @@ class Auth {
                     }
                     $user = table('users')->where('id', $payload['sub'])->first();
                     if ($user && (bool) ($user['is_active'] ?? true) && (int) ($payload['ver'] ?? 1) === (int) ($user['auth_version'] ?? 1)) {
+                        try { self::verifyCentralAdmin($user,$payload); } catch (RuntimeException) { self::$tokenChecked=true; return null; }
                         self::$user = $user;
                     }
                     self::$tokenChecked = true;
@@ -103,6 +115,7 @@ class Auth {
             'email' => $user['email'],
             'name' => $user['name'],
             'ver' => (int) ($user['auth_version'] ?? 1),
+            ...(($user['role']??'')==='admin'?['central_admin_version'=>(int)($user['central_admin_version']??0),'central_admin_managed'=>($user['central_admin_managed']??false)===true]:[]),
         ]);
     }
     

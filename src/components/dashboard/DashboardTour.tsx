@@ -6,15 +6,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { useWallet } from '@/hooks/useWallet';
 import { usePortalOverview } from './GetStartedChecklist';
 
-export function DashboardTour(){
+export function DashboardTour({onSettled}:{onSettled?:()=>void} = {}){
  const {user}=useAuth();const wallet=useWallet();const {data}=usePortalOverview();
  const [step,setStep]=useState<number|null>(null);const [box,setBox]=useState<DOMRect|null>(null);const [cardHeight,setCardHeight]=useState(240);
  const card=useRef<HTMLDivElement>(null);const prior=useRef<HTMLElement|null>(null);const autoChecked=useRef('');
  const key=`sms-ui:${user?.id}:dashboard-tour-seen`;
  const start=()=>{prior.current=document.activeElement as HTMLElement;setStep(0);try{localStorage.setItem(key,'true');}catch{/* Storage unavailable */}};
- const finish=()=>{setStep(null);prior.current?.focus();};
+ const finish=()=>{setStep(null);prior.current?.focus();onSettled?.();};
  useEffect(()=>{const open=()=>start();window.addEventListener('sms:dashboard-tour',open);return()=>window.removeEventListener('sms:dashboard-tour',open);},[key]);
- useEffect(()=>{if(!user||!data||wallet.isLoading||wallet.error||autoChecked.current===key)return;autoChecked.current=key;try{if(localStorage.getItem(key))return;}catch{return;}start();},[user,data,wallet.isLoading,wallet.error,key]);
+ useEffect(()=>{if(!user||!data||wallet.isLoading||wallet.error||autoChecked.current===key)return;autoChecked.current=key;try{if(localStorage.getItem(key)){onSettled?.();return;}}catch{onSettled?.();return;}start();},[user,data,wallet.isLoading,wallet.error,key,onSettled]);
  useLayoutEffect(()=>{
   if(step===null)return;
   const targets=['[data-tour="credits"]','[data-tour="contacts"]','[data-tour="campaign"]','[data-tour="delivery"]'];

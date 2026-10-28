@@ -152,14 +152,14 @@ class EmailService
     /**
      * Send payment confirmation email
      */
-    public static function sendPaymentConfirmationEmail(string $email, string $name, float $amount, string $reference): array
+    public static function sendPaymentConfirmationEmail(string $email, string $name, float $amount, string $reference, ?int $purchasedCredits = null): array
     {
         $appUrl = env('FRONTEND_URL', env('APP_URL', 'https://sms.ieosuia.com'));
         $walletUrl = $appUrl . '/wallet';
         $appName = env('SMTP_FROM_NAME', env('MAIL_FROM_NAME', 'IEOSUIA SMS Portal'));
         
         $pricePerCredit = (float) env('SMS_PRICE_PER_SEGMENT', 0.35);
-        $credits = $pricePerCredit > 0 ? max(0, (int) floor(($amount + 0.000001) / $pricePerCredit)) : 0;
+        $credits = $purchasedCredits ?? ($pricePerCredit > 0 ? max(0, (int) floor(($amount + 0.000001) / $pricePerCredit)) : 0);
         $subject = 'SMS credit purchase confirmed';
         
         $html = self::getEmailTemplate(
@@ -168,7 +168,7 @@ class EmailService
             'Your payment of <strong>R' . number_format($amount, 2) . '</strong> has been processed. You can now use <strong>' . number_format($credits) . ' SMS credits</strong>; one credit sends one billable SMS segment.<br><br>Reference: <code>' . htmlspecialchars($reference) . '</code>',
             $walletUrl,
             'View Your Wallet',
-            'Your SMS credits are available immediately. Any amount smaller than one full credit remains safely available toward future SMS usage. If you have questions, please contact support.'
+            'Your purchased SMS credits are now available. We do not charge VAT. If you have questions, contact sms@ieosuia.com with your payment reference.'
         );
         
         return self::send($email, $subject, $html, null, env('BILLING_EMAIL', 'billing@ieosuia.com'));

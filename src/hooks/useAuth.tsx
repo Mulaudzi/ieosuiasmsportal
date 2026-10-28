@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { isCentralAuthHandoff } from "@/lib/central-auth";
+import { AppLoadingScreen } from "@/components/ui/page-loading";
 
 interface User {
   id: string;
@@ -46,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const signingOutRef = useRef(false);
+  const centralHandoffRef = useRef(isCentralAuthHandoff(window.location.pathname, window.location.hash));
 
   const scheduleTokenRefresh = (tokenIssuedAt: number) => {
     if (refreshTimeoutRef.current) {
@@ -80,9 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
+      if (signingOutRef.current || localStorage.getItem('ieosuia_explicit_logout')
+        || localStorage.getItem(TOKEN_KEY) !== currentToken) return;
+
       if (response.ok) {
         const data = await response.json();
-        if (signingOutRef.current) return;
+        if (signingOutRef.current || localStorage.getItem('ieosuia_explicit_logout')
+          || localStorage.getItem(TOKEN_KEY) !== currentToken) return;
         if (data.success && data.data?.token) {
           const newToken = data.data.token;
           const issuedAt = Date.now();
@@ -114,14 +121,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    const centralToken = localStorage.getItem('ieosuia_explicit_logout') ? null : new URLSearchParams(window.location.hash.slice(1)).get("ieosuia_token");
-    if (centralToken) {
-      localStorage.setItem(TOKEN_KEY, centralToken);
-      localStorage.setItem(TOKEN_ISSUED_KEY, Date.now().toString());
-      localStorage.removeItem(USER_KEY);
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    // Never compete with the callback's profile request or expose its unvalidated
+    // token as authenticated. Keep guest chrome hidden until its full navigation.
+    if (centralHandoffRef.current) return;
+    if (localStorage.getItem('ieosuia_explicit_logout')) {
+      handleLogout();
+      setIsLoading(false);
+      return;
     }
-    const storedToken = centralToken || localStorage.getItem(TOKEN_KEY);
+    const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
     const storedIssuedAt = localStorage.getItem(TOKEN_ISSUED_KEY);
     
@@ -148,14 +156,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .then(async response => {
           const data = await response.json();
           if (!response.ok || !data.success || !data.user) throw new Error('Unable to load account');
-          if (!cancelled) {
+          if (!cancelled && !signingOutRef.current && !localStorage.getItem('ieosuia_explicit_logout')
+            && localStorage.getItem(TOKEN_KEY) === storedToken) {
             setUser(data.user);
             localStorage.setItem(USER_KEY, JSON.stringify(data.user));
             setIsLoading(false);
             scheduleTokenRefresh(Date.now());
           }
         })
-        .catch(() => { if (!cancelled) { handleLogout(); setIsLoading(false); } });
+        .catch(() => {
+          if (!cancelled && !signingOutRef.current && localStorage.getItem(TOKEN_KEY) === storedToken) {
+            handleLogout(); setIsLoading(false);
+          }
+        });
     } else {
       setIsLoading(false);
     }
@@ -166,6 +179,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(refreshTimeoutRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const expire = () => { handleLogout(); setIsLoading(false); };
+    window.addEventListener('auth:session-expired', expire);
+    return () => window.removeEventListener('auth:session-expired', expire);
   }, []);
 
   useEffect(() => {
@@ -552,7 +571,7 @@ export function ProtectedRoute({ children, requireVerified = false }: { children
 
     if (!isAuthenticated) {
       // Store the intended destination for redirect after login
-      sessionStorage.setItem('redirectAfterLogin', location.pathname);
+      sessionStorage.setItem('redirectAfterLogin', location.pathname + location.search);
       navigate("/login", { replace: true });
     } else if (requireVerified && !isEmailVerified) {
       navigate("/verify-email-reminder", { replace: true, state: { from: location } });
@@ -561,14 +580,7 @@ export function ProtectedRoute({ children, requireVerified = false }: { children
 
   // Show loading state while auth is being checked
   if (isLoading || !authChecked) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <AppLoadingScreen />;
   }
 
   if (!isAuthenticated) {

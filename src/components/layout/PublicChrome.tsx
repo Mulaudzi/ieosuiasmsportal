@@ -30,7 +30,7 @@ export function PublicChrome() {
           <nav aria-label="Main navigation" className="home-desktop-nav"><Link to="/features">Features</Link><Link to="/use-cases">Use Cases</Link><Link to="/pricing">Pricing</Link><Link to="/documentation">Resources</Link><Link to="/contact">Contact</Link></nav>
           <div className="home-nav-actions"><Link className="home-login" to="/login">Sign In</Link><Link className="home-button home-nav-cta" to="/register">Get Started</Link><button type="button" className="home-menu-button" aria-label={open ? "Close navigation" : "Open navigation"} aria-expanded={open} aria-controls="public-mobile-nav" onClick={() => setOpen(!open)}>{open ? <X/> : <Menu/>}</button></div>
         </div>
-        {open && <nav id="public-mobile-nav" className="home-mobile-nav" aria-label="Mobile navigation" onClick={() => setOpen(false)}><a href="/#platform">Platform</a><Link to="/features">Features</Link><Link to="/use-cases">Use Cases</Link><Link to="/pricing">Pricing</Link><Link to="/documentation">Resources</Link><Link to="/faq">FAQ</Link><Link to="/contact">Contact</Link><Link to="/register">Get Started</Link></nav>}
+        {open && <nav id="public-mobile-nav" className="home-mobile-nav" aria-label="Mobile navigation" onClick={() => setOpen(false)}><a href="/#platform">Platform</a><Link to="/features">Features</Link><Link to="/use-cases">Use Cases</Link><Link to="/pricing">Pricing</Link><Link to="/documentation">Resources</Link><Link to="/faq">FAQ</Link><Link to="/banking-details">Banking Details</Link><Link to="/contact">Contact</Link><Link to="/register">Get Started</Link></nav>}
       </header>
     </div>
   </>;

@@ -4,9 +4,12 @@ import { EcosystemSection } from "@/components/marketing/EcosystemSection";
 import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { AppLoadingScreen } from "@/components/ui/page-loading";
 import { Logo } from "@/components/layout/Logo";
-import { ArrowRight, ArrowUpRight, BarChart3, CalendarClock, Check, FileText, Layers, Loader2, Mail, MessageSquare, Users, Wallet } from "lucide-react";
+import { ArrowRight, ArrowUpRight, BarChart3, CalendarClock, Check, FileText, Layers, Mail, MessageSquare, Users, Wallet } from "lucide-react";
 import { AudiencePreview, CampaignPreview, DeliveryPreview } from "@/components/marketing/PlatformPreviews";
+import { CreditPricingTable } from '@/components/pricing/CreditPricingTable';
+import { creditPricing, creditQuote, rand } from '@/lib/credit-purchases';
 import "./Landing.css";
 
 const modules = [
@@ -17,6 +20,8 @@ const modules = [
   { icon: BarChart3, name: "Delivery reports", text: "Follow recipient statuses and campaign results.", href: "#reporting" },
   { icon: Wallet, name: "Credits & usage", text: "Review your balance and campaign requirements.", href: "#pricing" },
 ];
+const minimumPurchase = creditQuote(creditPricing.minimum)!;
+const minimumTransfer = creditQuote(creditPricing.minimum, 'eft')!;
 const steps = [
   ["Build your audience", "Import contacts from Excel or CSV, or select an existing group."],
   ["Compose your message", "Write your SMS or start with a saved template. Review personalisation and your opt-out footer."],
@@ -34,8 +39,8 @@ const useCases = [
 const faqs = [
   ["What can I manage in the portal?", "SMS campaigns, contacts, groups, reusable templates, scheduling, delivery reports and prepaid credits. Email campaigns are coming soon and are not available for sending yet."],
   ["Can I import my existing contacts?", "Yes. Import an Excel (.xlsx) or CSV file, choose your worksheet, map the columns and assign contacts to an existing group. The import flow identifies duplicates and reports the result."],
-  ["How are SMS credits calculated?", "One credit covers one billable SMS segment at R0.35. Longer messages, Unicode characters, personalisation and opt-out text can increase the segment count. Review the calculated requirement before sending."],
-  ["Is there a subscription or a minimum purchase?", "Messaging is prepaid, with no monthly subscription. The minimum purchase is R10. At R0.35 per segment, this covers 28 whole credits, with the remaining value retained in your wallet."],
+  ["How are SMS credits calculated?", "One credit covers one billable SMS segment. Purchase prices range from R0.35 to R0.22 per credit, depending on volume. Longer messages, Unicode characters, personalisation and opt-out text can increase the segment count. Review the calculated requirement before sending."],
+  ["Is there a subscription or a minimum purchase?", "Messaging is prepaid, with no monthly subscription. The minimum purchase is 30 credits for R10.50 before any direct bank transfer saving. Larger purchases have a lower price per credit. No VAT is charged."],
   ["Does sent mean delivered?", "No. Sent means the SMS provider accepted the message. Delivered means delivery was confirmed. Messages without confirmation remain pending, including those whose delivery report is unavailable."],
   ["How are opt-outs handled?", "Opted-out numbers are excluded from future campaigns. You can review opt-outs in your contacts and choose whether to include the opt-out footer when preparing a message."],
 ];
@@ -44,13 +49,13 @@ export default function Landing() {
   const { isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
   useEffect(() => { if (!isLoading && isAuthenticated) navigate("/dashboard", { replace: true }); }, [isLoading, isAuthenticated, navigate]);
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center" role="status"><Loader2 className="h-7 w-7 animate-spin mr-3"/>Loading...</div>;
+  if (isLoading) return <AppLoadingScreen />;
   return <div className="sms-home">
     <a href="#main" className="home-skip">Skip to content</a>
     <main id="main">
       <section className="home-hero">
         <div className="ops-wrap ops-hero-grid">
-          <div className="ops-hero-copy"><p className="ops-eyebrow"><span className="ops-status-dot"/> THE IEOSUIA COMMUNICATIONS WORKSPACE</p><h1>Build audiences.<br/>Send campaigns.<br/><em>Track delivery.</em></h1><p className="ops-lead">Manage contacts, SMS campaigns, schedules and delivery from one place. Keep every message organised, from the first recipient to the final report.</p><div className="ops-actions"><Link to="/register" className="ops-button">Start Messaging <ArrowRight size={18}/></Link><a href="#platform" className="ops-text-link">Explore the Platform <ArrowUpRight size={17}/></a></div><div className="ops-hero-facts"><span><Check size={14}/> Prepaid SMS</span><span><Check size={14}/> Scheduled campaigns</span><span><Check size={14}/> Recipient-level reports</span></div></div>
+          <div className="ops-hero-copy"><p className="ops-eyebrow"><span className="ops-status-dot"/> THE IEOSUIA COMMUNICATIONS WORKSPACE</p><h1>Build audiences.<br/>Send campaigns.<br/><em>Track delivery.</em></h1><p className="ops-lead">Manage contacts, SMS campaigns, schedules and delivery from one place. Keep every message organised, from the first recipient to the final report.</p><p className="ops-hero-price"><a href="#pricing">Start with {creditPricing.minimum} credits for {rand(minimumPurchase.total_cents)}</a><span>Or {rand(minimumTransfer.total_cents)} by direct FNB transfer. No VAT charged.</span></p><div className="ops-actions"><Link to="/register" className="ops-button">Start Messaging <ArrowRight size={18}/></Link><a href="#platform" className="ops-text-link">Explore the Platform <ArrowUpRight size={17}/></a></div><div className="ops-hero-facts"><span><Check size={14}/> Prepaid SMS</span><span><Check size={14}/> Scheduled campaigns</span><span><Check size={14}/> Recipient-level reports</span></div></div>
           <CampaignPreview/>
         </div>
         <div className="ops-wrap ops-hero-baseline"><span>BUILT AROUND YOUR MESSAGING OPERATION</span><div><span>Campaigns</span><i/><span>Audiences</span><i/><span>Delivery</span><i/><span>Insights</span></div></div>
@@ -72,7 +77,7 @@ export default function Landing() {
 
       <section id="use-cases" className="ops-wrap ops-section"><div className="ops-section-heading"><div><p className="ops-kicker">05 / EVERYDAY OPERATIONS</p><h2>The right update.<br/>The right contact group.</h2></div><p>Use SMS for the practical messages<br/>your people need to receive.</p></div><div className="ops-use-cases">{useCases.map(([number,title,text])=><article key={title}><span>{number}</span><h3>{title}</h3><p>{text}</p></article>)}</div></section>
 
-      <section id="pricing" className="ops-prepaid"><div className="ops-wrap ops-prepaid-grid"><div><p className="ops-kicker">CREDITS, WITHOUT THE COMPLICATION</p><h2>Simple prepaid messaging.</h2><p>Buy the credits you need. Review campaign costs before sending. No monthly subscription.</p></div><div className="ops-rate"><strong>R0.35</strong><span>per billable SMS segment</span></div><div className="ops-minimum"><strong>Start with R10</strong><p>One credit per segment. Longer or Unicode messages can require more credits.</p><Link to="/register" className="ops-text-link">Get started <ArrowRight size={16}/></Link></div></div></section>
+      <section id="pricing" className="ops-prepaid"><div className="ops-wrap ops-prepaid-grid"><div><p className="ops-kicker">CREDITS, WITHOUT THE COMPLICATION</p><h2>Simple prepaid messaging.</h2><p>Buy the credits you need. Review campaign costs before sending. No monthly subscription.</p></div><div className="ops-rate"><strong>R0.22 to R0.35</strong><span>per credit, depending on purchase volume</span></div><div className="ops-minimum"><strong>{creditPricing.minimum} credits from {rand(minimumPurchase.total_cents)}</strong><p>Pay {rand(minimumTransfer.total_cents)} by direct FNB transfer. Credits are added after cleared funds are verified.</p><Link to="/register" className="ops-text-link">Get started <ArrowRight size={16}/></Link></div></div><div className="ops-wrap ops-pricing-details"><div><h3>SMS credit price list</h3><p>The rate for your purchase range applies to every credit you buy. Prices below are before the extra direct bank transfer saving. No VAT charged.</p><p>One credit sends one billable SMS segment to one recipient. Longer or Unicode messages may need more credits.</p><Link to="/pricing" className="ops-text-link">Calculate your purchase <ArrowRight size={16}/></Link></div><CreditPricingTable/></div></section>
 
       <section className="ops-wrap ops-section ops-channels"><div className="ops-section-intro"><p className="ops-kicker">ROOM TO GROW</p><h2>SMS today.<br/>More communication channels next.</h2><p>Your SMS workspace is ready. Email campaigns will follow as the platform develops.</p></div><div className="ops-channel-list"><div><MessageSquare size={24}/><span><h3>SMS campaigns</h3><p>Contacts, scheduling and delivery reporting.</p></span><b className="ops-available">Available now</b></div><div><Mail size={24}/><span><h3>Email campaigns</h3><p>Not available for sending in this release.</p></span><b className="ops-coming">Coming Soon</b></div></div></section>
 
@@ -81,7 +86,7 @@ export default function Landing() {
       <section className="ops-wrap ops-final"><div><p className="ops-kicker">YOUR NEXT CAMPAIGN STARTS HERE</p><h2>Bring your messaging<br/>under one roof.</h2></div><div><Link to="/register" className="ops-button">Start Messaging <ArrowRight size={18}/></Link><p>Already have an account? <Link to="/login">Sign In</Link></p></div></section>
       <EcosystemSection />
     </main>
-    <footer className="ops-footer"><div className="ops-wrap"><div className="ops-footer-grid"><div className="ops-footer-brand"><Logo variant="navy" size="lg"/><p>The IEOSUIA workspace for<br/>audiences, campaigns and delivery.</p><a href="tel:+27638082493">+27 63 808 2493</a><SocialLinks className="mt-3" /></div><nav aria-label="Product links"><h2>Product</h2><Link to="/features">SMS platform features</Link><Link to="/use-cases">Business SMS use cases</Link><Link to="/contact-management">Contact management</Link><Link to="/scheduled-sms">Scheduled SMS</Link><Link to="/delivery-reports">Delivery reports</Link><Link to="/pricing">SMS credit pricing</Link><Link to="/faq">SMS questions</Link></nav><nav aria-label="Support links"><h2>Support</h2><Link to="/support">Help centre</Link><Link to="/documentation">Documentation</Link><Link to="/contact">Contact us</Link></nav><nav aria-label="Company links"><h2>Company</h2><a href="https://ieosuia.com" target="_blank" rel="noopener noreferrer">IEOSUIA <ArrowUpRight size={12}/></a><Link to="/careers">Careers</Link></nav></div><div className="ops-footer-bottom"><span>© {new Date().getFullYear()} IEOSUIA. All rights reserved.</span><nav aria-label="Legal links"><Link to="/privacy-policy">Privacy</Link><Link to="/terms-of-service">Terms</Link><Link to="/popia-compliance">POPIA</Link><Link to="/cookie-policy">Cookies</Link></nav></div></div></footer>
+    <footer className="ops-footer"><div className="ops-wrap"><div className="ops-footer-grid"><div className="ops-footer-brand"><Logo variant="navy" size="lg"/><p>The IEOSUIA workspace for<br/>audiences, campaigns and delivery.</p><a href="tel:+27638082493">+27 63 808 2493</a><SocialLinks className="mt-3" /></div><nav aria-label="Product links"><h2>Product</h2><Link to="/features">SMS platform features</Link><Link to="/use-cases">Business SMS use cases</Link><Link to="/contact-management">Contact management</Link><Link to="/scheduled-sms">Scheduled SMS</Link><Link to="/delivery-reports">Delivery reports</Link><Link to="/pricing">SMS credit pricing</Link><Link to="/banking-details">Banking Details</Link><Link to="/faq">SMS questions</Link></nav><nav aria-label="Support links"><h2>Support</h2><Link to="/support">Help centre</Link><Link to="/documentation">Documentation</Link><Link to="/contact">Contact us</Link></nav><nav aria-label="Company links"><h2>Company</h2><a href="https://ieosuia.com" target="_blank" rel="noopener noreferrer">IEOSUIA <ArrowUpRight size={12}/></a><Link to="/careers">Careers</Link></nav></div><div className="ops-footer-bottom"><span>© {new Date().getFullYear()} IEOSUIA. All rights reserved.</span><nav aria-label="Legal links"><Link to="/privacy-policy">Privacy</Link><Link to="/terms-of-service">Terms</Link><Link to="/popia-compliance">POPIA</Link><Link to="/cookie-policy">Cookies</Link></nav></div></div></footer>
     <WhatsAppButton />
   </div>;
 }

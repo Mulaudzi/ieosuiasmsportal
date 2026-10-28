@@ -2,6 +2,7 @@
 
 require_once __DIR__.'/../domain/LogicSmsDeliveryStatus.php';
 require_once __DIR__.'/../domain/SmsDispatchService.php';
+require_once __DIR__.'/../domain/LogicSmsDeliveryService.php';
 require_once __DIR__.'/../services/OperationalLogger.php';
 
 final class LogicSmsWebhookController
@@ -15,7 +16,7 @@ final class LogicSmsWebhookController
         if($supplied===''||!$authenticated){OperationalLogger::log('warning','logicsms-webhook','dlr_auth_rejected','Delivery callback authentication failed');Response::error('Invalid webhook authentication',403);return;}
 
         $payload=Request::all();
-        unset($payload['token']);
+        unset($payload['token'],$payload['secret']);
         $providerId=trim((string)($payload['Id']??$payload['id']??$payload['MessageId']??$payload['messageId']??$payload['message_id']??$payload['external_id']??''));
         $unique=trim((string)($payload['Unique']??$payload['unique']??$payload['reference']??''));
         $providerStatus=trim((string)($payload['Status']??$payload['status']??$payload['dlr_status']??''));
@@ -25,44 +26,22 @@ final class LogicSmsWebhookController
         $message=null;
         if($providerId!=='')$message=table('sms_messages')->where('provider','logicsms')->where('provider_message_id',$providerId)->first();
         if(!$message&&preg_match('/^portal-message-(\d+)$/',$unique,$match))$message=table('sms_messages')->where('id',(int)$match[1])->first();
-        if(!$message){OperationalLogger::log('warning','logicsms-webhook','unmatched_dlr','Delivery report did not match a local message',['provider_message_id'=>$providerId]);Response::success(['received'=>true,'matched'=>false]);return;}
-
-        $raw=file_get_contents('php://input')?:json_encode($payload);
-        $eventId=(string)($payload['EventId']??$payload['event_id']??hash('sha256',$providerId.'|'.$unique.'|'.$providerStatus.'|'.$raw));
-        $pdo=db();$pdo->beginTransaction();
+        if($message&&preg_match('/^portal-message-(\d+)$/',$unique,$match)&&(int)$message['id']!==(int)$match[1]){Response::error('Conflicting message references',422);return;}
+        $canonical=$payload;ksort($canonical);$raw=json_encode($canonical,JSON_THROW_ON_ERROR);
+        $eventId=trim((string)($payload['EventId']??$payload['event_id']??''));
+        if($eventId==='')$eventId=hash('sha256',$providerId.'|'.$unique.'|'.$providerStatus.'|'.$raw);
+        if(strlen($eventId)>120)$eventId=hash('sha256',$eventId);
+        if(!$message){
+            try{LogicSmsDeliveryService::retainUnmatched(db(),$providerId?:$unique,$providerStatus,$payload,$eventId);}
+            catch(DomainException $e){Response::error('Conflicting provider delivery reference',422);return;}
+            OperationalLogger::log('warning','logicsms-webhook','unmatched_dlr','Delivery report retained for message reconciliation',['provider_message_id'=>$providerId]);Response::success(['received'=>true,'matched'=>false]);return;
+        }
+        $pdo=db();
         try{
-            $duplicate=false;
-            try{
-                $insert=$pdo->prepare('INSERT INTO sms_provider_events(provider,provider_event_id,provider_message_id,event_type,payload_json,created_at) VALUES(?,?,?,?,?,NOW())');
-                $insert->execute(['logicsms',$eventId,$providerId?:$message['provider_message_id'],'delivery.'.$state,json_encode($payload,JSON_UNESCAPED_SLASHES)]);
-            }catch(PDOException $e){
-                if($e->getCode()!=='23000')throw $e;
-                $duplicate=true;
-                $existing=$pdo->prepare("SELECT processed_at FROM sms_provider_events WHERE provider='logicsms' AND provider_event_id=? FOR UPDATE");
-                $existing->execute([$eventId]);
-                $existingEvent=$existing->fetch(PDO::FETCH_ASSOC);
-                if(!$existingEvent)throw new RuntimeException('Duplicate provider event could not be loaded');
-                if($existingEvent&&$existingEvent['processed_at']!==null){$pdo->commit();Response::success(['received'=>true,'duplicate'=>true]);return;}
-            }
-
-            $locked=$pdo->prepare('SELECT * FROM sms_messages WHERE id=? FOR UPDATE');
-            $locked->execute([$message['id']]);
-            $message=$locked->fetch();
-            if(!$message)throw new RuntimeException('Matched SMS message disappeared');
-
-            $terminal=in_array($message['state'],['delivered','failed'],true);
-            if(!$terminal||$state==='delivered'){
-                $fields=['state=?','updated_at=NOW()'];$values=[$state];
-                if($state==='delivered'){$fields[]='delivered_at=NOW()';$fields[]='last_error=NULL';}
-                if($state==='failed'){$fields[]='failed_at=NOW()';$fields[]='last_error=?';$values[]='LogicSMS delivery status: '.$providerStatus;}
-                $values[]=$message['id'];
-                $pdo->prepare('UPDATE sms_messages SET '.implode(',',$fields).' WHERE id=?')->execute($values);
-            }
-            SmsDispatchService::refreshCampaign($pdo,(int)$message['campaign_id']);
-            $pdo->prepare("UPDATE sms_provider_events SET processed_at=NOW() WHERE provider='logicsms' AND provider_event_id=?")->execute([$eventId]);
-            $pdo->commit();
+            $result=LogicSmsDeliveryService::record($pdo,(int)$message['id'],$providerId,$providerStatus,$payload,$eventId);
             OperationalLogger::log('info','logicsms-webhook','dlr_processed','Delivery report processed',['campaign_id'=>$message['campaign_id'],'sms_message_id'=>$message['id'],'state'=>$state]);
-            Response::success(['received'=>true,'matched'=>true,'recovered'=>$duplicate]);
-        }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();OperationalLogger::log('error','logicsms-webhook','dlr_failed',$e->getMessage(),['campaign_id'=>$message['campaign_id']??null,'sms_message_id'=>$message['id']??null]);throw $e;}
+            Response::success($result);
+        }catch(DomainException $e){Response::error('Conflicting provider delivery reference',422);}
+        catch(Throwable $e){OperationalLogger::log('error','logicsms-webhook','dlr_failed',$e->getMessage(),['campaign_id'=>$message['campaign_id']??null,'sms_message_id'=>$message['id']??null]);throw $e;}
     }
 }

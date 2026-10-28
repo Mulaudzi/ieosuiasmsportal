@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useSmsRefresh } from '@/hooks/useSmsRefresh';
 import {
   ComparisonCampaign,
   comparisonWinners,
@@ -43,6 +44,17 @@ export default function CampaignComparison() {
   const [selectionReload, setSelectionReload] = useState(0);
   const requestSequence = useRef(0);
   const resultsTop = useRef<HTMLDivElement>(null);
+  useSmsRefresh(async()=>{
+    if(!campaigns||loading||pickerOpen)return;
+    const ids=campaigns.map(c=>c.id);const sequence=requestSequence.current;
+    const res=await api.get<ComparisonResponse>('/reports/compare',{ids:ids.join(',')});
+    const payload=(res.data??res) as ComparisonResponse;
+    if(sequence!==requestSequence.current||!res.success||!Array.isArray(payload.campaigns))return;
+    const byId=new Map(payload.campaigns.map(c=>[String(c.id),{...c,id:String(c.id)}]));
+    if(byId.size!==ids.length||ids.some(id=>!byId.has(id)))return;
+    setCampaigns(ids.map(id=>byId.get(id)!));
+    setAvailableCampaigns(current=>current.map(c=>byId.get(c.id)??c));
+  });
 
   useEffect(() => {
     let active = true;

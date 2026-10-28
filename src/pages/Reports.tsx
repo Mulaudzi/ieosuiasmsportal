@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { typicalTime } from '@/lib/portal-presentation';
 import { DeliveryStatusHelp } from "@/components/dashboard/DeliveryStatusHelp";
-import { deliveryChartStyle } from '@/lib/delivery-presentation';
+import { deliveryChartStyle, deliveryOutcomes } from '@/lib/delivery-presentation';
 import { DeliveryOutcomeList } from '@/components/dashboard/DeliveryOutcomeList';
+import { deliveryVisibility } from '@/lib/delivery-visibility';
+import { DeliveryResultsPending } from '@/components/dashboard/DeliveryResultsPending';
+import { SendingOverview } from '@/components/dashboard/SendingOverview';
+import { useSmsRefresh } from '@/hooks/useSmsRefresh';
 import { Link, useSearchParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -41,7 +45,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { api, getReportStats, getReportChartData, getDeliveryBreakdown, exportReport, emailReport, handleApiError } from "@/lib/api";
+import { api, getReportStats, getReportChartData, exportReport, emailReport, handleApiError } from "@/lib/api";
 
 interface ReportStats {
   total_messages: number;
@@ -66,6 +70,9 @@ interface DeliveryData {
 }
 
 interface SmsStats {
+  total_recipients?:number;
+  failed_submissions?:number;
+  waiting_to_send?:number;
   skipped: number;
   total_sent: number;
   delivered: number;
@@ -80,6 +87,8 @@ export default function Reports() {
   const [urlParams]=useSearchParams();const downloaded=useRef(false);
   const [dateRange, setDateRange] = useState(()=>["24h","7d","30d","90d"].includes(urlParams.get("range")||"")?urlParams.get("range")!:"7d");
   const [loading, setLoading] = useState(true);
+  const [summaryAvailable,setSummaryAvailable]=useState(false);
+  const reportSequence=useRef(0);
   const [typical,setTypical]=useState<string|null>(null);
   useEffect(()=>{let active=true;setTypical(null);const load=async()=>{try{const r=await api.get<{seconds:number|null}>('/reports/confirmation-time',{range:dateRange});if(active)setTypical(r.success?typicalTime(((r.data??r) as {seconds:number|null}).seconds):null);}catch{if(active)setTypical(null);}};void load();const timer=setInterval(()=>void load(),30000);return()=>{active=false;clearInterval(timer);};},[dateRange]);
   const [isExporting, setIsExporting] = useState(false);
@@ -107,18 +116,26 @@ export default function Reports() {
   });
 
   const loadData = useCallback(async (showLoading = true) => {
+    const request=++reportSequence.current;
     if (showLoading) setLoading(true);
     try {
-      const [statsRes, chartRes, deliveryRes] = await Promise.all([
+      const [statsRes, chartRes] = await Promise.all([
         getReportStats(dateRange),
         getReportChartData(dateRange),
-        getDeliveryBreakdown(dateRange),
       ]);
+      if(request!==reportSequence.current)return;
 
       if (statsRes.success) {
         const payload = statsRes.data ?? statsRes;
         if (payload.summary) setStats(payload.summary);
-        if (payload.sms) setSmsStats(payload.sms);
+        if (payload.sms) {
+          setSmsStats(payload.sms);
+          const counts=[payload.sms.delivered,payload.sms.awaiting_delivery,payload.sms.dlr_unavailable,payload.sms.failed,payload.sms.skipped??0];
+          setDeliveryData(deliveryOutcomes.map((outcome,index)=>({status:outcome.label,count:Number(counts[index])})).filter(row=>row.count>0));
+        }
+        setSummaryAvailable(Boolean(payload.summary&&payload.sms));
+      }else{
+        setSummaryAvailable(false);
       }
 
       if (chartRes.success) {
@@ -126,25 +143,21 @@ export default function Reports() {
         setChartData(payload.chart || []);
       }
 
-      if (deliveryRes.success) {
-        const payload = deliveryRes.data ?? deliveryRes;
-        setDeliveryData((payload.breakdown || []).map(row=>({...row,status:deliveryChartStyle(row.status).label})).filter(row=>Number(row.count)>0 && !['Waiting to send','Pending dispatch'].includes(row.status)));
-      }
     } catch (error) {
+      if(request!==reportSequence.current)return;
+      setSummaryAvailable(false);
       handleApiError(error);
     } finally {
-      if (showLoading) setLoading(false);
+      if(request===reportSequence.current)setLoading(false);
     }
   }, [dateRange]);
 
   useEffect(() => {
     loadData();
+    return()=>{reportSequence.current++;};
   }, [loadData]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => void loadData(false), 30000);
-    return () => window.clearInterval(timer);
-  }, [loadData]);
+  useSmsRefresh(()=>loadData(false));
 
   useEffect(()=>{const format=urlParams.get('download');if(!downloaded.current&&(format==='csv'||format==='pdf')){downloaded.current=true;void exportReport('campaigns',format,dateRange).catch(handleApiError);}},[urlParams,dateRange]);
 
@@ -166,6 +179,10 @@ export default function Reports() {
   };
 
   const handleEmail=async()=>{setIsEmailing(true);try{await emailReport(dateRange);toast({title:"Report emailed",description:"The SMS report was sent to your registered email address."});}catch(error){handleApiError(error);}finally{setIsEmailing(false)}};
+  const deliveryCounts=[smsStats.delivered,smsStats.awaiting_delivery,smsStats.dlr_unavailable,smsStats.failed,smsStats.skipped??0].map(Number);
+  const deliveryTotal=Number(smsStats.total_recipients??(Number(smsStats.total_sent)+Number(smsStats.skipped??0)));
+  const delivery={...deliveryVisibility(deliveryCounts,deliveryTotal,smsStats.failed_submissions??0),available:summaryAvailable};
+  const deliveryNotice=summaryAvailable?<DeliveryResultsPending counts={deliveryCounts} total={deliveryTotal}/>:<p role="status" className="text-sm text-muted-foreground">Delivery results could not be loaded. Please refresh reports.</p>;
 
   return (
     <DashboardLayout
@@ -209,17 +226,18 @@ export default function Reports() {
         </div>
       ) : (
         <>
+          {summaryAvailable&&<div className="mb-4"><SendingOverview total={deliveryTotal} sent={smsStats.total_sent} excluded={smsStats.skipped} failed={smsStats.failed_submissions??0}/></div>}
           {/* Summary Stats */}
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
             <MetricCard
               title="Total Sent"
               value={stats.total_messages}
-              change={`${stats.delivery_rate.toFixed(1)}% delivery rate`}
-              changeType="positive"
+              change={delivery.complete?`${stats.delivery_rate.toFixed(1)}% delivery rate`:'Sending and delivery confirmation are separate'}
+              changeType={delivery.complete?'positive':'neutral'}
               icon={MessageSquare}
               iconColor="primary"
             />
-            <MetricCard
+            {delivery.available?<><MetricCard
               title="Delivered"
               value={stats.delivered}
               change={`${((stats.delivered / stats.total_messages) * 100 || 0).toFixed(1)}% success rate`}
@@ -236,17 +254,17 @@ export default function Reports() {
               iconColor="destructive"
             />
             <MetricCard
-              title="Delivery not yet confirmed"
-              value={stats.pending}
-              change={`${((stats.pending / stats.total_messages) * 100 || 0).toFixed(1)}% pending`}
+              title="Sent - Awaiting Confirmation"
+              value={smsStats.awaiting_delivery}
+              change={`${((smsStats.awaiting_delivery / stats.total_messages) * 100 || 0).toFixed(1)}% awaiting confirmation`}
               changeType="neutral"
               icon={Clock}
               iconColor="info"
-            />
-            {typical&&<MetricCard
+            /></>:<div className="metric-card"><h3 className="mb-3 font-semibold">Delivery Results</h3>{deliveryNotice}</div>}
+            {delivery.available&&typical&&<MetricCard
               title="Typical confirmation time"
               value={typical}
-              change={`Most messages confirmed within ${typical}`}
+              change={`Most confirmations recorded within ${typical}`}
               changeType="neutral"
               icon={Clock}
               iconColor="info"
@@ -317,11 +335,11 @@ export default function Reports() {
             <TabsContent value="delivery" className="mt-6">
               <div className="rounded-xl border border-border bg-card p-6">
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-foreground">Delivery Status Breakdown</h3>
-                  <p className="text-sm text-muted-foreground">Message delivery status distribution</p>
+                  <h3 className="text-lg font-semibold text-foreground">Delivery Confirmations</h3>
+                  <p className="text-sm text-muted-foreground">Latest results update as network reports arrive. Pending confirmations are not failures.</p>
                 </div>
 
-                {deliveryData.length > 0 ? (
+                {!delivery.available?deliveryNotice:deliveryData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={350}>
                     <BarChart data={deliveryData} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 20%, 91%)" />
@@ -365,14 +383,14 @@ export default function Reports() {
                   <span className="text-muted-foreground">Total Sent</span>
                   <span className="font-semibold text-foreground">{smsStats.total_sent.toLocaleString()}</span>
                 </div>
-                <DeliveryOutcomeList counts={[smsStats.delivered,smsStats.awaiting_delivery,smsStats.dlr_unavailable,smsStats.failed,smsStats.skipped ?? 0]}/>
+                {delivery.available?<DeliveryOutcomeList counts={deliveryCounts}/>:deliveryNotice}
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">SMS Credits Used</span>
                   <span className="font-semibold text-foreground">{smsStats.credits_used.toLocaleString()}</span>
                 </div>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">Skipped messages were not sent and are excluded from Total Sent. The unconfirmed total includes messages waiting to send and both confirmation states.</p>
-              <DeliveryStatusHelp />
+              <p className="mt-3 text-xs text-muted-foreground">Not Sent recipients and failed submissions are excluded from Total Sent. Sent messages awaiting confirmation are not delivery failures.</p>
+              {delivery.available&&<DeliveryStatusHelp />}
             </div>
 
             {/* Email Stats */}

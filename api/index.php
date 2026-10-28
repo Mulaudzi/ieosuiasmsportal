@@ -15,6 +15,13 @@ require_once __DIR__ . '/core/RateLimiter.php';
 require_once __DIR__ . '/core/EmailValidator.php';
 require_once __DIR__ . '/core/Config.php';
 
+$suppliedCorrelationId = trim((string)($_SERVER['HTTP_X_CORRELATION_ID'] ?? ''));
+$correlationId = preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$/', $suppliedCorrelationId)
+    ? $suppliedCorrelationId
+    : bin2hex(random_bytes(16));
+$_SERVER['IEOSUIA_CORRELATION_ID'] = $correlationId;
+header('X-Correlation-ID: ' . $correlationId);
+
 // Load services (with graceful handling)
 $emailServicePath = __DIR__ . '/services/EmailService.php';
 if (file_exists($emailServicePath)) {
@@ -29,7 +36,8 @@ if ($allowedOrigin !== '' && $requestOrigin === $allowedOrigin) {
     header('Vary: Origin');
 }
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Correlation-ID');
+header('Access-Control-Expose-Headers: X-Correlation-ID');
 header('Content-Type: application/json');
 
 // Handle preflight
@@ -43,8 +51,8 @@ set_error_handler(function($severity, $message, $file, $line) {
     throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
-set_exception_handler(function($e) {
-    error_log($e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+set_exception_handler(function($e) use ($correlationId) {
+    error_log('correlation_id=' . $correlationId . ' unhandled_exception=' . get_class($e) . ' at ' . basename($e->getFile()) . ':' . $e->getLine());
     Response::error('Internal server error', 500);
 });
 
@@ -99,6 +107,9 @@ $router->post('/auth/verify-email', 'IeosuiaAuthController@disabled');
 $router->post('/admin-users/create', 'IeosuiaAuthController@disabled');
 
 // Protected routes
+$router->get('/public/banking-details', 'CreditPurchaseController@publicBanking');
+
+// All customer orders and finance actions remain authenticated.
 $router->group(['middleware' => 'auth'], function($router) {
     // Auth
     $router->post('/auth/logout', 'AuthController@logout');
@@ -109,6 +120,12 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/auth/refresh', 'AuthController@refreshToken');
     
     // Notifications
+    // Private form drafts are deliberately separate from campaigns and purchase orders.
+    $router->get('/drafts', 'WorkDraftController@index');
+    $router->get('/drafts/{id}', 'WorkDraftController@show');
+    $router->put('/drafts/{id}', 'WorkDraftController@save');
+    $router->delete('/drafts/{id}', 'WorkDraftController@destroy');
+
     $router->get('/notifications', 'NotificationController@index');
     $router->post('/notifications/{id}/read', 'NotificationController@markAsRead');
     $router->post('/notifications/read-all', 'NotificationController@markAllAsRead');
@@ -135,6 +152,9 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/admin/operations/campaigns', 'AdminOperationsController@campaigns');
     $router->get('/admin/operations/campaigns/{id}', 'AdminOperationsController@campaign');
     $router->get('/admin/operations/finance', 'AdminOperationsController@finance');
+    $router->get('/admin/operations/payments', 'AdminOperationsController@payments');
+    $router->get('/admin/operations/credit-approval-security', 'CreditApprovalSecurityController@status');
+    $router->put('/admin/operations/credit-approval-security', 'CreditApprovalSecurityController@update');
     $router->post('/admin/operations/payments/{id}/retry-receipt', 'AdminOperationsController@retryPaymentReceipt');
     
     // Admin user management (authenticated)
@@ -192,6 +212,7 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->post('/contacts', 'ContactController@store');
     $router->post('/contacts/bulk-delete', 'ContactController@bulkDelete');
     $router->post('/contacts/bulk-add-to-group', 'ContactController@bulkAddToGroup');
+    $router->post('/contacts/transfer-group', 'ContactController@transferGroupContacts');
     $router->post('/contacts/import', 'ContactController@import');
     $router->get('/contacts/export', 'ContactController@export');
     $router->get('/contacts/{id}', 'ContactController@show');
@@ -233,7 +254,9 @@ $router->group(['middleware' => 'auth'], function($router) {
     
     // Campaign utilities
     $router->post('/campaigns/check-credits', 'CampaignController@checkCredits');
-    $router->post('/campaigns/{id}/retry', 'CampaignController@retryFailed');
+    // Compatibility route retained as an explicit fail-closed response. Legacy
+    // SMS retries bypassed wallet reservations and the canonical no-resend marker.
+    $router->post('/campaigns/{id}/retry', 'CampaignController@legacyRetryDisabled');
     
     // Attachments
     $router->post('/attachments/upload', 'CampaignController@uploadAttachment');
@@ -254,6 +277,13 @@ $router->group(['middleware' => 'auth'], function($router) {
     $router->get('/wallet/payments/status', 'WalletController@paymentStatus');
     $router->get('/wallet/receipt', 'WalletController@receipt');
     $router->post('/wallet/buy', 'WalletController@buy');
+    $router->get('/wallet/purchase-options', 'CreditPurchaseController@options');
+    $router->post('/wallet/purchase-quote', 'CreditPurchaseController@quote');
+    $router->post('/admin/operations/cash-balances/enable', 'CreditPurchaseController@enableCashBalances');
+    $router->get('/wallet/purchase-orders', 'CreditPurchaseController@orders');
+    $router->post('/wallet/purchase-orders/{id}/proof', 'CreditPurchaseController@uploadProof');
+    $router->get('/wallet/payment-proofs/{id}', 'CreditPurchaseController@proof');
+    $router->post('/admin/operations/purchase-orders/{id}/review', 'CreditPurchaseController@review');
     
     // Settings
     $router->get('/settings/profile', 'SettingsController@profile');

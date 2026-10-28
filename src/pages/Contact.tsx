@@ -165,6 +165,7 @@ export default function Contact() {
                     <p className="text-muted-foreground">
                       <strong>Sales:</strong> support@ieosuia.com
                     </p>
+                    <p className="my-2"><Link className="text-primary underline" to="/banking-details">Banking Details &amp; EFT payment references</Link></p>
                     <p className="text-xs text-muted-foreground mt-2 italic">
                       Use the form to ensure your message reaches the right team
                     </p>

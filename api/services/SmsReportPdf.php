@@ -16,7 +16,7 @@ final class SmsReportPdf
         $line('SMS delivery report',22);$line('Period: '.SmsReportDocument::period($r));$line('Campaign name: '.$r['name']);$y-=10;$line('Summary',13);
         $tiles=['Total'=>$r['total']]+$r['counts'];$i=0;$top=$y;
         foreach($tiles as $label=>$count){$x=30+($i%3)*180;$ty=$top-intdiv($i,3)*68;$color=SmsReportDocument::COLORS[$label]??'#0B1628';$rect($x,$ty-55,170,62,'#F1F3F6');$text($x+8,$ty-14,(string)$count,22,$color);foreach($wrap($label,27) as $j=>$part)$text($x+8,$ty-32-$j*11,$part,9,$color);$i++;}
-        $y=$top-145;if(array_sum($r['counts'])>0)$line(SmsReportDocument::note($r));$y-=10;$x=30;$sum=array_sum($r['counts']);
+        $y=$top-(int)ceil(count($tiles)/3)*68-9;if(array_sum($r['counts'])>0)$line(SmsReportDocument::note($r));$y-=10;$x=30;$sum=array_sum($r['counts']);
         foreach($r['counts'] as $label=>$count)if($count){$width=535*$count/max(1,$sum);$rect($x,$y,$width,8,SmsReportDocument::COLORS[$label]);$x+=$width;}$y-=20;
         foreach($r['counts'] as $label=>$count)if($count){$text(30,$y,$label.': '.$count,9,SmsReportDocument::COLORS[$label]);$y-=14;}$y-=12;
         $header=static function()use(&$y,$text):void{foreach([[30,'Number'],[135,'Status'],[270,'Sent'],[370,'Details']] as [$x,$label])$text($x,$y,$label,10);$y-=20;};$header();

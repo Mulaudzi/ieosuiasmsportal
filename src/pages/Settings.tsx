@@ -2,6 +2,7 @@ import { GetStartedChecklist } from '@/components/dashboard/GetStartedChecklist'
 import { SmsOptOutSettings } from '@/components/settings/SmsOptOutSettings';
 import { useState, useRef, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { PageLoading } from "@/components/ui/page-loading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -418,10 +419,8 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <DashboardLayout title="Settings" subtitle="Loading...">
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+      <DashboardLayout title="Settings" subtitle="Manage your profile, organization, and preferences">
+        <PageLoading variant="form" label="Loading settings" />
       </DashboardLayout>
     );
   }

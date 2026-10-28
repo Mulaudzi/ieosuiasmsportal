@@ -1,0 +1,20 @@
+{
+  "version": "2026-10-21-volume-3",
+  "minimum": 30,
+  "maximum": 500000,
+  "online_maximum": 50000,
+  "sales_email": "sms@ieosuia.com",
+  "tiers": [
+    { "min": 1, "max": 100, "cents": 35 },
+    { "min": 101, "max": 500, "cents": 33 },
+    { "min": 501, "max": 1000, "cents": 31 },
+    { "min": 1001, "max": 2500, "cents": 29 },
+    { "min": 2501, "max": 5000, "cents": 28 },
+    { "min": 5001, "max": 10000, "cents": 27 },
+    { "min": 10001, "max": 25000, "cents": 26 },
+    { "min": 25001, "max": 50000, "cents": 25 },
+    { "min": 50001, "max": 100000, "cents": 24 },
+    { "min": 100001, "max": 250000, "cents": 23 },
+    { "min": 250001, "max": 500000, "cents": 22 }
+  ]
+}

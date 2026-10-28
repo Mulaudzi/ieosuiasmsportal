@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
+  CreditCard,
   Users,
   Shield,
   Settings,
@@ -16,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { LogoSidebar } from "@/components/layout/Logo";
+import { adminLinkActive } from "@/lib/admin-tools";
 
 const adminNavigation = [
   { 
@@ -24,6 +26,12 @@ const adminNavigation = [
     icon: LayoutDashboard,
     exact: true,
     description: "Dashboard & stats"
+  },
+  {
+    name: "Credit payments",
+    href: "/guymhan?tab=finance",
+    icon: CreditCard,
+    description: "Review payments & add credits"
   },
   { 
     name: "Platform Managers",
@@ -39,7 +47,7 @@ const adminNavigation = [
   },
   { 
     name: "Operations Tools",
-    href: "/guymhan/tools",
+    href: "/guymhan/tools?tab=contact-emails",
     icon: Mail,
     description: "Support, audit & settings"
   },
@@ -48,13 +56,13 @@ const adminNavigation = [
 const settingsNavigation = [
   { 
     name: "SMTP Settings", 
-    href: "/guymhan/tools?tab=settings",
+    href: "/guymhan/tools?tab=settings#smtp-settings",
     icon: Settings,
     description: "Email configuration"
   },
   { 
     name: "Notifications", 
-    href: "/guymhan/tools?tab=settings",
+    href: "/guymhan/tools?tab=settings#notification-settings",
     icon: Bell,
     description: "Alert settings"
   },
@@ -66,7 +74,7 @@ const settingsNavigation = [
   },
   { 
     name: "System Health", 
-    href: "/guymhan/tools",
+    href: "/guymhan/tools?tab=health",
     icon: Activity,
     description: "Service status"
   },
@@ -91,18 +99,8 @@ export function AdminSidebar({mobile=false,onNavigate}:AdminSidebarProps) {
       .slice(0, 2);
   };
 
-  const isActive = (href: string, exact?: boolean) => {
-    if (href.includes('?tab=')) {
-      const [path, query] = href.split('?');
-      const params = new URLSearchParams(query);
-      const tab = params.get('tab');
-      const currentTab = new URLSearchParams(location.search).get('tab');
-      return location.pathname === path && currentTab === tab;
-    }
-    if (exact) {
-      return location.pathname === href && !location.search;
-    }
-    return location.pathname.startsWith(href);
+  const isActive = (href: string) => {
+    return adminLinkActive(href, location);
   };
 
   return (
@@ -143,11 +141,12 @@ export function AdminSidebar({mobile=false,onNavigate}:AdminSidebarProps) {
           </div>
           
           {adminNavigation.map((item) => {
-            const active = isActive(item.href, item.exact);
+            const active = isActive(item.href);
             return (
               <Link
                 key={item.name}
                 to={item.href}
+                aria-current={active ? 'page' : undefined}
                 onClick={onNavigate}
                 className={cn(
                   "nav-item group",
@@ -181,6 +180,7 @@ export function AdminSidebar({mobile=false,onNavigate}:AdminSidebarProps) {
               <Link
                 key={item.name}
                 to={item.href}
+                aria-current={active ? 'page' : undefined}
                 onClick={onNavigate}
                 className={cn(
                   "nav-item group",

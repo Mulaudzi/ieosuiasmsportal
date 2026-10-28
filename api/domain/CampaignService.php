@@ -54,15 +54,20 @@ final class CampaignService
         $idempotency = trim((string) ($input['idempotency_key'] ?? ''));
         if ($idempotency === '') throw new InvalidArgumentException('idempotency_key is required');
         if (strlen($idempotency)>80) throw new InvalidArgumentException('idempotency_key must not exceed 80 characters');
+        $fingerprint=self::requestFingerprint($input);
         $existing=table('sms_campaigns')->where('user_id',$userId)->where('idempotency_key',$idempotency)->first();
-        if($existing)return $existing;
+        if($existing){
+            $stored=(string)($existing['request_fingerprint']??'');
+            if($stored!==''&&!hash_equals($stored,$fingerprint))throw new DomainException('This idempotency key was already used with different campaign details');
+            return $existing;
+        }
 
         $preview = self::preview($userId, $input);
         $input['content']=$preview['final_content'];
         if ($preview['sendable_count'] < 1) throw new InvalidArgumentException('No sendable recipients');
         if (!$preview['sufficient_balance']) throw new DomainException('Insufficient available balance');
         $name = trim((string) ($input['name'] ?? ''));
-        if ($name === '' || strlen($name) > 100) throw new InvalidArgumentException('Campaign name is required and must not exceed 100 characters');
+        if (strlen($name) > 100) throw new InvalidArgumentException('Campaign name must not exceed 100 characters');
         $schedule = null;
         if (!empty($input['scheduled_at'])) {
             $timestamp = strtotime((string) $input['scheduled_at']);
@@ -74,8 +79,9 @@ final class CampaignService
         $pdo = db();
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare('INSERT INTO sms_campaigns (user_id,idempotency_key,name,content,sender_id,state,encoding,segments_per_message,recipient_count,queued_count,total_segments,price_per_segment,estimated_cost,scheduled_at,queued_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,IF(?=1,NOW(),NULL),NOW(),NOW())');
-            $stmt->execute([$userId,$idempotency,$name,$input['content'],!empty($preview['include_opt_out'])?'REPLY':($input['sender_id'] ?? env('SMS_DEFAULT_SENDER','IEOSUIA')),$state,$preview['encoding'],$preview['segment_count'],$preview['sendable_count'],$sendNow?$preview['sendable_count']:0,$preview['total_segments'],$preview['price_per_segment'],$preview['estimated_charge'],$schedule,$sendNow?1:0]);
+            if($state!=='draft')self::reserveDailyQuota($pdo,$userId,(int)$preview['total_segments']);
+            $stmt = $pdo->prepare('INSERT INTO sms_campaigns (user_id,idempotency_key,request_fingerprint,name,content,sender_id,state,encoding,segments_per_message,recipient_count,queued_count,total_segments,price_per_segment,estimated_cost,scheduled_at,queued_at,quota_reserved_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,IF(?=1,NOW(),NULL),IF(?=1,NOW(),NULL),NOW(),NOW())');
+            $stmt->execute([$userId,$idempotency,$fingerprint,$name,$input['content'],!empty($preview['include_opt_out'])?'REPLY':($input['sender_id'] ?? env('SMS_DEFAULT_SENDER','IEOSUIA')),$state,$preview['encoding'],$preview['segment_count'],$preview['sendable_count'],$sendNow?$preview['sendable_count']:0,$preview['total_segments'],$preview['price_per_segment'],$preview['estimated_charge'],$schedule,$sendNow?1:0,$state!=='draft'?1:0]);
             $campaignId = (int) $pdo->lastInsertId();
             $message = $pdo->prepare('INSERT INTO sms_messages (campaign_id,user_id,destination,content,encoding,segment_count,estimated_charge,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,\'pending\',NOW(),NOW())');
             $profiles=self::recipientProfiles($userId,$preview['recipients']);
@@ -90,7 +96,11 @@ final class CampaignService
             if ($pdo->inTransaction()) $pdo->rollBack();
             if ($e instanceof PDOException && $e->getCode() === '23000') {
                 $existing = table('sms_campaigns')->where('user_id',$userId)->where('idempotency_key',$idempotency)->first();
-                if ($existing) return $existing;
+                if ($existing) {
+                    $stored=(string)($existing['request_fingerprint']??'');
+                    if($stored!==''&&!hash_equals($stored,$fingerprint))throw new DomainException('This idempotency key was already used with different campaign details');
+                    return $existing;
+                }
             }
             throw $e;
         }
@@ -107,7 +117,8 @@ final class CampaignService
             if (!$campaign) throw new RuntimeException('Campaign not found');
             if ($campaign['state'] === 'queued' || $campaign['state'] === 'processing') { $pdo->commit(); return $campaign; }
             if ($campaign['state'] !== 'draft') throw new DomainException('Only draft campaigns can be queued immediately');
-            $pdo->prepare("UPDATE sms_campaigns SET state='queued',queued_count=recipient_count,queued_at=NOW(),updated_at=NOW() WHERE id=?")->execute([$campaignId]);
+            if(empty($campaign['quota_reserved_at']))self::reserveDailyQuota($pdo,$userId,(int)$campaign['total_segments']);
+            $pdo->prepare("UPDATE sms_campaigns SET state='queued',queued_count=recipient_count,queued_at=NOW(),quota_reserved_at=COALESCE(quota_reserved_at,NOW()),updated_at=NOW() WHERE id=?")->execute([$campaignId]);
             $pdo->commit();
             return self::findOwned($userId, $campaignId);
         } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
@@ -123,5 +134,32 @@ final class CampaignService
     private static function recipientProfiles(int $userId,array $destinations):array
     {
         if(!$destinations)return [];$marks=implode(',',array_fill(0,count($destinations),'?'));$stmt=db()->prepare("SELECT name,surname,email,phone_normalized FROM contacts WHERE user_id=? AND phone_normalized IN ({$marks})");$stmt->execute(array_merge([$userId],$destinations));$profiles=[];foreach($stmt->fetchAll() as $contact){$phone=(string)$contact['phone_normalized'];$contact['phone']=$phone;$profiles[$phone]=$contact;}return $profiles;
+    }
+
+    private static function requestFingerprint(array $input):string
+    {
+        $recipients=(array)($input['recipients']??[]);
+        foreach(['manual','contact_ids','group_ids','excluded'] as $key){$values=array_values(array_unique(array_map('strval',(array)($recipients[$key]??[]))));sort($values,SORT_STRING);$recipients[$key]=$values;}
+        $canonical=[
+            'name'=>trim((string)($input['name']??'')),
+            'content'=>(string)($input['content']??''),
+            'sender_id'=>trim((string)($input['sender_id']??env('SMS_DEFAULT_SENDER','IEOSUIA'))),
+            'scheduled_at'=>trim((string)($input['scheduled_at']??'')),
+            'send_now'=>!empty($input['send_now']),
+            'include_opt_out'=>$input['include_opt_out']??false,
+            'recipients'=>$recipients,
+        ];
+        return hash('sha256',(string)json_encode($canonical,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
+    }
+
+    private static function reserveDailyQuota(PDO $pdo,int $userId,int $segments):void
+    {
+        $limit=max(0,(int)env('SMS_MAX_DAILY_SEGMENTS',50000));
+        if($limit===0)return;
+        $pdo->prepare("INSERT INTO sms_daily_quota_usage(user_id,usage_date,segments_reserved,updated_at) VALUES(?,CURRENT_DATE,0,NOW()) ON DUPLICATE KEY UPDATE updated_at=NOW()")->execute([$userId]);
+        $row=$pdo->prepare('SELECT segments_reserved FROM sms_daily_quota_usage WHERE user_id=? AND usage_date=CURRENT_DATE FOR UPDATE');$row->execute([$userId]);
+        $used=(int)$row->fetchColumn();
+        if($segments<0||$used+$segments>$limit)throw new DomainException('Daily SMS segment quota exceeded');
+        $pdo->prepare('UPDATE sms_daily_quota_usage SET segments_reserved=segments_reserved+?,updated_at=NOW() WHERE user_id=? AND usage_date=CURRENT_DATE')->execute([$segments,$userId]);
     }
 }

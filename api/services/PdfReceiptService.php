@@ -19,7 +19,7 @@ class PdfReceiptService {
             }
         }
         $companyAddress = env('COMPANY_ADDRESS', '');
-        $companyVat = env('COMPANY_VAT', '');
+        $companyVat = '';
         $companyEmail = env('COMPANY_EMAIL', 'support@ieosuia.co.za');
         $companyPhone = env('COMPANY_PHONE', '');
         
@@ -28,9 +28,10 @@ class PdfReceiptService {
         $processedDate = $payment['processed_at'] ? date('d F Y H:i', strtotime($payment['processed_at'])) : '-';
         
         $amount = number_format((float)$payment['amount'], 2);
-        $vatRate = 0.15;
-        $vatAmount = (float)$payment['amount'] * $vatRate;
-        $subtotal = (float)$payment['amount'] - $vatAmount;
+        $vatAmount = 0;
+        $order = $payment['purchase_order'] ?? null;
+        $subtotal = $order ? (int)$order['subtotal_cents']/100 : (float)$payment['amount'];
+        $discount = $order ? (int)$order['discount_cents']/100 : 0;
         
         $gatewayLabels = [
             'payos' => 'PayOS',
@@ -132,7 +133,7 @@ class PdfReceiptService {
                 <tr>
                     <td>
                         <strong>SMS Credits Purchase</strong><br>
-                        <span style="color: #6b7280; font-size: 12px;">Payment via ' . $gateway . '</span>
+                        <span style="color: #6b7280; font-size: 12px;">Payment via ' . $gateway . ($order ? ' &middot; R'.number_format((int)$order['unit_cents']/100,2).' per credit' : '') . '</span>
                     </td>
                     <td style="text-align: center;">' . number_format($payment['credits_added']) . ' credits</td>
                     <td class="amount">R ' . $amount . '</td>
@@ -145,9 +146,10 @@ class PdfReceiptService {
                 <span>Subtotal</span>
                 <span>R ' . number_format($subtotal, 2) . '</span>
             </div>
+            ' . ($discount > 0 ? '<div class="totals-row"><span>Bank transfer saving</span><span>-R ' . number_format($discount, 2) . '</span></div>' : '') . '
             <div class="totals-row">
-                <span>VAT (15%)</span>
-                <span>R ' . number_format($vatAmount, 2) . '</span>
+                <span>VAT</span>
+                <span>Not charged</span>
             </div>
             <div class="totals-row total">
                 <span>Total</span>

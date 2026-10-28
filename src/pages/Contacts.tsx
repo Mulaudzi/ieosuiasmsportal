@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { PageLoading } from "@/components/ui/page-loading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,6 +47,13 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Copy,
+  ArrowRightLeft,
+  Merge,
+  Send,
+  FolderOpen,
+  ChevronDown,
+  Square,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -55,12 +63,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { getContacts, getContactGroups, deleteContacts, deleteContactGroup, exportContacts, addContactsToGroup, handleApiError } from "@/lib/api";
+import { getContacts, getContactGroups, deleteContacts, deleteContactGroup, exportContacts, handleApiError } from "@/lib/api";
 import { ContactImportModal } from "@/components/contacts/ContactImportModal";
+import { GroupTransferModal } from "@/components/contacts/GroupTransferModal";
 import { AddContactModal } from "@/components/contacts/AddContactModal";
 import { EditContactModal } from "@/components/contacts/EditContactModal";
 import { CreateGroupModal } from "@/components/contacts/CreateGroupModal";
+import { ContactGroupSetup } from '@/components/contacts/ContactGroupSetup';
 import { EditGroupModal } from "@/components/contacts/EditGroupModal";
+import { ContactSummaryCards } from "@/components/contacts/ContactSummaryCards";
 import { format } from "date-fns";
 
 interface Contact {
@@ -79,12 +90,14 @@ interface Group {
   name: string;
   description?: string;
   contact_count: number;
+  is_virtual?: boolean;
 }
 
 export default function Contacts() {
   const location = useLocation();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("all");
@@ -102,34 +115,45 @@ export default function Contacts() {
   const [selectedGroupsForDelete, setSelectedGroupsForDelete] = useState<Set<string>>(new Set());
   const [deleteContactsWithGroups, setDeleteContactsWithGroups] = useState(false);
   const [deletingGroups, setDeletingGroups] = useState(false);
-  const [addToGroupDialogOpen,setAddToGroupDialogOpen]=useState(false);
-  const [targetGroupId,setTargetGroupId]=useState('');
+  const [transfer, setTransfer] = useState<{mode: 'copy' | 'move' | 'merge'; sourceGroupId?: string; wholeGroup?: boolean; contactIds?: string[]} | null>(null);
+  const [totalContacts, setTotalContacts] = useState(0);
+  const requestGeneration = useRef(0);
   const [pagination, setPagination] = useState({ page: 1, total: 0, limit: 50 });
   const [sortOrder, setSortOrder] = useState("newest");
   const [optedOutCount, setOptedOutCount] = useState(0);
+  const [recentlyAdded, setRecentlyAdded] = useState<number | null>(null);
+  const [summaryLoaded, setSummaryLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    const generation = ++requestGeneration.current;
     setLoading(true);
+    setLoadError(null);
     try {
       const [contactsRes, groupsRes] = await Promise.all([
         getContacts({ 
           group_id: selectedGroup !== "all" ? selectedGroup : undefined,
           search: searchQuery || undefined,
           page: pagination.page,
-          per_page: pagination.limit
+          per_page: pagination.limit,
+          sort: sortOrder,
         }),
         getContactGroups()
       ]);
+      if (generation !== requestGeneration.current) return;
       
      // ---------- CONTACTS ----------
 if (contactsRes?.success) {
+  setSummaryLoaded(true);
+  const recent = contactsRes.meta?.recently_added_total;
+  setRecentlyAdded(recent !== undefined && Number.isFinite(Number(recent)) ? Number(recent) : null);
   setOptedOutCount(Number((contactsRes.meta as { opted_out_total?: number | string } | undefined)?.opted_out_total ?? 0));
   const contactsData = Array.isArray(contactsRes.data)
-    ? contactsRes.data
+    ? contactsRes.data as Contact[]
     : [];
 
   setContacts(
-    contactsData.map((c: any) => ({
+    contactsData.map((c: Contact) => ({
       ...c,
       id: String(c.id),
       group_id: c.group_id ? String(c.group_id) : "",
@@ -145,12 +169,14 @@ if (contactsRes?.success) {
 
 // ---------- GROUPS ----------
 if (groupsRes?.success) {
-  const groupsData = Array.isArray(groupsRes.groups as any[])
-    ? (groupsRes.groups as any[])
+  setGroupsLoaded(true);
+  setTotalContacts(Number(groupsRes.total_contacts ?? groupsRes.data?.total_contacts ?? 0));
+  const groupsData = Array.isArray(groupsRes.groups)
+    ? (groupsRes.groups as Group[])
     : [];
 
   setGroups(
-    groupsData.map((g: any) => ({
+    groupsData.map((g: Group) => ({
       ...g,
       id: String(g.id),
       contact_count: parseInt(String(g.contact_count ?? 0), 10)
@@ -159,15 +185,26 @@ if (groupsRes?.success) {
 }
 
     } catch (error) {
-      handleApiError(error);
+      if (generation === requestGeneration.current) {setLoadError(error instanceof Error ? error.message : 'Contacts could not be loaded.');handleApiError(error);}
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
-  }, [selectedGroup, searchQuery, pagination.page, pagination.limit]);
+  }, [selectedGroup, searchQuery, pagination.page, pagination.limit, sortOrder]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => { setSelectedContacts([]); }, [selectedGroup, searchQuery, pagination.page, pagination.limit, sortOrder]);
+
+  const selectGroup = (id: string) => {
+    setSelectedContacts([]);
+    setSelectedGroup(id);
+    setPagination(previous => ({ ...previous, page: 1 }));
+  };
+  const realGroups = groups.filter(group => !group.is_virtual && /^[1-9]\d*$/.test(group.id));
+  const currentGroup = realGroups.find(group => group.id === selectedGroup);
+  const currentGroupName = currentGroup?.name ?? (selectedGroup === 'uncategorized' ? 'Uncategorized' : selectedGroup === 'opted-out' ? 'Opted Out' : 'All Contacts');
 
   const toggleContact = (id: string) => {
     setSelectedContacts((prev) =>
@@ -186,32 +223,12 @@ if (groupsRes?.success) {
   const handleExport = async () => {
     setLoadingAction("export");
     try {
-      exportContacts(selectedGroup !== "all" ? selectedGroup : undefined);
+      await exportContacts(selectedGroup !== "all" ? selectedGroup : undefined);
       toast({
         title: "Export started",
         description: "Your contacts export is being prepared.",
       });
     } catch (error) {
-      handleApiError(error);
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
-  const handleAddToGroup = async () => {
-    if (selectedContacts.length === 0 || !targetGroupId) return;
-    setLoadingAction("addToGroup");
-    try {
-      const response=await addContactsToGroup(selectedContacts,targetGroupId);
-      toast({
-        title: "Contacts added to group",
-        description: `${response.added ?? response.data?.added ?? 0} added; ${response.already_present ?? response.data?.already_present ?? 0} already present.`,
-      });
-      setSelectedContacts([]);
-      setAddToGroupDialogOpen(false);
-      setTargetGroupId('');
-      await loadData();
-    } catch(error) {
       handleApiError(error);
     } finally {
       setLoadingAction(null);
@@ -349,12 +366,10 @@ if (groupsRes?.success) {
     }
   };
 
-  const totalContacts = groups.reduce((acc, g) => acc + (parseInt(String(g.contact_count || 0), 10)), 0);
-
   return (
     <>
-      <ContactImportModal open={importModalOpen} onOpenChange={(open) => { setImportModalOpen(open); if (!open) loadData(); }} groups={groups} />
-      <AddContactModal open={addContactModalOpen} onOpenChange={(open) => { setAddContactModalOpen(open); if (!open) loadData(); }} />
+      {importModalOpen && <ContactImportModal open onOpenChange={(open) => { setImportModalOpen(open); if (!open) loadData(); }} groups={groups} defaultGroupId={currentGroup?.id} />}
+      <AddContactModal open={addContactModalOpen} defaultGroupId={currentGroup?.id} onOpenChange={(open) => { setAddContactModalOpen(open); if (!open) loadData(); }} />
       <EditContactModal 
         open={editContactModalOpen} 
         onOpenChange={(open) => { setEditContactModalOpen(open); if (!open) loadData(); }} 
@@ -368,25 +383,18 @@ if (groupsRes?.success) {
         group={groupToEdit}
         onSuccess={loadData}
       />
-      <Dialog open={addToGroupDialogOpen} onOpenChange={setAddToGroupDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add contacts to group</DialogTitle><DialogDescription>Select a group for the {selectedContacts.length} selected contacts.</DialogDescription></DialogHeader>
-          <Select value={targetGroupId} onValueChange={setTargetGroupId}>
-            <SelectTrigger><SelectValue placeholder="Select a group" /></SelectTrigger>
-            <SelectContent>{groups.map(group=><SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}</SelectContent>
-          </Select>
-          <DialogFooter><Button variant="outline" onClick={()=>setAddToGroupDialogOpen(false)}>Cancel</Button><Button onClick={handleAddToGroup} disabled={!targetGroupId||loadingAction==='addToGroup'}>{loadingAction==='addToGroup'&&<Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Add contacts</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {transfer && <GroupTransferModal mode={transfer.mode} sourceGroupId={transfer.sourceGroupId} wholeGroup={transfer.wholeGroup} groups={realGroups} contactIds={transfer.contactIds ?? selectedContacts}
+        onClose={() => setTransfer(null)} onSuccess={targetId => { setSelectedContacts([]); selectGroup(targetId); if (selectedGroup === targetId) loadData(); }} />}
       <DashboardLayout
         title="Contacts"
-        subtitle="Manage your contact lists and groups"
+        subtitle="Manage your contact lists and groups."
         actions={
-          <div className="flex gap-3">
-            <Button aria-label="Refresh contacts" variant="outline" size="icon" onClick={loadData} disabled={loading}>
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline"><Link to="/sms-campaigns/new"><Send className="h-4 w-4"/>Send SMS</Link></Button>
+            <Button aria-label="Refresh contacts" variant="outline" onClick={loadData} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />Refresh
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => setImportModalOpen(true)}>
+            <Button variant="outline" className="gap-2" onClick={() => setImportModalOpen(true)} disabled={loading}>
               <Upload className="h-4 w-4" />
               Import
             </Button>
@@ -401,24 +409,26 @@ if (groupsRes?.success) {
           </div>
         }
       >
-        <div className="grid gap-6 lg:grid-cols-4">
+        <div className="mx-auto max-w-[1500px] space-y-5">
+        <ContactSummaryCards total={groupsLoaded ? totalContacts : null} groups={groupsLoaded ? realGroups.length : null} optedOut={summaryLoaded ? optedOutCount : null} recentlyAdded={recentlyAdded}/>
+        <div className="grid items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]">
           {/* Groups Sidebar */}
-          <div className="lg:col-span-1">
-            <div className="rounded-xl border border-border bg-card p-4">
+          <aside className="min-w-0" aria-label="Contact groups">
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="font-semibold text-foreground">Groups</h3>
-                <Button aria-label="Create group" variant="ghost" size="icon" onClick={() => setCreateGroupModalOpen(true)}>
-                  <Plus className="h-4 w-4" />
+                <Button aria-label="Create group" size="sm" onClick={() => setCreateGroupModalOpen(true)}>
+                  <Plus className="mr-1 h-4 w-4" />Create group
                 </Button>
               </div>
 
-              <div className="space-y-1">
+              <div className="max-h-[28rem] space-y-1 overflow-y-auto">
                 <button
-                  onClick={() => setSelectedGroup("all")}
+                  onClick={() => selectGroup("all")}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
                     selectedGroup === "all"
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-primary/10 font-semibold text-primary"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
@@ -429,40 +439,62 @@ if (groupsRes?.success) {
                   <span className="text-xs opacity-80">{totalContacts.toLocaleString()}</span>
                 </button>
                 
+                <button
+                  onClick={() => selectGroup("opted-out")}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
+                    selectedGroup === "opted-out"
+                      ? "bg-primary/10 font-semibold text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Ban className="h-4 w-4" />
+                    <span>Opted Out</span>
+                  </div>
+                  <span className="text-xs opacity-80">{optedOutCount}</span>
+                </button>
+
                 {groups.map((group) => (
                   <div
                     key={group.id}
                     className={cn(
                       "group/item flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
                       selectedGroup === group.id
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-primary/10 font-semibold text-primary"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
                     <button
-                      onClick={() => setSelectedGroup(group.id)}
-                      className="flex flex-1 items-center gap-2"
+                      onClick={() => selectGroup(group.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
                       <Users className="h-4 w-4" />
-                      <span>{group.name}</span>
+                      <span className="min-w-0 break-words">{group.name}</span>
                     </button>
                     <div className="flex items-center gap-1">
                       <span className="text-xs opacity-80">{(group.contact_count || 0).toLocaleString()}</span>
-                      <DropdownMenu>
+                      {!group.is_virtual && <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"
                             size="icon"
                             className={cn(
-                              "h-6 w-6 opacity-0 group-hover/item:opacity-100",
+                              "h-8 w-8 opacity-100",
                               selectedGroup === group.id ? "hover:bg-primary-foreground/20" : ""
                             )}
                             onClick={(e) => e.stopPropagation()}
+                            aria-label={`Actions for ${group.name}`}
                           >
-                            <MoreVertical className="h-3 w-3" />
+                            <MoreVertical className="h-3 w-3 text-muted-foreground" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-popover">
+                          <DropdownMenuItem onClick={() => setTransfer({mode: 'copy', sourceGroupId: group.id, wholeGroup: true})}><Copy className="mr-2 h-4 w-4" />Copy entire group</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setTransfer({mode: 'move', sourceGroupId: group.id, wholeGroup: true})}><ArrowRightLeft className="mr-2 h-4 w-4" />Move entire group</DropdownMenuItem>
+                          <DropdownMenuItem disabled={realGroups.length < 2} onClick={() => setTransfer({mode: 'merge', sourceGroupId: group.id})}>
+                            <Merge className="mr-2 h-4 w-4" />Merge into another group
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEditGroup(group)}>
                             <Edit className="mr-2 h-4 w-4" />
                             Edit
@@ -475,67 +507,65 @@ if (groupsRes?.success) {
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                      </DropdownMenu>}
                     </div>
                   </div>
                 ))}
 
-                <button
-                  onClick={() => setSelectedGroup("opted-out")}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
-                    selectedGroup === "opted-out"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <Ban className="h-4 w-4" />
-                    <span>Opted Out</span>
-                  </div>
-                  <span className="text-xs opacity-80">{optedOutCount}</span>
-                </button>
+
               </div>
+              {!realGroups.length && groupsLoaded && <div className="mt-4 border-t pt-5 text-center"><FolderOpen className="mx-auto h-8 w-8 text-muted-foreground/60" aria-hidden="true"/><h4 className="mt-3 text-sm font-semibold">No groups yet</h4><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Create groups to organise your contacts and send SMS to the right people.</p></div>}
+              <div className="mt-4 border-t pt-4 [&_button]:h-auto [&_button]:min-h-10 [&_button]:max-w-full [&_button]:whitespace-normal"><ContactGroupSetup groups={groups} loaded={groupsLoaded} autoPrompt={false} onRefresh={loadData} onReady={id => selectGroup(id)}/></div>
             </div>
-          </div>
+          </aside>
 
           {/* Contacts List */}
-          <div className="lg:col-span-3">
+          <section className="min-w-0 rounded-2xl border bg-card p-4 shadow-sm sm:p-5" aria-label="Contacts list">
+            <div className="mb-4 space-y-1">
+              <h2 className="font-semibold text-foreground">{currentGroupName}</h2>
+              <p className="text-sm text-muted-foreground">{currentGroup ? `New contacts and imports default to ${currentGroup.name}. Select contacts below to copy or move them.` : 'Select the checkboxes next to contacts, then choose Add to group, Copy or Move. Groups make it easy to send an SMS to the right people.'}</p>
+              {currentGroup && <div className="flex flex-wrap gap-2 pt-2"><Button asChild><Link to={`/sms-campaigns/new?group=${currentGroup.id}`}>Send SMS to this group</Link></Button><Button variant="outline" onClick={() => setTransfer({mode:'copy',sourceGroupId:currentGroup.id,wholeGroup:true})}>Copy entire group</Button><Button variant="outline" onClick={() => setTransfer({mode:'move',sourceGroupId:currentGroup.id,wholeGroup:true})}>Move entire group</Button></div>}
+            </div>
+            {Number(groups.find(group => group.id === 'uncategorized')?.contact_count) > 0 && (selectedGroup === 'all' || selectedGroup === 'uncategorized') && <section aria-label="Organise uncategorized contacts" className="mb-4 space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4"><h3 className="font-semibold">Add your uncategorized contacts to a group</h3><p className="text-sm">{groups.find(group => group.id === 'uncategorized')?.contact_count.toLocaleString()} contacts have no group. Choose an existing group or create one, such as Customers or Church members.</p><div className="flex flex-wrap gap-2"><Button className="h-auto min-h-10 whitespace-normal" onClick={() => setTransfer({mode:'copy',sourceGroupId:'uncategorized',wholeGroup:true})}>Add uncategorized contacts to a group</Button>{selectedGroup !== 'uncategorized' && <Button variant="outline" onClick={() => selectGroup('uncategorized')}>Choose individual contacts</Button>}</div><p className="text-xs text-muted-foreground">The first action includes all uncategorized contacts, including other pages. To organise only some contacts, choose them individually.</p></section>}
             {/* Filters */}
-            <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative flex-1 max-w-md">
+            <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="relative min-w-0 flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search contacts..."
+                  aria-label="Search contacts" placeholder="Search contacts..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPagination(previous => ({...previous, page: 1})); }}
                   className="pl-10"
                 />
               </div>
-              <div className="flex items-center gap-3">
-                <Select value={sortOrder} onValueChange={setSortOrder}>
-                  <SelectTrigger className="w-32">
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={sortOrder} onValueChange={value => {setSortOrder(value);setPagination(previous => ({...previous,page:1}));}}>
+                  <SelectTrigger aria-label="Sort contacts" className="w-[140px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="newest">Newest</SelectItem>
-                    <SelectItem value="oldest">Oldest</SelectItem>
-                    <SelectItem value="name">Name</SelectItem>
+                    <SelectItem value="newest">Sort: Newest</SelectItem>
+                    <SelectItem value="oldest">Sort: Oldest</SelectItem>
+                    <SelectItem value="name">Sort: Name</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select value={selectedGroup} onValueChange={selectGroup}><SelectTrigger aria-label="Filter contacts" className="w-[150px]"><SelectValue placeholder="Filter contacts"/></SelectTrigger><SelectContent><SelectItem value="all">Filter: All</SelectItem><SelectItem value="opted-out">Opted Out</SelectItem><SelectItem value="uncategorized">Uncategorized</SelectItem>{realGroups.map(group => <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}</SelectContent></Select>
+                <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" disabled={selectedContacts.length===0 || !!loadingAction} className="gap-2"><Square className="h-4 w-4" aria-hidden="true"/>Bulk actions<ChevronDown className="h-4 w-4"/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => setTransfer({mode:'copy',sourceGroupId:selectedGroup==='uncategorized'?'uncategorized':currentGroup?.id})}><Copy className="mr-2 h-4 w-4"/>Add / copy to group</DropdownMenuItem><DropdownMenuItem onClick={() => setTransfer({mode:'move',sourceGroupId:selectedGroup==='uncategorized'?'uncategorized':currentGroup?.id})} disabled={!currentGroup && selectedGroup!=='uncategorized' && !realGroups.length}><ArrowRightLeft className="mr-2 h-4 w-4"/>Move to group</DropdownMenuItem><DropdownMenuItem onClick={() => void handleExport()}><Download className="mr-2 h-4 w-4"/>Export current contact list</DropdownMenuItem><DropdownMenuItem onClick={() => void handleBulkDelete()} className="text-destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete selected</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
               </div>
             </div>
 
             {/* Selected Actions */}
             {selectedContacts.length > 0 && (
-              <div className="mb-4 flex items-center gap-4 rounded-lg bg-primary/10 p-3">
+              <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg bg-primary/10 p-3">
                 <span className="text-sm font-medium text-primary">
-                  {selectedContacts.length} selected
+                  {selectedContacts.length} selected on this page
                 </span>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={()=>setAddToGroupDialogOpen(true)} disabled={groups.length===0}>
-                    {loadingAction === "addToGroup" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                    Add to Group
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setTransfer({mode: 'copy', sourceGroupId: selectedGroup === 'uncategorized' ? 'uncategorized' : currentGroup?.id})}>
+                    <Copy className="mr-1 h-4 w-4" />{selectedGroup === 'uncategorized' || selectedGroup === 'all' ? 'Add to group' : 'Copy to Group'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setTransfer({mode: 'move', sourceGroupId: selectedGroup === 'uncategorized' ? 'uncategorized' : currentGroup?.id})} disabled={!currentGroup && selectedGroup !== 'uncategorized' && !realGroups.length}>
+                    <ArrowRightLeft className="mr-1 h-4 w-4" />Move to Group
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleExport} disabled={loadingAction === "export"}>
                     Export
@@ -551,63 +581,65 @@ if (groupsRes?.success) {
             {/* Contacts Table */}
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               {loading ? (
-                <div className="flex h-64 items-center justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
+                <PageLoading variant="table" label="Loading contacts" className="p-4" />
+              ) : loadError ? (
+                <div role="alert" className="flex min-h-64 flex-col items-center justify-center gap-3 p-6 text-center"><p className="font-semibold">Contacts could not be loaded</p><p className="max-w-md text-sm text-muted-foreground">{loadError}</p><Button variant="outline" onClick={() => void loadData()}><RefreshCw className="h-4 w-4"/>Try again</Button></div>
               ) : contacts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Users className="h-12 w-12 text-muted-foreground/50" />
-                  <p className="mt-4 text-lg font-medium text-foreground">{searchQuery ? 'No matching contacts' : 'No contacts yet.'}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {searchQuery ? "Try adjusting your search" : "Add a contact to start a campaign."}
-                  </p>
+                <div className="flex min-h-[350px] flex-col items-center justify-center px-5 py-10 text-center sm:min-h-[390px]">
+                  <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-primary/5"><div className="rounded-2xl border border-primary/15 bg-primary/10 p-4 text-primary"><Users className="h-10 w-10" aria-hidden="true"/></div><Send className="absolute -right-2 top-0 h-7 w-7 -rotate-12 text-sky-400" aria-hidden="true"/></div>
+                  <h3 className="mt-5 text-xl font-bold">{totalContacts===0 ? 'No contacts yet' : searchQuery ? 'No matching contacts' : currentGroup ? 'No contacts in this group' : 'No contacts match this filter'}</h3>
+                  <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">{totalContacts===0 ? 'Add contacts to start building your audience and sending SMS campaigns.' : searchQuery ? 'Try another name, phone number or email, or change your filters.' : 'Add or import contacts, or choose another group to see your audience.'}</p>
+                  <div className="mt-6 flex flex-wrap justify-center gap-2"><Button onClick={() => setAddContactModalOpen(true)}><UserPlus className="h-4 w-4"/>Add Contact</Button><Button variant="outline" onClick={() => setImportModalOpen(true)}><Upload className="h-4 w-4"/>Import Contacts</Button><Button variant="outline" onClick={() => setCreateGroupModalOpen(true)}><Plus className="h-4 w-4"/>Create Group</Button></div>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full min-w-[780px] text-[13px]">
                     <thead>
                       <tr className="border-b border-border bg-muted/50">
-                        <th className="px-4 py-4 text-left">
+                        <th className="px-3 py-3 text-left">
                           <Checkbox
-                            checked={selectedContacts.length === contacts.length && contacts.length > 0}
+                            aria-label="Select all contacts on this page"
+                            checked={selectedContacts.length === contacts.length && contacts.length > 0 ? true : selectedContacts.length > 0 ? "indeterminate" : false}
                             onCheckedChange={toggleAll}
                           />
                         </th>
-                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Contact</th>
-                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Phone</th>
-                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Group</th>
-                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Status</th>
-                        <th className="px-4 py-4 text-left text-sm font-medium text-muted-foreground">Added</th>
-                        <th className="px-4 py-4 text-right text-sm font-medium text-muted-foreground">Actions</th>
+                        <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground">Name</th>
+                        <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground">Phone number</th>
+                        <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground">Groups</th>
+                        <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground">Status</th>
+                        <th className="px-3 py-3 text-left text-sm font-medium text-muted-foreground">Date added</th>
+                        <th className="px-3 py-3 text-right text-sm font-medium text-muted-foreground">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {contacts.map((contact) => (
                         <tr key={contact.id} className="transition-colors hover:bg-muted/30">
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
                             <Checkbox
+                              aria-label={`Select ${contact.name || contact.phone}`}
                               checked={selectedContacts.includes(contact.id)}
                               onCheckedChange={() => toggleContact(contact.id)}
                             />
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
                             <div className="flex items-center gap-3">
                               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
-                                {contact.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                                {(contact.name || contact.phone || "?").split(" ").map((n) => n[0]).join("").slice(0, 2)}
                               </div>
                               <div>
-                                <p className="font-medium text-foreground">{contact.name}</p>
-                                <p className="text-sm text-muted-foreground">{contact.email}</p>
+                                <p className="font-medium text-foreground">{contact.name || "Unnamed contact"}</p>
+                                <p className="max-w-[160px] truncate text-xs text-muted-foreground" title={contact.email}>{contact.email}</p>
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-foreground">{contact.phone}</td>
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3 text-foreground">{contact.phone}</td>
+                          <td className="px-3 py-3">
+                            {!contact.group_id && <Button variant="link" size="sm" onClick={() => setTransfer({mode:'copy',sourceGroupId:'uncategorized',contactIds:[contact.id]})}>Add to group</Button>}
                             <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
                               {contact.group_name || "No Group"}
                             </span>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
                             <span className={cn(
                               "status-badge",
                               contact.subscription_status === "subscribed" ? "status-delivered" : "status-failed"
@@ -615,8 +647,8 @@ if (groupsRes?.success) {
                               {contact.subscription_status === "subscribed" ? "Active" : "Opted Out"}
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-muted-foreground">{formatDate(contact.created_at)}</td>
-                          <td className="px-4 py-4">
+                          <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">{formatDate(contact.created_at)}</td>
+                          <td className="px-3 py-3">
                             <div className="flex items-center justify-end gap-1">
                               <Button aria-label="Edit contact" variant="ghost" size="icon" onClick={() => handleEditContact(contact)}>
                                 <Edit className="h-4 w-4" />
@@ -624,6 +656,7 @@ if (groupsRes?.success) {
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
+                                aria-label={`Delete ${contact.name || contact.phone}`}
                                 onClick={() => handleDeleteContact(contact.id)}
                                 disabled={loadingAction === `delete-${contact.id}`}
                               >
@@ -751,7 +784,8 @@ if (groupsRes?.success) {
                 </div>
               </div>
             )}
-          </div>
+          </section>
+        </div>
         </div>
       </DashboardLayout>
 

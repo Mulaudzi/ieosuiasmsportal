@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow, differenceInSeconds, differenceInMinutes, differenceInHours, differenceInDays, subDays } from "date-fns";
 import { AdminLayout } from "@/components/layout/AdminLayout";
@@ -101,6 +101,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { api, downloadAuthenticated, handleApiError } from "@/lib/api";
+import { adminToolTab, cronJobsFromResponse, loadAdminTasks, type CronJob, type AdminLoadTask, type AdminLoadFailure } from "@/lib/admin-tools";
 
 interface User {
   id: string;
@@ -161,15 +162,6 @@ interface ScheduledCampaign {
     name: string;
     email: string;
   };
-}
-
-interface CronJob {
-  id: string;
-  job_name: string;
-  last_run_at: string | null;
-  status: string;
-  run_count: number;
-  error_count: number;
 }
 
 interface SmtpSetting {
@@ -448,6 +440,11 @@ function ScheduledCampaignCard({ campaign, isPast }: { campaign: ScheduledCampai
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
+  const activeTab = adminToolTab(location.search);
+  const selectTab = (tab: string) => navigate({pathname: location.pathname, search: `?tab=${tab}`});
+  const loadGeneration = useRef(0);
+  const loadRequest = useRef<AbortController | null>(null);
+  const [sectionErrors, setSectionErrors] = useState<AdminLoadFailure[]>([]);
   const { user, isLoading: authLoading } = useAuth();
   
   // Admin session timeout handling
@@ -458,6 +455,9 @@ export default function AdminDashboard() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [scheduledCampaigns, setScheduledCampaigns] = useState<ScheduledCampaign[]>([]);
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
+  const scheduledProcessor = cronJobs.find(job => job.job_name === 'sms-scheduler')
+    ?? cronJobs.find(job => job.job_name === 'process_scheduled_campaigns');
+  const schedulerLastRun = scheduledProcessor?.last_seen_at ?? scheduledProcessor?.last_run_at;
   const [smtpSettings, setSmtpSettings] = useState<SmtpSetting[]>([]);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(true);
@@ -521,63 +521,73 @@ export default function AdminDashboard() {
   const [exportPurpose, setExportPurpose] = useState<string>("all");
   const [exportStatus, setExportStatus] = useState<string>("all");
 
-  // Admin access verification
+  const loadData = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    loadRequest.current?.abort();
+    const controller = new AbortController();
+    loadRequest.current = controller;
+    const current = () => generation === loadGeneration.current;
+    setLoading(true);
+    setSectionErrors([]);
+    const tasks: AdminLoadTask[] = [];
+    const add = <T,>(key: string, label: string, endpoint: string, apply: (value: T) => void) => {
+      tasks.push({key, label, run: async () => {
+        if (!current()) return;
+        const response = await api.get<T>(endpoint, undefined, {signal: controller.signal});
+        if (!response.success) throw new Error(response.message || 'This section could not be loaded.');
+        if (current()) apply((response.data ?? response) as T);
+      }});
+    };
+    add<Stats>('stats', 'Summary', '/admin/stats', setStats);
+    if (activeTab === 'users') add<{users: User[]}>('users', 'User Management', '/admin/users', value => setUsers(value.users || []));
+    if (activeTab === 'scheduled') {
+      add<{jobs?: unknown}>('cron', 'Scheduler', '/admin/cron/status', value => setCronJobs(cronJobsFromResponse(value.jobs)));
+      add<{campaigns: ScheduledCampaign[]}>('scheduled', 'Scheduled campaigns', '/admin/cron/pending-campaigns', value => setScheduledCampaigns(value.campaigns || []));
+    }
+    if (activeTab === 'activity') {
+      const params = new URLSearchParams({per_page: '100'});
+      if (actionFilter !== 'all') params.set('action', actionFilter);
+      if (dateFrom) params.set('from_date', format(dateFrom, 'yyyy-MM-dd'));
+      if (dateTo) params.set('to_date', format(dateTo, 'yyyy-MM-dd'));
+      add<{logs: AuditLog[]}>('logs', 'Activity log', `/admin/audit-logs?${params}`, value => setAuditLogs(value.logs || []));
+    }
+    if (activeTab === 'settings') {
+      add<{settings: SmtpSetting[]}>('smtp', 'SMTP settings', '/admin/smtp-settings', value => setSmtpSettings(value.settings || []));
+      add<{settings: NotificationSetting[]}>('notifications', 'Notification settings', '/admin/notification-settings', value => setNotificationSettings(value.settings || []));
+      add<{recipients: ContactAlertRecipient[]}>('alerts', 'Contact alerts', '/admin/contact-alerts', value => setAlertRecipients(value.recipients || []));
+    }
+    if (activeTab === 'health') {
+      add<{health: SystemHealth}>('health', 'System health', '/admin/system-health', value => setSystemHealth(value.health || null));
+      add<{heatmap: HeatmapData}>('heatmap', 'Activity heatmap', '/admin/activity-heatmap', value => setHeatmapData(value.heatmap || null));
+    }
+    if (activeTab === 'contact-emails') {
+      add<{emails: ContactEmail[]; unread_count: number}>('emails', 'Contact emails', '/admin/contact-emails', value => {setContactEmails(value.emails || []); setUnreadContactCount(value.unread_count || 0);});
+      add<{stats: ContactEmailStats}>('email-stats', 'Contact email statistics', '/admin/contact-emails/stats', value => setContactEmailStats(value.stats || null));
+      add<{trends: SubmissionTrend[]}>('trends', 'Submission trends', '/admin/contact-emails/trends?days=30', value => setSubmissionTrends(value.trends || []));
+    }
+    const failures = await loadAdminTasks(tasks);
+    if (current()) {setSectionErrors(failures); setLoading(false);}
+  }, [activeTab, actionFilter, dateFrom, dateTo]);
+
   useEffect(() => {
     if (authLoading) return;
-
-    if (user?.role !== "admin") {
-      setAccessDenied(true);
-      return;
-    }
-
+    if (user?.role !== 'admin') {setAccessDenied(true); return;}
     setAccessDenied(false);
-    loadData();
-  }, [authLoading, user]);
+    void loadData();
+    return () => {loadGeneration.current += 1; loadRequest.current?.abort();};
+  }, [authLoading, user?.id, user?.role, loadData]);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [usersRes, senderIdsRes, statsRes, logsRes, cronRes, scheduledRes, smtpRes, notifRes, healthRes, heatmapRes, contactRes, contactStatsRes, alertsRes, trendsRes] = await Promise.all([
-        api.get<{ users: User[] }>("/admin/users"),
-        Promise.resolve({ success: true, data: { sender_ids: [] as SenderId[] } }),
-        api.get<Stats>("/admin/stats"),
-        api.get<{ logs: AuditLog[] }>("/admin/audit-logs?per_page=100"),
-        api.get<{ jobs: CronJob[] }>("/admin/cron/status"),
-        api.get<{ campaigns: ScheduledCampaign[] }>("/admin/cron/pending-campaigns"),
-        api.get<{ settings: SmtpSetting[] }>("/admin/smtp-settings"),
-        api.get<{ settings: NotificationSetting[] }>("/admin/notification-settings"),
-        api.get<{ health: SystemHealth }>("/admin/system-health"),
-        api.get<{ heatmap: HeatmapData }>("/admin/activity-heatmap"),
-        api.get<{ emails: ContactEmail[]; unread_count: number }>("/admin/contact-emails"),
-        api.get<{ stats: ContactEmailStats }>("/admin/contact-emails/stats"),
-        api.get<{ recipients: ContactAlertRecipient[] }>("/admin/contact-alerts"),
-        api.get<{ trends: SubmissionTrend[] }>("/admin/contact-emails/trends?days=30"),
-      ]);
+  const revealSection = useCallback(() => {
+    const id = location.hash.slice(1);
+    const target = activeTab === 'settings' && (id === 'smtp-settings' || id === 'notification-settings') ? id : 'admin-tools-sections';
+    document.getElementById(target)?.scrollIntoView({block: 'start'});
+  }, [activeTab, location.hash]);
 
-      if (usersRes.success) setUsers(((usersRes.data ?? usersRes) as { users?: User[] }).users || []);
-      if (senderIdsRes.success) setSenderIds(((senderIdsRes.data ?? senderIdsRes) as { sender_ids?: SenderId[] }).sender_ids || []);
-      if (statsRes.success) setStats((statsRes.data ?? statsRes) as Stats);
-      if (logsRes.success) setAuditLogs(((logsRes.data ?? logsRes) as { logs?: AuditLog[] }).logs || []);
-      if (cronRes.success) setCronJobs(((cronRes.data ?? cronRes) as { jobs?: CronJob[] }).jobs || []);
-      if (scheduledRes.success) setScheduledCampaigns(((scheduledRes.data ?? scheduledRes) as { campaigns?: ScheduledCampaign[] }).campaigns || []);
-      if (smtpRes.success) setSmtpSettings(((smtpRes.data ?? smtpRes) as { settings?: SmtpSetting[] }).settings || []);
-      if (notifRes.success) setNotificationSettings(((notifRes.data ?? notifRes) as { settings?: NotificationSetting[] }).settings || []);
-      if (healthRes.success) setSystemHealth(((healthRes.data ?? healthRes) as { health?: SystemHealth }).health || null);
-      if (heatmapRes.success) setHeatmapData(((heatmapRes.data ?? heatmapRes) as { heatmap?: HeatmapData }).heatmap || null);
-      if (contactRes.success) {
-        const payload = (contactRes.data ?? contactRes) as { emails?: ContactEmail[]; unread_count?: number };
-        setContactEmails(payload.emails || []);
-        setUnreadContactCount(payload.unread_count || 0);
-      }
-      if (contactStatsRes.success) setContactEmailStats(((contactStatsRes.data ?? contactStatsRes) as { stats?: ContactEmailStats }).stats || null);
-      if (alertsRes.success) setAlertRecipients(((alertsRes.data ?? alertsRes) as { recipients?: ContactAlertRecipient[] }).recipients || []);
-      if (trendsRes.success) setSubmissionTrends(((trendsRes.data ?? trendsRes) as { trends?: SubmissionTrend[] }).trends || []);
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (loading) return;
+    const frame = requestAnimationFrame(revealSection);
+    return () => cancelAnimationFrame(frame);
+  }, [loading, revealSection]);
   
   // Export contact emails as CSV
   const handleExportCsv = async () => {
@@ -685,12 +695,17 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
   
   // Realtime notification polling
   useEffect(() => {
-    if (accessDenied || authLoading) return;
+    if (accessDenied || authLoading || user?.role !== 'admin' || activeTab !== 'contact-emails') return;
+    let pollInFlight = false;
+    let disposed = false;
     
     const pollInterval = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       try {
         const res = await api.get<{ notifications: RealtimeNotification[]; last_id: number }>(`/admin/realtime/poll?last_id=${lastRealtimeId}`);
         const payload = (res.data ?? res) as { notifications?: RealtimeNotification[]; last_id?: number };
+        if (disposed) return;
         if (res.success && payload.notifications?.length) {
           setLastRealtimeId(payload.last_id || lastRealtimeId);
           setRealtimeConnected(true);
@@ -708,12 +723,14 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
           });
         }
       } catch (error) {
-        setRealtimeConnected(false);
+        if (!disposed) setRealtimeConnected(false);
+      } finally {
+        pollInFlight = false;
       }
     }, 5000); // Poll every 5 seconds
     
-    return () => clearInterval(pollInterval);
-  }, [accessDenied, authLoading, lastRealtimeId]);
+    return () => {disposed = true; clearInterval(pollInterval);};
+  }, [accessDenied, authLoading, user?.role, activeTab, lastRealtimeId]);
   
   // Add alert recipient
   const handleAddAlertRecipient = async () => {
@@ -780,30 +797,6 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
       setHealthLoading(false);
     }
   };
-
-  const loadLogsWithFilters = async () => {
-    setLogsLoading(true);
-    try {
-      const params = new URLSearchParams({ per_page: "100" });
-      if (actionFilter !== "all") params.set("action", actionFilter);
-      if (dateFrom) params.set("from_date", format(dateFrom, "yyyy-MM-dd"));
-      if (dateTo) params.set("to_date", format(dateTo, "yyyy-MM-dd"));
-      
-      const res = await api.get<{ logs: AuditLog[] }>(`/admin/audit-logs?${params.toString()}`);
-      if (res.success) setAuditLogs(((res.data ?? res) as { logs?: AuditLog[] }).logs || []);
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setLogsLoading(false);
-    }
-  };
-
-  // Reload logs when filters change
-  useEffect(() => {
-    if (!loading && !accessDenied) {
-      loadLogsWithFilters();
-    }
-  }, [actionFilter, dateFrom, dateTo]);
 
   const handleRunScheduledCampaigns = async () => {
     setRunningCron(true);
@@ -1022,16 +1015,17 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
   return (
     <AdminLayout
       title="Admin Dashboard"
+      onMenuClosed={revealSection}
       subtitle="Central hub for system administration and user management"
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/guymhan/users")}>
-            <Shield className="h-4 w-4 mr-2" />
-            Manage Admins
+          <Button variant="outline" size="sm" aria-label="Manage Admins" onClick={() => navigate("/guymhan/users")}>
+            <Shield className="h-4 w-4 min-[400px]:mr-2" />
+            <span className="hidden min-[400px]:inline">Manage Admins</span>
           </Button>
-          <Button variant="outline" onClick={loadData} disabled={loading} className="gap-2">
+          <Button variant="outline" aria-label="Refresh" onClick={loadData} disabled={loading} className="gap-2">
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            Refresh
+            <span className="hidden min-[400px]:inline">Refresh</span>
           </Button>
         </div>
       }
@@ -1045,7 +1039,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Users</p>
-              <p className="text-2xl font-bold text-foreground">{stats?.total_users || 0}</p>
+              <p className="text-2xl font-bold text-foreground">{stats ? stats.total_users : 'Unavailable'}</p>
             </div>
           </div>
         </div>
@@ -1067,7 +1061,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Campaigns</p>
-              <p className="text-2xl font-bold text-foreground">{stats?.total_campaigns || 0}</p>
+              <p className="text-2xl font-bold text-foreground">{stats ? stats.total_campaigns : 'Unavailable'}</p>
             </div>
           </div>
         </div>
@@ -1078,7 +1072,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Revenue</p>
-              <p className="text-2xl font-bold text-foreground">R{(stats?.total_revenue || 0).toFixed(2)}</p>
+              <p className="text-2xl font-bold text-foreground">{stats ? `R${stats.total_revenue.toFixed(2)}` : 'Unavailable'}</p>
             </div>
           </div>
         </div>
@@ -1103,10 +1097,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
             </div>
           </button>
           <button
-            onClick={() => {
-              const tabs = document.querySelector('[value="users"]') as HTMLElement;
-              tabs?.click();
-            }}
+            onClick={() => selectTab('users')}
             className="group rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary hover:shadow-md"
           >
             <div className="flex items-center gap-3 mb-2">
@@ -1137,10 +1128,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
             </div>
           </button>
           <button
-            onClick={() => {
-              const tabs = document.querySelector('[value="settings"]') as HTMLElement;
-              tabs?.click();
-            }}
+            onClick={() => selectTab('settings')}
             className="group rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary hover:shadow-md"
           >
             <div className="flex items-center gap-3 mb-2">
@@ -1247,7 +1235,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
             {auditLogs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Activity className="h-10 w-10 text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">No recent activity</p>
+                <p className="text-sm text-muted-foreground">{sectionErrors.some(error => error.key === 'logs') ? 'Activity information is unavailable.' : activeTab === 'activity' ? 'No recent activity' : 'Open Activity Log to view recent activity.'}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1345,6 +1333,21 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
       )}
 
       {/* System Health & Activity Heatmap Widgets */}
+      <Tabs id="admin-tools-sections" className="scroll-mt-24" value={activeTab} onValueChange={selectTab}>
+        {sectionErrors.length > 0 && <div role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium">Some sections could not be refreshed. Successfully loaded sections remain available.</p>
+          <ul className="mt-2 space-y-1">{sectionErrors.map(error => <li key={error.key}>{error.label}: {error.message}</li>)}</ul>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void loadData()}>Retry this section</Button>
+        </div>}
+        <TabsList className="mb-4 h-auto max-w-full flex-wrap gap-1">
+          <TabsTrigger value="users" className="gap-2"><Users className="h-4 w-4"/>Users</TabsTrigger>
+          <TabsTrigger value="scheduled" className="gap-2"><CalendarIcon className="h-4 w-4"/>Scheduled{scheduledCampaigns.length > 0 && <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">{scheduledCampaigns.length}</span>}</TabsTrigger>
+          <TabsTrigger value="activity" className="gap-2"><Activity className="h-4 w-4"/>Activity Log</TabsTrigger>
+          <TabsTrigger value="contact-emails" className="gap-2"><Inbox className="h-4 w-4"/>Contact Emails{unreadContactCount > 0 && <span className="ml-1 rounded-full bg-warning px-2 py-0.5 text-xs text-warning-foreground">{unreadContactCount}</span>}</TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2"><Settings className="h-4 w-4"/>Settings</TabsTrigger>
+          <TabsTrigger value="health" className="gap-2"><Thermometer className="h-4 w-4"/>System Health</TabsTrigger>
+        </TabsList>
+        <TabsContent value="health">
       <div className="mb-8 grid gap-6 lg:grid-cols-2">
         {/* System Health Widget */}
         <div className="rounded-xl border border-border bg-card">
@@ -1371,7 +1374,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
               size="sm" 
               variant="outline" 
               onClick={refreshHealth}
-              disabled={healthLoading}
+              disabled={healthLoading || loading}
               className="gap-2"
             >
               <RefreshCw className={cn("h-4 w-4", healthLoading && "animate-spin")} />
@@ -1381,7 +1384,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
           <div className="p-4">
             {!systemHealth ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                {loading || healthLoading ? <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /> : <p className="text-sm text-muted-foreground">System health information is unavailable.</p>}
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1496,7 +1499,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
           <div className="p-4">
             {!heatmapData ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                {loading ? <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /> : <p className="text-sm text-muted-foreground">Activity heatmap information is unavailable.</p>}
               </div>
             ) : (
               <div className="space-y-4">
@@ -1653,7 +1656,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
         <div className="p-4">
           {!heatmapData ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              {loading ? <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /> : <p className="text-sm text-muted-foreground">Delivery heatmap information is unavailable.</p>}
             </div>
           ) : (
             <div className="space-y-4">
@@ -1825,48 +1828,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
         </div>
       </div>
 
-      <Tabs defaultValue={new URLSearchParams(location.search).get('tab') || "users"}>
-        <TabsList>
-          {false && <TabsTrigger value="sender-ids" className="gap-2">
-            <Key className="h-4 w-4" />
-            Sender IDs
-            {pendingCount > 0 && (
-              <span className="ml-1 rounded-full bg-warning px-2 py-0.5 text-xs text-warning-foreground">
-                {pendingCount}
-              </span>
-            )}
-          </TabsTrigger>}
-          <TabsTrigger value="users" className="gap-2">
-            <Users className="h-4 w-4" />
-            Users
-          </TabsTrigger>
-          <TabsTrigger value="scheduled" className="gap-2">
-            <CalendarIcon className="h-4 w-4" />
-            Scheduled
-            {scheduledCampaigns.length > 0 && (
-              <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                {scheduledCampaigns.length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="gap-2">
-            <Activity className="h-4 w-4" />
-            Activity Log
-          </TabsTrigger>
-          <TabsTrigger value="contact-emails" className="gap-2">
-            <Inbox className="h-4 w-4" />
-            Contact Emails
-            {unreadContactCount > 0 && (
-              <span className="ml-1 rounded-full bg-warning px-2 py-0.5 text-xs text-warning-foreground">
-                {unreadContactCount}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-2">
-            <Settings className="h-4 w-4" />
-            Settings
-          </TabsTrigger>
-        </TabsList>
+        </TabsContent>
 
         {false && <TabsContent value="sender-ids" className="mt-6">
           {/* Filters */}
@@ -2108,7 +2070,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
               </table>
             </div>
 
-            {filteredUsers.length === 0 && (
+            {filteredUsers.length === 0 && !loading && !sectionErrors.some(error => error.key === 'users') && (
               <div className="flex flex-col items-center justify-center py-12">
                 <Users className="h-12 w-12 text-muted-foreground/50" />
                 <p className="mt-4 text-lg font-medium text-foreground">No users found</p>
@@ -2128,11 +2090,11 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
                 <div>
                   <h3 className="font-medium text-foreground">Scheduled Campaign Processor</h3>
                   <p className="text-sm text-muted-foreground">
-                    {cronJobs.find(j => j.job_name === 'process_scheduled_campaigns')?.last_run_at
-                      ? `Last run: ${new Date(cronJobs.find(j => j.job_name === 'process_scheduled_campaigns')!.last_run_at!).toLocaleString()}`
-                      : 'Never run'}
-                    {cronJobs.find(j => j.job_name === 'process_scheduled_campaigns')?.run_count 
-                      ? ` · ${cronJobs.find(j => j.job_name === 'process_scheduled_campaigns')!.run_count} total runs`
+                    {schedulerLastRun
+                      ? `Last run: ${new Date(schedulerLastRun).toLocaleString()}`
+                      : 'No scheduler heartbeat recorded'}
+                    {scheduledProcessor?.run_count
+                      ? ` · ${scheduledProcessor.run_count} total runs`
                       : ''}
                   </p>
                 </div>
@@ -2968,7 +2930,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
         <TabsContent value="settings" className="mt-6">
           <div className="space-y-8">
             {/* Notification Settings */}
-            <div>
+            <div id="notification-settings" className="scroll-mt-24">
               <div className="mb-4">
                 <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Bell className="h-5 w-5" />
@@ -3032,7 +2994,7 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
                   </tbody>
                 </table>
 
-                {notificationSettings.length === 0 && (
+                {notificationSettings.length === 0 && !loading && !sectionErrors.some(error => error.key === 'notifications') && (
                   <div className="py-12 text-center">
                     <BellOff className="mx-auto h-12 w-12 text-muted-foreground/50" />
                     <p className="mt-4 text-lg font-medium text-foreground">No notification settings</p>
@@ -3157,16 +3119,16 @@ ${report.daily_trends.map((t: any) => `${t.date}: ${t.total} submissions`).join(
                       </div>
                     ))}
                   </div>
-                ) : (
+                ) : !loading && !sectionErrors.some(error => error.key === 'alerts') ? (
                   <div className="py-12 text-center">
                     <Zap className="mx-auto h-12 w-12 text-muted-foreground/50" />
                     <p className="mt-4 text-lg font-medium text-foreground">No alert recipients configured</p>
                     <p className="text-sm text-muted-foreground">Add email addresses above to receive instant notifications for new contact form submissions</p>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
-            <div>
+            <div id="smtp-settings" className="scroll-mt-24">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">

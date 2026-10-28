@@ -1,4 +1,6 @@
 import { toast } from "@/hooks/use-toast";
+import { ApiError, hostingBlockMessage, isHostingBlock, serverFailureMessage } from "@/lib/api-error";
+import { expireSession } from '@/lib/session-expiry';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://sms.ieosuia.com/api';
 
@@ -50,11 +52,12 @@ class ApiClient {
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
     let data;
     const contentType = response.headers.get('content-type');
+    const text = await response.text();
+    if ((!response.ok || !contentType?.includes('application/json')) && isHostingBlock(text)) throw new ApiError(hostingBlockMessage, response.status, 'hosting-blocked');
     
     try {
       // Only try to parse JSON if the response has content and is JSON
       if (contentType && contentType.includes('application/json')) {
-        const text = await response.text();
         if (text && text.trim()) {
           data = JSON.parse(text);
         } else {
@@ -62,73 +65,78 @@ class ApiClient {
         }
       } else {
         // For non-JSON responses, try to get the text for error messages
-        const text = await response.text();
         if (!response.ok) {
-          throw new Error(text || `Server error (${response.status})`);
+          throw new ApiError(response.status >= 500 ? serverFailureMessage(response.status) : response.status === 403 ? 'The server blocked this request before a valid API response was received. Contact support, then retry.' : `Request failed (${response.status}). Please try again.`, response.status);
         }
+        if (text.trim()) throw new ApiError('The server did not return a valid API response. Please retry or contact support.', response.status, 'format');
         data = {};
       }
     } catch (e) {
       if (e instanceof SyntaxError) {
-        throw new Error(`Server error (${response.status}): Invalid response format`);
+        throw new ApiError(response.status >= 500 ? serverFailureMessage(response.status) : `Server error (${response.status}): Invalid response format`, response.status, 'format');
       }
       throw e;
     }
     
     if (!response.ok) {
-      if (response.status === 401) {
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('auth_user');
-        localStorage.removeItem('auth_token_issued');
-        const isAdminRoute = window.location.pathname === '/guymhan' || window.location.pathname.startsWith('/guymhan/');
-        if (isAdminRoute) sessionStorage.removeItem('admin_session_timestamp');
-        // Show toast before redirect
-        const event = new CustomEvent('auth:session-expired');
-        window.dispatchEvent(event);
-        // Delay redirect to allow toast to show
-        setTimeout(() => {
-          window.location.href = isAdminRoute ? '/guymhan/login' : '/login';
-        }, 100);
-        throw new Error('Session expired. Please log in again.');
-      }
       if (response.status === 422 && data.errors) {
         const firstError = Object.values(data.errors)[0];
-        throw new Error(Array.isArray(firstError) ? firstError[0] : String(firstError));
+        throw new ApiError(Array.isArray(firstError) ? firstError[0] : String(firstError), 422);
       }
       if (response.status === 403) {
-        throw new Error('You do not have permission to perform this action.');
+        throw new ApiError('You do not have permission to perform this action. If your administrator access changed, sign in again.', 403, 'permission');
       }
       if (response.status === 404) {
-        throw new Error('The requested resource was not found.');
+        throw new ApiError('The requested resource was not found.', 404);
       }
       if (response.status >= 500) {
-        throw new Error(data.message || data.error || 'Server error. Please try again later.');
+        throw new ApiError(response.status === 503 || response.status === 507 ? serverFailureMessage(response.status) : data.message || data.error || serverFailureMessage(response.status), response.status);
       }
-      throw new Error(data.error || data.message || 'An error occurred');
+      throw new ApiError(data.error || data.message || 'An error occurred', response.status);
     }
     return data;
   }
 
-  async get<T>(endpoint: string, params?: Record<string, string>): Promise<ApiResponse<T>> {
+  private async request(input: string, init: RequestInit): Promise<Response> {
+    const requestToken = new Headers(init.headers).get('Authorization')?.replace(/^Bearer /, '') || null;
+    const response = await fetch(input, init);
+    // Authentication is determined by HTTP status, not by whether a proxy/server
+    // happened to return valid JSON. Never turn a hosting 403 into a logout.
+    if (response.status === 401) {
+      expireSession(requestToken);
+      throw new ApiError('Session expired. Please log in again.', 401);
+    }
+    return response;
+  }
+
+  async get<T>(endpoint: string, params?: Record<string, string>, options?: {signal?: AbortSignal}): Promise<ApiResponse<T>> {
     const url = new URL(`${this.baseUrl}${endpoint}`, window.location.origin);
     if (params) Object.entries(params).forEach(([k, v]) => v && url.searchParams.append(k, v));
-    return this.handleResponse<T>(await fetch(url.toString(), { method: 'GET', headers: this.getHeaders() }));
+    return this.handleResponse<T>(await this.request(url.toString(), { method: 'GET', headers: this.getHeaders(), signal: options?.signal }));
   }
 
   async post<T>(endpoint: string, body?: unknown, includeAuth = true): Promise<ApiResponse<T>> {
-    return this.handleResponse<T>(await fetch(`${this.baseUrl}${endpoint}`, {
+    return this.handleResponse<T>(await this.request(`${this.baseUrl}${endpoint}`, {
       method: 'POST', headers: this.getHeaders(includeAuth), body: body ? JSON.stringify(body) : undefined
     }));
   }
 
+  async getBlob(endpoint: string, signal?: AbortSignal): Promise<Blob> {
+    const response = await this.request(`${this.baseUrl}${endpoint}`, {
+      headers: this.getHeaders(), cache: 'no-store', signal,
+    });
+    if (!response.ok) await this.handleResponse(response);
+    return response.blob();
+  }
+
   async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
-    return this.handleResponse<T>(await fetch(`${this.baseUrl}${endpoint}`, {
+    return this.handleResponse<T>(await this.request(`${this.baseUrl}${endpoint}`, {
       method: 'PUT', headers: this.getHeaders(), body: body ? JSON.stringify(body) : undefined
     }));
   }
 
   async delete<T>(endpoint: string, options?: { data?: unknown }): Promise<ApiResponse<T>> {
-    return this.handleResponse<T>(await fetch(`${this.baseUrl}${endpoint}`, { 
+    return this.handleResponse<T>(await this.request(`${this.baseUrl}${endpoint}`, {
       method: 'DELETE', 
       headers: this.getHeaders(),
       body: options?.data ? JSON.stringify(options.data) : undefined
@@ -139,16 +147,21 @@ class ApiClient {
     const token = this.getToken();
     const headers: HeadersInit = { 'Accept': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    return this.handleResponse<T>(await fetch(`${this.baseUrl}${endpoint}`, { method: 'POST', headers, body: formData }));
+    return this.handleResponse<T>(await this.request(`${this.baseUrl}${endpoint}`, { method: 'POST', headers, body: formData }));
   }
 }
 
 export const api = new ApiClient(API_BASE_URL);
 
 export const downloadAuthenticated = async (endpoint: string, filename: string): Promise<{ success: true }> => {
+  const requestToken = localStorage.getItem('auth_token');
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    headers: { Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}` },
+    headers: { Authorization: `Bearer ${requestToken || ''}` },
   });
+  if (response.status === 401) {
+    expireSession(requestToken);
+    throw new ApiError('Session expired. Please log in again.', 401);
+  }
   if (!response.ok) throw new Error('Export failed');
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement('a');
@@ -172,7 +185,7 @@ export const login = (email: string, password: string) => api.post<{ user: any; 
 export const register = (data: { name: string; email: string; password: string; account_type?: string }) => api.post<{ user: any; token: string }>('/auth/register', data, false);
 export const logout = () => api.post('/auth/logout');
 export const getCurrentUser = () => api.get<{ user: any; wallet: any }>('/auth/user');
-export const getDashboardStats = (range = '7d') => api.get<any>('/dashboard/stats', { range });
+export const getDashboardStats = (range = '30d', dates: {from?:string;to?:string} = {}) => api.get<any>('/dashboard/stats', { range, ...dates });
 export const getSmsCampaign = (id: string) => api.get<any>(`/sms/campaigns-v2/${id}`);
 export const getEmailCampaign = (id: string) => api.get<any>(`/email/campaigns/${id}`);
 export const previewSmsCampaign = (data: Omit<SmsCampaignInput,'name'|'idempotency_key'|'scheduled_at'>) =>
@@ -196,18 +209,31 @@ export const exportCampaignMessages = (id: string, type: 'sms' | 'email' = 'sms'
 export const checkCampaignCredits = (recipientCount: number, type: 'sms' | 'email') => 
   api.post<any>('/campaigns/check-credits', { recipient_count: recipientCount, type });
 export const importContacts = (formData: FormData) => api.upload<{ imported: number; failed: number; duplicates: number; message: string }>('/contacts/import', formData);
-export const getContactGroups = () => api.get<{ groups: any[] }>('/contact-groups');
+export const getContactGroups = () => api.get<{ groups: any[]; total_contacts: number }>('/contact-groups');
 export const createContactGroup = (name: string, description?: string) => api.post<{ group: any }>('/contact-groups', { name, description });
 export const updateContactGroup = (id: string, name: string, description?: string) => api.put<{ group: any }>(`/contact-groups/${id}`, { name, description });
 export const deleteContactGroup = (id: string) => api.delete<void>(`/contact-groups/${id}`);
 export const deleteContacts = (ids: string[]) => api.post<any>('/contacts/bulk-delete', { ids });
 export const addContactsToGroup = (ids: string[], groupId: string) => api.post<any>('/contacts/bulk-add-to-group', { ids, group_id: groupId });
+export interface ContactGroupTransfer {
+  scope?: 'selected' | 'group';
+  mode: 'copy' | 'move' | 'merge';
+  target_group_id: string;
+  source_group_id?: string;
+  ids?: string[];
+  delete_source?: boolean;
+}
+export interface ContactGroupTransferResult {
+  matched: number; added: number; already_present: number; removed_from_source: number;
+  source_deleted: boolean; source_group_id: number | null; target_group_id: number;
+}
+export const transferGroupContacts = (data: ContactGroupTransfer) => api.post<ContactGroupTransferResult>('/contacts/transfer-group', data);
 export const deleteContact = (id: string) => api.delete<void>(`/contacts/${id}`);
 export const exportContacts = (groupId?: string) => {
   const query = groupId ? `?group_id=${encodeURIComponent(groupId)}` : '';
   return downloadAuthenticated(`/contacts/export${query}`, `contacts-${new Date().toISOString().slice(0, 10)}.csv`);
 };
-export const buyCredits = (data: { amount: number; payment_method: string }) => api.post<any>('/wallet/buy', data);
+export const buyCredits = (data: { credits: number; payment_method: 'payos'|'eft'; quoted_total_cents: number; pricing_version: string; idempotency_key: string }) => api.post<any>('/wallet/buy', data);
 export const getPaymentStatus = (reference: string) => api.get<any>('/wallet/payments/status', { reference });
 export const exportPaymentHistory = (status?: string, gateway?: string) => {
   const params=new URLSearchParams();
@@ -247,16 +273,16 @@ export const updateProfile = (data: { name?: string; email?: string; phone?: str
 export const uploadBranding = (formData: FormData) => api.upload<any>('/settings/branding', formData);
 
 // Contacts
-export const getContacts = (params?: { group_id?: string; search?: string; page?: number; per_page?: number }) => 
+export const getContacts = (params?: { group_id?: string; search?: string; page?: number; per_page?: number; sort?: 'newest' | 'oldest' | 'name' | string }) => 
   api.get<{ contacts: any[]; total: number; page: number; per_page: number }>('/contacts', params as any);
 export const getContact = (id: string) => api.get<any>(`/contacts/${id}`);
 export const createContact = (data: { name: string; phone?: string; email?: string; group_id?: string }) => 
   api.post<any>('/contacts', data);
-export const updateContact = (id: string, data: { name?: string; phone?: string; email?: string; group_id?: string }) => 
+export const updateContact = (id: string, data: { name?: string; phone?: string; email?: string; group_id?: string; reuse_existing?: boolean }) => 
   api.put<any>(`/contacts/${id}`, data);
 
 // Campaigns
-export const getSmsCampaigns = (params?: { status?: string; search?: string; page?: number }) => 
+export const getSmsCampaigns = (params?: { status?: string; search?: string; page?: number;range?:string;from?:string;to?:string;sort?:string }) =>
   api.get<{ campaigns: any[]; stats:any; meta: {total:number;page:number;per_page:number} }>('/sms/campaigns-v2', params as any);
 export const getEmailCampaigns = (params?: { status?: string; search?: string; page?: number }) => 
   api.get<{ campaigns: any[]; total: number; stats: any }>('/email/campaigns', params as any);

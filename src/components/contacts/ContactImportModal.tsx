@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -19,8 +20,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseContactCsv, prepareContactSheet, contactSheetCsv, ImportSheet } from "@/lib/contact-import-file";
-import { importContacts } from "@/lib/api";
+import { parseContactCsv, prepareContactSheet, contactSheetCsv, contactSheetHasHeaders, ImportSheet } from "@/lib/contact-import-file";
+import { analyzeSouthAfricanPhone, resolvedImportPhone, PhoneDecision } from "@/lib/contact-phone-review";
+import { ContactPhoneReview } from "./ContactPhoneReview";
+import { createContactGroup, handleApiError, importContacts } from "@/lib/api";
 import { contactImportResult, ContactImportResult } from "@/lib/contact-import-result";
 import { toast } from "@/hooks/use-toast";
 
@@ -29,6 +32,7 @@ interface ContactImportModalProps {
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
   groups?: Array<{ id: string | number; name: string; is_virtual?: boolean }>;
+  defaultGroupId?: string;
 }
 
 interface ParsedContact {
@@ -46,7 +50,12 @@ type ColumnMapping = {
   group: string;
 };
 
-export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] }: ContactImportModalProps) {
+export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [], defaultGroupId = "" }: ContactImportModalProps) {
+  const [createdGroups,setCreatedGroups]=useState<Array<{id:string;name:string;is_virtual?:boolean}>>([]);
+  const [newGroupName,setNewGroupName]=useState('');
+  const [creatingGroup,setCreatingGroup]=useState(false);
+  const realGroups = [...groups,...createdGroups].filter(group => !group.is_virtual && /^[1-9]\d*$/.test(String(group.id)));
+  const defaultDestination = realGroups.some(group => String(group.id) === defaultGroupId) ? defaultGroupId : "";
   const [step, setStep] = useState<"upload" | "mapping" | "preview" | "importing" | "result" | "reading" | "sheet">("upload");
   const [result,setResult]=useState<ContactImportResult|null>(null);
   const readGeneration=useRef(0);
@@ -55,6 +64,10 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
   const [file, setFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvData, setCsvData] = useState<string[][]>([]);
+  const [sourceRows, setSourceRows] = useState<unknown[][]>([]);
+  const [rowNumbers, setRowNumbers] = useState<number[]>([]);
+  const [hasHeaders, setHasHeaders] = useState(true);
+  const [phoneDecisions, setPhoneDecisions] = useState<Record<number, PhoneDecision>>({});
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>({
     name: "",
     surname: "",
@@ -62,9 +75,16 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
     email: "",
     group: "",
   });
-  const skipFirstRow = true;
-  const [skipDuplicates, setSkipDuplicates] = useState(true);
-  const [selectedGroupId, setSelectedGroupId] = useState<string>("");  // Existing group to assign contacts to
+  const skipDuplicates = true;
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(defaultDestination);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current) setSelectedGroupId(defaultDestination);
+    wasOpen.current = open;
+  }, [open, defaultDestination]);
+  const destination = realGroups.find(group => String(group.id) === selectedGroupId);
+  const destinationMissing = Boolean(selectedGroupId && !destination);
+  const destinationName = destination?.name ?? (destinationMissing ? "Group no longer available" : "Uncategorized (no group)");
   const [parsedContacts, setParsedContacts] = useState<ParsedContact[]>([]);
 
   const resetState = () => {
@@ -75,18 +95,20 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
     setFile(null);
     setCsvHeaders([]);
     setCsvData([]);
+    setSourceRows([]); setRowNumbers([]); setHasHeaders(true); setPhoneDecisions({});
     setColumnMapping({ name: "", surname: "", phone: "", email: "", group: "" });
     setParsedContacts([]);
-    setSelectedGroupId("");
   };
 
   const handleClose = () => {
+    if (step === "importing") return;
     resetState();
     onOpenChange(false);
   };
 
-  const applySheet=(rows:unknown[][])=>{
-    const {headers,data}=prepareContactSheet(rows);
+  const applySheet=(rows:unknown[][], headersPresent = contactSheetHasHeaders(rows))=>{
+    const {headers,data,rowNumbers: numbers}=prepareContactSheet(rows, headersPresent);
+    setSourceRows(rows);setHasHeaders(headersPresent);setRowNumbers(numbers);setPhoneDecisions({});
     setCsvHeaders(headers);setCsvData(data);
     const mapping:ColumnMapping={name:"",surname:"",phone:"",email:"",group:""};
     headers.forEach(header=>{const h=header.toLowerCase();
@@ -95,6 +117,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
       if(/phone|mobile|cell|contact/.test(h)&&!mapping.phone)mapping.phone=header;
       if(h.includes("email"))mapping.email=header;
     });
+    if (!headersPresent && headers.length === 1) mapping.phone = headers[0];
     setColumnMapping(mapping);setParsedContacts([]);setStep("mapping");
   };
 
@@ -185,10 +208,13 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
     });
     
     setParsedContacts(contacts);
+    setPhoneDecisions({});
     setStep("preview");
   };
 
   const handleImport = async () => {
+    if (!selectedGroupId && !window.confirm('These contacts have no destination group. Choose a group so they are easy to select when sending SMS. Import to Uncategorized anyway?')) return;
+    if (destinationMissing || step === "importing" || pendingReview > 0 || validContacts.length === 0) return;
     if (!file) {
       toast({
         title: "No file selected",
@@ -212,6 +238,8 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
         email: columnMapping.email,
       }));
       formData.append('skip_duplicates', skipDuplicates.toString());
+      formData.append('phone_review_version', '1');
+      formData.append('phone_review_decisions', JSON.stringify(Object.entries(phoneDecisions).map(([index, decision]) => ({ row: Number(index) + 2, ...decision }))));
       if (selectedGroupId) {
         formData.append('group_id', selectedGroupId);
       }
@@ -227,7 +255,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
         setResult(counts);setStep("result");
         toast({
           title: "Import complete",
-          description: `${counts.imported} contacts imported, ${counts.duplicates} duplicates skipped, ${counts.failed} rows failed.`,
+          description: `${counts.imported} new contacts imported to ${destinationName}; ${selectedGroupId ? `${counts.existing_added_to_group ?? 0} existing contacts added to the group; ` : ''}${counts.duplicates} duplicate rows avoided; ${counts.failed} rows failed.`,
         });
         onSuccess?.();
 
@@ -251,16 +279,15 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
     }
   };
 
-  const validContacts = parsedContacts.filter((c) => {
-    // Phone is required (mandatory field)
-    if (!c.phone) return false;
-    // Name and email are optional
-    return true;
-  });
+  const reviewPhones = useMemo(() => parsedContacts.map(contact => contact.phone ?? ""), [parsedContacts]);
+  const previewContacts = parsedContacts.map((contact, index) => ({ ...contact, phone: resolvedImportPhone(contact.phone ?? "", phoneDecisions[index]) ?? "" }));
+  const validContacts = previewContacts.filter(contact => contact.phone);
+  const pendingReview = reviewPhones.filter((phone, index) => !analyzeSouthAfricanPhone(phone).normalized && !phoneDecisions[index]).length;
+  const rejectedRows = Object.values(phoneDecisions).filter(decision => decision.action === "reject").length;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90dvh] grid-cols-1 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import Contacts</DialogTitle>
           <DialogDescription>
@@ -274,6 +301,25 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
           </DialogDescription>
         </DialogHeader>
 
+        <div className="min-w-0 break-words rounded-lg border border-border bg-muted/40 p-3 space-y-2">
+          <p className="text-sm font-medium" aria-live="polite">Import destination: {destinationName}</p>
+          {!["importing", "result"].includes(step) && <>
+            <Label htmlFor="import-destination">Destination group</Label>
+            <Select value={selectedGroupId || "__empty__"} onValueChange={value => setSelectedGroupId(value === "__empty__" ? "" : value)}>
+              <SelectTrigger id="import-destination"><SelectValue placeholder="Select a group" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__empty__">Uncategorized (no group)</SelectItem>
+                {realGroups.map(group => <SelectItem key={String(group.id)} value={String(group.id)}>{group.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </>}
+          <p className="text-xs text-muted-foreground">{selectedGroupId
+            ? "New contacts and existing matching phone numbers will be added to this group. Other group memberships and opt-out settings stay unchanged."
+            : "New contacts will be saved without a group. Existing contacts keep their current groups."}</p>
+          {destinationMissing && <p role="alert" className="text-sm text-destructive">Choose an available destination before importing.</p>}
+          {!['importing','result','reading'].includes(step) && <div className="space-y-2"><Label htmlFor="import-new-group">Or create a group for this import</Label><div className="flex flex-wrap gap-2"><Input id="import-new-group" className="min-w-0 flex-1" placeholder="For example: Customers" value={newGroupName} maxLength={100} disabled={creatingGroup} onChange={e=>setNewGroupName(e.target.value)}/><Button variant="outline" disabled={creatingGroup || !newGroupName.trim()} onClick={async()=>{setCreatingGroup(true);try{const response=await createContactGroup(newGroupName.trim());const group=response.data?.group??(response as unknown as {group?:{id:string;name:string}}).group;if(!response.success || !group?.id)throw new Error('Unable to create group.');setCreatedGroups(previous=>[...previous,{id:String(group.id),name:group.name}]);setSelectedGroupId(String(group.id));setNewGroupName('');}catch(error){handleApiError(error);}finally{setCreatingGroup(false);}}}>Create group</Button></div><p className="text-xs text-muted-foreground">Your selected file and column choices will be kept.</p></div>}
+        </div>
+
         {/* Upload Step */}
         {step === "upload" && (
           <div className="space-y-6">
@@ -286,7 +332,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                   <a className="text-sm underline" href="/contact-import-template.csv" download>Download a blank CSV template (opens in Excel)</a>
                   <div className="text-sm text-blue-800 space-y-2">
                     <p>Upload Excel (.xlsx) or CSV. Maximum 5 MB and 10,000 contacts per sheet.</p><p><strong>Required:</strong> Phone. Map your own headings in the next step.</p>
-                    <p><strong>Optional:</strong> Name, Surname and Email.</p><ol className="list-decimal pl-5 space-y-1"><li>Put unique headings in row 1 and one contact per row. Do not use title rows, merged cells or formulas.</li><li>In Excel, format Phone as Text before entering numbers. Use +27… or a full local number such as 0631540696. Formatting after a leading zero was lost will not restore it.</li><li>Save as .xlsx. Upload, choose the contact worksheet, map your headings, and select an existing group if needed.</li><li>Check the preview before importing. Keep duplicate skipping enabled and read the final imported/skipped/failed counts.</li></ol>
+                    <p><strong>Optional:</strong> Name, Surname and Email.</p><ol className="list-decimal pl-5 space-y-1"><li>Use one contact per row, ideally with unique headings in row 1. If there are no headings, turn off the headings option when mapping. Do not use title rows, merged cells or formulas.</li><li>In Excel, format Phone as Text. Use 0821234567, 27821234567 or +27821234567. If a zero has already been lost, review and approve a proposed correction before importing.</li><li>Confirm the destination group above. Save as .xlsx, upload, choose the contact worksheet and map your columns.</li><li>Accept or reject every flagged number in the preview. Duplicate numbers reuse saved contacts without changing their details or opt-out settings.</li></ol>
                     <p className="mt-3"><strong>Example CSV:</strong></p>
                     <code className="block bg-white p-2 rounded border border-blue-200 font-mono text-xs mt-1">
                       Full Name,Phone,Email<br/>
@@ -295,10 +341,10 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                       ,+27555111111,bob@example.com
                     </code>
                     <div className="mt-3 space-y-1 text-xs">
-                      <p>✓ Phone: Required - must include country code (e.g., +27, +1, +44)</p>
+                      <p>✓ Phone: Required. Use a South African mobile number starting with 0, 27 or +27.</p>
                       <p>✓ Full Name: Optional - can be left empty</p>
                       <p>✓ Email: Optional. A phone number is always required.</p>
-                      <p>Choose an existing group in the next step; no Group column is required.</p>
+                      <p>Confirm the destination group above; no Group column is required.</p>
                     </div>
                   </div>
                 </div>
@@ -332,7 +378,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
         )}
 
         {step==="reading"&&<div className="p-8 flex gap-3"><Loader2 className="animate-spin"/>Reading file…</div>}
-        {step==="sheet"&&<div className="space-y-4"><Label>Contact worksheet</Label><Select value={sheetIndex} onValueChange={setSheetIndex}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{sheets.map((s,i)=><SelectItem key={i} value={String(i)}>{s.sheet}</SelectItem>)}</SelectContent></Select><p className="text-sm">Only this worksheet will be imported. Row 1 must contain your column headings.</p><Button onClick={()=>{try{applySheet(sheets[Number(sheetIndex)].data);}catch(e){toast({title:"Check this worksheet",description:e instanceof Error?e.message:"Invalid sheet",variant:"destructive"});}}}>Use this worksheet</Button></div>}
+        {step==="sheet"&&<div className="space-y-4"><Label>Contact worksheet</Label><Select value={sheetIndex} onValueChange={setSheetIndex}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{sheets.map((s,i)=><SelectItem key={i} value={String(i)}>{s.sheet}</SelectItem>)}</SelectContent></Select><p className="text-sm">Only this worksheet will be imported. You can confirm whether it has column headings in the next step.</p><Button onClick={()=>{try{applySheet(sheets[Number(sheetIndex)].data);}catch(e){toast({title:"Check this worksheet",description:e instanceof Error?e.message:"Invalid sheet",variant:"destructive"});}}}>Use this worksheet</Button></div>}
         {/* Mapping Step */}
         {step === "mapping" && (
           <div className="space-y-6">
@@ -415,44 +461,24 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
 
             </div>
 
-            <div className="space-y-3 pt-4 border-t">
-              <Label>Assign to Existing Group (Optional)</Label>
-              <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a group..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__empty__">— No group —</SelectItem>
-                  {groups
-                    .filter(g => !g.is_virtual)  // Filter out virtual groups
-                    .map((group) => (
-                      <SelectItem key={String(group.id)} value={String(group.id)}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Assign new contacts to this existing group. CSV Group columns are ignored. Create groups in Contacts before importing.
-              </p>
-            </div>
-
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="skipFirst"
-                  checked={skipFirstRow}
-                  disabled
+                  checked={hasHeaders}
+                  onCheckedChange={checked => { try { applySheet(sourceRows, checked === true); } catch (error) { toast({title:"Check the headings",description:error instanceof Error ? error.message : "Invalid headings",variant:"destructive"}); } }}
                 />
-                <Label htmlFor="skipFirst">First row must contain column headings</Label>
+                <Label htmlFor="skipFirst">First row contains column headings</Label>
               </div>
+              <p className="text-xs text-muted-foreground">{hasHeaders ? "The first populated row is used as headings, not a contact." : "No headings: the first populated row is included as a contact. Map Column 1, Column 2 and so on above."}</p>
+              <p className="break-all text-xs text-muted-foreground">First contact phone: {csvData[0]?.[csvHeaders.indexOf(columnMapping.phone)] || "Choose the phone column"}</p>
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="skipDupes"
                   checked={skipDuplicates}
-                  onCheckedChange={(c) => setSkipDuplicates(!!c)}
+                  disabled
                 />
-                <Label htmlFor="skipDupes">Skip duplicate phone numbers</Label>
+                <Label htmlFor="skipDupes">Prevent duplicate contacts by phone number</Label>
               </div>
             </div>
           </div>
@@ -460,19 +486,20 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
 
         {/* Preview Step */}
         {step === "preview" && (
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
+            <ContactPhoneReview phones={reviewPhones} rowNumbers={rowNumbers} decisions={phoneDecisions} onChange={setPhoneDecisions} />
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
               <div className="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2">
                 <CheckCircle className="h-4 w-4 text-success" />
                 <span className="text-sm font-medium text-success">
-                  {validContacts.length} valid contacts
+                  {validContacts.length} rows ready to import
                 </span>
               </div>
               {parsedContacts.length - validContacts.length > 0 && (
                 <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2">
                   <AlertCircle className="h-4 w-4 text-destructive" />
                   <span className="text-sm font-medium text-destructive">
-                    {parsedContacts.length - validContacts.length} invalid rows
+                    {pendingReview} need review · {rejectedRows} rejected
                   </span>
                 </div>
               )}
@@ -481,11 +508,11 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
             {/* Validation message */}
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
               <p className="text-xs text-amber-800">
-                <strong>Validation Rules:</strong> Full Name required • Phone or Email required • Names must include both first and last name
+                <strong>Validation:</strong> Names and emails are optional. The server rechecks every correction and duplicate before saving. Matching saved contacts are reused, not overwritten. Rejected rows are excluded.
               </p>
             </div>
 
-            <div className="max-h-64 overflow-auto rounded-lg border border-border">
+            <div className="max-h-64 max-w-full overflow-auto rounded-lg border border-border">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-muted">
                   <tr>
@@ -496,8 +523,8 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {parsedContacts.slice(0, 10).map((contact, i) => {
-                    const isValid = validContacts.includes(contact);
+                  {previewContacts.slice(0, 10).map((contact, i) => {
+                    const isValid = Boolean(contact.phone);
                     return (
                       <tr key={i} className={isValid ? "" : "bg-destructive/5"}>
                         <td className="px-4 py-2">
@@ -510,7 +537,7 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                         <td className={cn("px-4 py-2", isValid ? "text-foreground" : "text-destructive")}>
                           {contact.name || "—"}
                         </td>
-                        <td className="px-4 py-2 text-foreground">{contact.phone || "—"}</td>
+                        <td className="px-4 py-2 text-foreground">{contact.phone || (phoneDecisions[i]?.action === "reject" ? "Rejected" : "Needs review")}</td>
                         <td className="px-4 py-2 text-foreground">{contact.email || "—"}</td>
                       </tr>
                     );
@@ -518,9 +545,9 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
                 </tbody>
               </table>
             </div>
-            {validContacts.length > 10 && (
+            {previewContacts.length > 10 && (
               <p className="text-sm text-muted-foreground">
-                Showing first 10 of {validContacts.length} contacts
+                Showing first 10 of {previewContacts.length} source rows
               </p>
             )}
           </div>
@@ -535,7 +562,8 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
           </div>
         )}
 
-        {step==="result"&&result&&<div role="status" className="space-y-3 rounded-lg border p-5"><p className="text-lg font-semibold">{result.imported} contacts imported</p><p>{result.duplicates} duplicate contacts found and skipped.</p><p>{result.failed} rows could not be imported.</p>{result.duplicates>0&&<p className="text-sm text-muted-foreground">Existing contacts were kept. Duplicate rows were not added again.</p>}</div>}
+        {step==="result"&&result&&<div role="status" className="space-y-3 rounded-lg border p-5"><p className="text-lg font-semibold">{result.imported} new contacts imported</p>{selectedGroupId&&<p>{result.existing_added_to_group ?? 0} existing contacts added to {destinationName}.</p>}<p>{result.duplicates} duplicate rows found; no duplicate contacts created.</p><p>{result.failed} rows could not be imported.</p>{result.duplicates>0&&<p className="text-sm text-muted-foreground">Existing contact details, other group memberships and opt-out settings were kept.</p>}</div>}
+        {step==="result"&&result&&<p className="text-sm text-muted-foreground">{result.corrected ?? 0} number corrections approved; {result.rejected ?? 0} rows excluded by your choice.</p>}
         <DialogFooter>
           {step==="result"&&<Button onClick={handleClose}>Done</Button>}
           {step === "upload" && (
@@ -558,8 +586,8 @@ export function ContactImportModal({ open, onOpenChange, onSuccess, groups = [] 
               <Button variant="outline" onClick={() => setStep("mapping")}>
                 Back
               </Button>
-              <Button onClick={handleImport} disabled={validContacts.length === 0}>
-                Import {validContacts.length} Contacts
+              <Button className="h-auto min-h-10 max-w-full whitespace-normal break-words" onClick={handleImport} disabled={creatingGroup || validContacts.length === 0 || destinationMissing || pendingReview > 0}>
+                Import {validContacts.length} Contacts to {destination?.name ?? "All Contacts"}
               </Button>
             </>
           )}

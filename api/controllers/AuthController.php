@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/../services/AdminNotificationService.php';
 require_once __DIR__ . '/../services/AuditLogService.php';
+require_once __DIR__ . '/../core/SafeImageUpload.php';
 
 class AuthController {
     
@@ -357,21 +358,10 @@ class AuthController {
                     return;
                 }
                 
-                $allowedExtensions = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
-                if (!in_array(strtolower($extension), $allowedExtensions)) {
-                    Response::error('Invalid image type', 400);
-                    return;
-                }
-                
-                if (strlen($imageData) > 2 * 1024 * 1024) {
-                    Response::error('Image too large (max 2MB)', 400);
-                    return;
-                }
-                
                 $uploadsDir = __DIR__ . '/../uploads/avatars';
-                if (!is_dir($uploadsDir)) {
-                    mkdir($uploadsDir, 0755, true);
-                }
+                try{$filename=SafeImageUpload::storeBytes($imageData,$uploadsDir,(string)$user['id']);}
+                catch(InvalidArgumentException $e){Response::error($e->getMessage(),400);return;}
+                catch(Throwable $e){Response::error('Failed to save image',500);return;}
                 
                 // Delete old avatar
                 if (!empty($user['avatar_url'])) {
@@ -379,14 +369,6 @@ class AuthController {
                     if (file_exists($oldPath)) {
                         unlink($oldPath);
                     }
-                }
-                
-                $filename = $user['id'] . '_' . time() . '.' . $extension;
-                $filepath = $uploadsDir . '/' . $filename;
-                
-                if (!file_put_contents($filepath, $imageData)) {
-                    Response::error('Failed to save image', 500);
-                    return;
                 }
                 
                 $avatarUrl = '/api/uploads/avatars/' . $filename;
@@ -414,21 +396,10 @@ class AuthController {
             return;
         }
         
-        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if (!in_array($file['type'], $allowedTypes)) {
-            Response::error('Invalid file type', 400);
-            return;
-        }
-        
-        if ($file['size'] > 2 * 1024 * 1024) {
-            Response::error('File too large (max 2MB)', 400);
-            return;
-        }
-        
         $uploadsDir = __DIR__ . '/../uploads/avatars';
-        if (!is_dir($uploadsDir)) {
-            mkdir($uploadsDir, 0755, true);
-        }
+        try{$filename=SafeImageUpload::storeUploaded($file,$uploadsDir,(string)$user['id']);}
+        catch(InvalidArgumentException $e){Response::error($e->getMessage(),400);return;}
+        catch(Throwable $e){Response::error('Failed to save file',500);return;}
         
         // Delete old avatar
         if (!empty($user['avatar_url'])) {
@@ -436,15 +407,6 @@ class AuthController {
             if (file_exists($oldPath)) {
                 unlink($oldPath);
             }
-        }
-        
-        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $filename = $user['id'] . '_' . time() . '.' . $extension;
-        $filepath = $uploadsDir . '/' . $filename;
-        
-        if (!move_uploaded_file($file['tmp_name'], $filepath)) {
-            Response::error('Failed to save file', 500);
-            return;
         }
         
         $avatarUrl = '/api/uploads/avatars/' . $filename;

@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   MessageSquare,
+  Send,
   Users,
   FileText,
   Wallet,
@@ -22,11 +23,12 @@ import { LogoSidebar } from "@/components/layout/Logo";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Send Messages", href: "/sms-campaigns/new", icon: Send },
   { name: "SMS Campaigns", href: "/sms-campaigns", icon: MessageSquare },
   { name: "Contacts", href: "/contacts", icon: Users },
   { name: "Templates", href: "/templates", icon: FileText },
-  { name: "Wallet", href: "/wallet", icon: Wallet },
   { name: "Reports", href: "/reports", icon: BarChart3 },
+  { name: "Billing & Credits", href: "/wallet", icon: Wallet },
   ...(import.meta.env.DEV ? [{ name: "Tests", href: "/test-dashboard", icon: Bug }] : []),
   { name: "Settings", href: "/settings", icon: Settings },
 ];
@@ -89,15 +91,16 @@ export function Sidebar({ mobile = false, onNavigate, collapsed = false, onColla
         <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
           {navigation.map((item) => {
             const isActive =
-              item.href === "/dashboard"
-                ? location.pathname === "/dashboard"
-                : location.pathname.startsWith(item.href);
+              item.href === "/dashboard" || item.href === "/sms-campaigns/new"
+                ? location.pathname === item.href
+                : location.pathname.startsWith(item.href) && !(item.href === '/sms-campaigns' && location.pathname === '/sms-campaigns/new');
 
             return (
               <Link
                 key={item.name}
                 data-tour={item.name==='Contacts'?'contacts':undefined}
                 title={item.name}
+                aria-current={isActive?'page':undefined}
                 to={item.href}
                 onClick={onNavigate}
                 className={cn(

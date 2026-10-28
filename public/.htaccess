@@ -8,7 +8,7 @@ ErrorDocument 404 /404.html
 RewriteRule ^landing/?$ https://sms.ieosuia.com/ [R=301,L,NE]
 RewriteCond %{THE_REQUEST} \s/+index\.html[?\s] [NC]
 RewriteRule ^index\.html$ https://sms.ieosuia.com/ [R=301,L,NE]
-RewriteRule ^(features|use-cases|contact-management|scheduled-sms|delivery-reports|faq|pricing|documentation|support|contact|careers|privacy-policy|terms-of-service|cookie-policy|popia-compliance)/+$ https://sms.ieosuia.com/$1 [R=301,L,NE]
+RewriteRule ^(features|use-cases|contact-management|scheduled-sms|delivery-reports|faq|pricing|banking-details|documentation|support|contact|careers|privacy-policy|terms-of-service|cookie-policy|popia-compliance)/+$ https://sms.ieosuia.com/$1 [R=301,L,NE]
 RewriteCond %{THE_REQUEST} \s/+public-pages/ [NC]
 RewriteRule ^public-pages/([a-z-]+)\.html$ https://sms.ieosuia.com/$1 [R=301,L,NE]
 
@@ -25,15 +25,12 @@ RewriteRule \.map$ - [R=404,L,NC]
 # Legacy browser icon requests must never serve the old template favicon.
 RewriteRule ^favicon\.ico$ /ieosuia-icon.png [R=302,L,NE]
 
-# Central identity entry points: redirect before the React shell can render.
-RewriteRule ^login/?$ /api/auth/ieosuia/start [R=302,L,NE]
-RewriteRule ^register/?$ /api/auth/ieosuia/start?screen_hint=signup [R=302,L,NE]
-RewriteRule ^guymhan/login/?$ /api/auth/ieosuia/start?account_type=admin [R=302,L,NE]
+# CentralAuthRedirect owns login so explicit logout can request fresh authentication.
 
 RewriteRule ^assets/ - [L]
 RewriteRule ^api(?:/|$) - [L]
-RewriteRule ^(features|use-cases|contact-management|scheduled-sms|delivery-reports|faq|pricing|documentation|support|contact|careers|privacy-policy|terms-of-service|cookie-policy|popia-compliance)$ public-pages/$1.html [L]
-RewriteRule ^(?:dashboard|sms-campaigns|email-campaigns|contacts|templates|wallet|payment|reports|settings|profile|guymhan|auth|verify-email|verify-email-reminder|forgot-password)(?:/.*)?$ app.html [L]
+RewriteRule ^(features|use-cases|contact-management|scheduled-sms|delivery-reports|faq|pricing|banking-details|documentation|support|contact|careers|privacy-policy|terms-of-service|cookie-policy|popia-compliance)$ public-pages/$1.html [L]
+RewriteRule ^(?:login|register|dashboard|sms-campaigns|email-campaigns|contacts|templates|wallet|payment|reports|settings|profile|guymhan|auth|verify-email|verify-email-reminder|forgot-password)(?:/.*)?$ app.html [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ - [R=404,L]

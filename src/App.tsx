@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { PublicSeo } from "./seo/PublicSeo";
 import "./seo/public-seo.css";
 import PublicGuide from "./pages/PublicGuide";
@@ -7,8 +7,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, ProtectedRoute } from "@/hooks/useAuth";
-import { AdminRoute } from "@/components/auth/AdminRoute";
+import { AuthProvider, ProtectedRoute as AuthenticatedRoute } from "@/hooks/useAuth";
+import { AdminRoute as AuthorizedAdminRoute } from "@/components/auth/AdminRoute";
+import { AppLoadingScreen } from "@/components/ui/page-loading";
+import { PortalPageLoading } from "@/components/layout/PortalPageLoading";
 
 import { CookieConsent } from "@/components/CookieConsent";
 import { PublicChrome } from "@/components/layout/PublicChrome";
@@ -45,10 +47,20 @@ import CentralAuthRedirect from "@/components/auth/CentralAuthRedirect";
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminOperations = lazy(() => import("./pages/AdminOperations"));
 import Pricing from "./pages/Pricing";
+import BankingDetails from "./pages/BankingDetails";
 const AdminManagement = lazy(() => import("./pages/AdminManagement"));
 const AdminOperationalLogs = lazy(() => import("./pages/AdminOperationalLogs"));
 
 const queryClient = new QueryClient();
+
+// Keep chunk-loading placeholders behind the existing access guards.
+function ProtectedRoute({ children, requireVerified = false }: { children: ReactNode; requireVerified?: boolean }) {
+  return <AuthenticatedRoute requireVerified={requireVerified}><Suspense fallback={<PortalPageLoading />}>{children}</Suspense></AuthenticatedRoute>;
+}
+
+function AdminRoute({ children }: { children: ReactNode }) {
+  return <AuthorizedAdminRoute><Suspense fallback={<PortalPageLoading admin />}>{children}</Suspense></AuthorizedAdminRoute>;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -60,12 +72,13 @@ const App = () => (
           <CookieConsent />
           <PublicChrome />
           <PublicSeo />
-          <Suspense fallback={<div role="status" className="p-8">Loading page...</div>}>
+          <Suspense fallback={<AppLoadingScreen />}>
           <Routes>
             {["features","use-cases","contact-management","scheduled-sms","delivery-reports","faq"].map(path => <Route key={path} path={"/"+path} element={<PublicGuide/>}/>)}
             <Route path="/" element={<Landing />} />
             <Route path="/landing" element={<Navigate to="/" replace />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/banking-details" element={<BankingDetails />} />
             <Route path="/login" element={<CentralAuthRedirect />} />
             <Route path="/register" element={<CentralAuthRedirect mode="signup" />} />
             <Route path="/auth/callback" element={<CentralAuthRedirect callback />} />

@@ -1,15 +1,19 @@
 <?php
+require_once __DIR__.'/../domain/CreditPurchaseSettlement.php';
+require_once __DIR__.'/../domain/SmsDeliveryPresentation.php';
+require_once __DIR__.'/../domain/SmsMessageState.php';
 /** Read-only presentation data. Does not queue sends, alter balances or update statuses. */
 final class PortalReadModel
 {
     public static function overview(PDO $pdo, int $user): array
     {
         $scalar = static function(string $sql) use ($pdo, $user) { $q=$pdo->prepare($sql);$q->execute([$user]);return $q->fetchColumn(); };
+        $accepted=SmsMessageState::acceptedSql();$networkFailure=SmsMessageState::networkFailureSql();
         return [
             'contacts'=>(int)$scalar('SELECT COUNT(*) FROM contacts WHERE user_id=?'),
             'bought_credits'=>(int)$scalar("SELECT COUNT(*) FROM payments WHERE user_id=? AND status='completed'")>0,
-            'sent_campaign'=>(int)$scalar("SELECT COUNT(*) FROM sms_messages WHERE user_id=? AND (sent_at IS NOT NULL OR state IN ('sent','delivered'))")>0,
-            'checked_delivery'=>(int)$scalar("SELECT COUNT(*) FROM sms_messages WHERE user_id=? AND (state='delivered' OR (state='failed' AND sent_at IS NOT NULL))")>0,
+            'sent_campaign'=>(int)$scalar("SELECT COUNT(*) FROM sms_messages WHERE user_id=? AND $accepted")>0,
+            'checked_delivery'=>(int)$scalar("SELECT COUNT(*) FROM sms_messages WHERE user_id=? AND (state='delivered' OR $networkFailure)")>0,
         ];
     }
 
@@ -46,20 +50,31 @@ final class PortalReadModel
         // Older live tables have different utf8mb4 collations. Normalize this
         // read only, not the tables, before combining references and descriptions.
         $collate=$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql'?' COLLATE utf8mb4_unicode_ci':'';
+        $purchaseJoin=CreditPurchaseSettlement::available($pdo)?' LEFT JOIN credit_purchase_orders po ON po.payment_id=p.id':'';
+        $purchaseCredits=$purchaseJoin!==''?'COALESCE(po.credits,p.credits_added)':'p.credits_added';
+        // Reconciled acceptance does not invent sent_at. A unique canonical,
+        // owned settlement supplies an accounting-observation date instead.
+        // The scalar aggregate cannot multiply usage if legacy ledger data is
+        // inconsistent; ambiguous or unrelated ledger rows supply no date.
+        $settledAt="(SELECT MAX(sl.created_at) FROM wallet_ledger sl JOIN wallets sw ON sw.id=sl.wallet_id AND sw.user_id=sm.user_id WHERE sl.user_id=sm.user_id AND sl.campaign_id=sm.campaign_id AND sl.idempotency_key=CONCAT('sms-message:',sm.id,':settle') AND sl.operation='sms_settlement' AND sl.direction='debit' AND sl.payment_id IS NULL AND sl.amount=sm.actual_charge HAVING COUNT(*)=1)";
+        $accepted=SmsMessageState::acceptedSql('sm');
         $sql="SELECT * FROM (
           SELECT CONCAT('payment-',p.id) id,p.created_at,'Purchase' type,p.merchant_reference$collate reference,
-            p.merchant_reference$collate detail,p.amount, p.credits_added credits,
-            (CASE WHEN p.status='completed' THEN 'paid' WHEN p.status='cancelled' THEN 'failed' ELSE p.status END)$collate status
-          FROM payments p WHERE p.user_id=?
+            p.merchant_reference$collate detail,p.amount, $purchaseCredits credits,
+            (CASE WHEN p.status='completed' THEN 'paid' WHEN p.status='cancelled' THEN 'failed' ELSE p.status END)$collate status,'purchase_created_at'$collate date_semantics
+          FROM payments p $purchaseJoin WHERE p.user_id=?
           UNION ALL
-          SELECT CONCAT('campaign-',c.id),MAX(m.sent_at),'SMS usage',CAST(c.id AS CHAR)$collate,c.name$collate,SUM(m.actual_charge),SUM(m.segment_count),'completed'$collate
-          FROM sms_campaigns c JOIN sms_messages m ON m.campaign_id=c.id AND m.user_id=c.user_id
-          WHERE c.user_id=? AND m.actual_charge>0 AND m.sent_at>=? AND m.sent_at<? GROUP BY c.id,c.name
+          SELECT CONCAT('campaign-',c.id),MAX(m.usage_at),'SMS usage',CAST(c.id AS CHAR)$collate,
+            (CASE WHEN SUM(CASE WHEN m.sent_at IS NULL THEN 1 ELSE 0 END)>0 THEN CONCAT(c.name,' (includes charge-recorded dates; send times unverified)') ELSE c.name END)$collate,
+            SUM(m.actual_charge),SUM(m.segment_count),'completed'$collate,
+            (CASE WHEN SUM(CASE WHEN m.sent_at IS NULL THEN 1 ELSE 0 END)>0 THEN 'includes_charge_recorded_at' ELSE 'sent_at' END)$collate
+          FROM sms_campaigns c JOIN (SELECT sm.*,COALESCE(sm.sent_at,$settledAt) usage_at FROM sms_messages sm WHERE $accepted) m ON m.campaign_id=c.id AND m.user_id=c.user_id
+          WHERE c.user_id=? AND m.actual_charge>0 AND m.usage_at>=? AND m.usage_at<? GROUP BY c.id,c.name
           UNION ALL
           SELECT CONCAT('adjustment-',l.id),l.created_at,'Credit adjustment',l.idempotency_key$collate,
             COALESCE((SELECT t.description FROM wallet_transactions t WHERE t.wallet_id=l.wallet_id AND t.reference$collate=l.idempotency_key$collate LIMIT 1),REPLACE(l.operation,'_',' '))$collate,
             CASE WHEN l.direction='debit' THEN -l.amount ELSE l.amount END,
-            CASE WHEN l.direction='debit' THEN -FLOOR((l.amount+0.000001)/?) ELSE FLOOR((l.amount+0.000001)/?) END,'completed'$collate
+            CASE WHEN l.direction='debit' THEN -FLOOR((l.amount+0.000001)/?) ELSE FLOOR((l.amount+0.000001)/?) END,'completed'$collate,'adjustment_recorded_at'$collate
           FROM wallet_ledger l WHERE l.user_id=? AND l.payment_id IS NULL AND l.campaign_id IS NULL AND l.direction IN ('credit','debit') AND l.operation<>'payment_credit'
         ) activity WHERE created_at>=? AND created_at<?";
         $args=[$user,$user,$start,$end,$price,$price,$user,$start,$end];
@@ -72,36 +87,52 @@ final class PortalReadModel
         return ['transactions'=>$rows,'total'=>$total,'page'=>$page,'last_page'=>max(1,(int)ceil($total/$per)),'total_paid'=>(float)$q->fetchColumn()];
     }
 
-    public static function recipientLabel(string $state, ?string $reason): string
+    public static function recipientLabel(string $state, ?string $reason, bool $submitted=true): string
     {
-        return match($state){'delivered'=>'Delivered','failed'=>'Not Delivered','pending','queued','retry'=>'Pending dispatch','processing'=>'Processing','sent'=>str_starts_with((string)$reason,'DLR lookup:')?'Delivery Status Unavailable':'Delivery Confirmation Pending','skipped'=>'Skipped',default=>ucfirst(str_replace('_',' ',$state))};
+        return SmsDeliveryPresentation::label($state,$reason,$submitted);
     }
 
-    public static function reason(string $state, ?string $reason): string
+    public static function reason(string $state, ?string $reason, bool $submitted=true): string
     {
-        // A former lookup error must not survive as the explanation of a newer outcome.
-        if($state!=='failed'||!$reason||str_starts_with($reason,'DLR lookup:'))return '—';
-        return preg_replace('/^(Provider|Network|SMS)\s*(error|failure)?\s*:\s*/i','',trim($reason));
+        // Derive every explanation from the latest state, never raw provider text.
+        return SmsDeliveryPresentation::details($state,$reason,$submitted);
     }
 
-    public static function recipients(PDO $pdo, int $user, int $id, string $state='all', string $search=''): array
+    public static function recipients(PDO $pdo, int $user, int $id, string $state='all', string $search='', string $segments='all', ?int $page=null): array
     {
         $q=$pdo->prepare('SELECT id,name FROM sms_campaigns WHERE id=? AND user_id=?');$q->execute([$id,$user]);$campaign=$q->fetch(PDO::FETCH_ASSOC);
         if(!$campaign)throw new OutOfBoundsException('Campaign not found');
         $where='m.user_id=? AND m.campaign_id=?';$args=[$user,$id];
-        $choice=match($state){'all'=>'All recipients','pending'=>'Pending dispatch','processing'=>'Processing','sent'=>'Delivery Confirmation Pending','delivered'=>'Delivered','failed'=>'Not Delivered',default=>throw new InvalidArgumentException('Invalid recipient filter')};
-        if($state==='pending')$where.=" AND m.state IN ('pending','queued','retry')";
-        elseif($state==='sent')$where.=" AND m.state='sent' AND (m.last_error IS NULL OR m.last_error NOT LIKE 'DLR lookup:%')";
-        elseif($state!=='all'){$where.=' AND m.state=?';$args[]=$state;}
-        $sql="SELECT m.id,m.destination,m.state,m.segment_count,m.sent_at,m.last_error,
+        $choice=$state==='all'?'All recipients':($state==='failed_to_send'?'Failed to send':SmsDeliveryPresentation::label($state));
+        $where.=SmsMessageState::filter($state);
+        if(!in_array($segments,['all','1','multi'],true))throw new InvalidArgumentException('Invalid segment filter');
+        if($segments==='1')$where.=' AND m.segment_count=1';
+        if($segments==='multi')$where.=' AND m.segment_count>1';
+        $sql="SELECT m.id,m.destination,m.state,m.segment_count,m.sent_at,m.last_error,m.actual_charge,
           (SELECT TRIM(CONCAT(COALESCE(c.name,''),' ',COALESCE(c.surname,''))) FROM contacts c WHERE c.user_id=m.user_id AND c.phone_normalized=m.destination ORDER BY c.id LIMIT 1) contact
-          FROM sms_messages m WHERE $where ORDER BY m.id";
+          FROM sms_messages m WHERE $where";
+        // Paginate the read query, not a fully materialised recipient array.
+        // Exports omit page and keep the same search/status/segment predicate.
+        $sql="SELECT * FROM ($sql) recipient_view";
+        if($search!==''){
+            $pattern='%'.str_replace(['!','%','_'],['!!','!%','!_'],strtolower($search)).'%';
+            $sql.=" WHERE LOWER(COALESCE(NULLIF(contact,''),'Unsaved recipient')) LIKE ? ESCAPE '!' OR LOWER(destination) LIKE ? ESCAPE '!'";
+            $args[]=$pattern;$args[]=$pattern;
+        }
+        $count=$pdo->prepare("SELECT COUNT(*) FROM ($sql) matching_recipients");$count->execute($args);$total=(int)$count->fetchColumn();
+        $sql.=' ORDER BY id';
+        if($page!==null)$sql.=' LIMIT 50 OFFSET '.((max(1,$page)-1)*50);
         $q=$pdo->prepare($sql);$q->execute($args);$rows=[];
         foreach($q->fetchAll(PDO::FETCH_ASSOC) as $m){
             $contact=$m['contact']?:'Unsaved recipient';
-            if($search!==''&&stripos($contact,$search)===false&&stripos($m['destination'],$search)===false)continue;
-            $rows[]=['id'=>(string)$m['id'],'contact'=>$contact,'number'=>$m['destination'],'status'=>self::recipientLabel($m['state'],$m['last_error']),'segments'=>(int)$m['segment_count'],'sent'=>$m['sent_at']?date('j M Y, H:i',strtotime($m['sent_at'])):'—','result'=>self::reason($m['state'],$m['last_error'])];
+            $submitted=SmsMessageState::accepted($m);
+            $rows[]=['id'=>(string)$m['id'],'contact'=>$contact,'number'=>$m['destination'],
+                'state'=>$m['state'],'technical_status'=>SmsMessageState::technicalStatus($m),
+                'reason_code'=>SmsDeliveryPresentation::reasonCode($m['state'],$m['last_error'],$submitted),
+                'status'=>self::recipientLabel($m['state'],$m['last_error'],$submitted),
+                'segments'=>(int)$m['segment_count'],'sent'=>$m['sent_at']?date('j M Y, H:i',strtotime($m['sent_at'])):'—',
+                'result'=>self::reason($m['state'],$m['last_error'],$submitted)];
         }
-        return ['name'=>$campaign['name'],'choice'=>$choice,'rows'=>$rows,'total'=>count($rows)];
+        return ['name'=>$campaign['name'],'choice'=>$choice,'rows'=>$rows,'total'=>$total];
     }
 }

@@ -18,19 +18,25 @@ export function parseContactCsv(text: string): string[][] {
   return rows;
 }
 
-export function prepareContactSheet(input: unknown[][]): {headers:string[];data:string[][]} {
-  const rows=input.map(row=>row.map(value=>value==null?'':value instanceof Date?value.toISOString():String(value).trim())).filter(row=>row.some(Boolean));
-  if(rows.length<2)throw new Error('Include column headings in the first row and at least one contact underneath.');
-  const headers=rows[0];
+export function contactSheetHasHeaders(input: unknown[][]): boolean {
+  const first = input.find(row => row.some(value => value != null && String(value).trim() !== ''));
+  return !first?.some(value => /^\+?\d{9,13}$/.test(String(value ?? '').replace(/[\s().-]/g, '')));
+}
+
+export function prepareContactSheet(input: unknown[][], hasHeaders = true): {headers:string[];data:string[][];rowNumbers:number[]} {
+  const populated=input.map((row,index)=>({number:index+1,cells:row.map(value=>value==null?'':value instanceof Date?value.toISOString():String(value).trim())})).filter(row=>row.cells.some(Boolean));
+  const rows=populated.map(row=>row.cells);
+  if(rows.length<(hasHeaders?2:1))throw new Error('Include at least one contact. If your file has no headings, turn off the headings option.');
+  const headers=hasHeaders?rows[0]:Array.from({length:Math.max(...rows.map(row=>row.length))},(_,i)=>`Column ${i+1}`);
   if(headers.length>30)throw new Error('Use no more than 30 columns in the contact sheet.');
   if(headers.some(h=>!h))throw new Error('Every used column needs a heading. Remove empty columns between your contact fields.');
   if(new Set(headers.map(h=>h.toLowerCase())).size!==headers.length)throw new Error('Column headings must be unique. Rename repeated headings.');
-  if(rows.length>10001)throw new Error('Import at most 10,000 contacts at a time. Split this file into smaller files.');
-  const data=rows.slice(1).map(row=>{
+  if(rows.length-(hasHeaders?1:0)>10000)throw new Error('Import at most 10,000 contacts at a time. Split this file into smaller files.');
+  const data=rows.slice(hasHeaders?1:0).map(row=>{
     if(row.length>headers.length&&row.slice(headers.length).some(Boolean))throw new Error('A row contains data beyond the headings. Check the worksheet or CSV commas.');
     return headers.map((_,i)=>row[i]??'');
   });
-  return {headers,data};
+  return {headers,data,rowNumbers:populated.slice(hasHeaders?1:0).map(row=>row.number)};
 }
 
 export function contactSheetCsv(headers:string[],data:string[][]): string {

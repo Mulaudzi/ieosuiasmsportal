@@ -17,7 +17,9 @@ class CronController {
         
         $rows=db()->query("SELECT service_name job_name,last_seen_at,TIMESTAMPDIFF(SECOND,last_seen_at,NOW()) age_seconds,metadata_json last_result FROM service_heartbeats ORDER BY service_name")->fetchAll();
         $limits=['sms-worker'=>120,'sms-scheduler'=>180,'sms-dlr-poller'=>300];
-        foreach($rows as &$row){$row['status']=(int)$row['age_seconds']<=($limits[$row['job_name']]??300)?'healthy':'stale';$row['run_count']=null;$row['error_count']=null;}$row=null;
+        foreach($rows as &$row){$row['status']=(int)$row['age_seconds']<=($limits[$row['job_name']]??300)?'healthy':'stale';$row['run_count']=null;$row['error_count']=null;}
+        // Break the reference without replacing the last heartbeat with null.
+        unset($row);
         Response::success(['jobs'=>$rows]);
     }
     

@@ -143,6 +143,8 @@ class WalletController {
         $formattedPayments = array_map(function($payment) {
             $receipt = null;
             if ($this->hasTable('payment_receipt_outbox')) $receipt = table('payment_receipt_outbox')->where('payment_id', $payment['id'])->first();
+            require_once __DIR__.'/../domain/CreditPurchaseSettlement.php';
+            $order = CreditPurchaseSettlement::order(db(),(int)$payment['id']);
             return [
                 'id' => $payment['id'],
                 'gateway' => $payment['gateway'],
@@ -154,6 +156,7 @@ class WalletController {
                 'gateway_status' => $payment['gateway_status'],
                 'payment_method' => $payment['payment_method'],
                 'credits_added' => (int) $payment['credits_added'],
+                'credits_ordered' => $order ? (int)$order['credits'] : (int)$payment['credits_added'],
                 'created_at' => $payment['created_at'],
                 'processed_at' => $payment['processed_at'],
                 'error_message' => $payment['error_message'],
@@ -218,6 +221,8 @@ class WalletController {
         $user = Auth::user();
         
         require_once __DIR__ . '/../services/PdfReceiptService.php';
+        require_once __DIR__.'/../domain/CreditPurchaseSettlement.php';
+        $payment['purchase_order']=CreditPurchaseSettlement::order(db(),(int)$payment['id']);
         
         $html = PdfReceiptService::generateReceipt($payment, $user);
         
@@ -229,89 +234,8 @@ class WalletController {
     }
     
     public function buy(): void {
-        $data = Request::validate([
-            'amount' => 'required|numeric|min:10',
-            'payment_method' => 'required|in:payos,eft',
-        ]);
-        
-        $wallet = table('wallets')->where('user_id', Auth::id())->first();
-        
-        if (!$wallet) {
-            // Create wallet if doesn't exist
-            $walletId = table('wallets')->insert([
-                'user_id' => Auth::id(),
-                'balance' => 0,
-                'reserved' => 0,
-                'currency' => 'ZAR',
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
-            $wallet = table('wallets')->where('id', $walletId)->first();
-        }
-        
-        $amount = (float) $data['amount'];
-        $reference = 'WALLET-SMS-' . gmdate('YmdHis') . '-' . strtoupper(bin2hex(random_bytes(8)));
-        $hostedMethod = $data['payment_method'] === 'eft' ? 'eft' : 'payos';
-        
-        // Create pending transaction
-        $transactionData = [
-            'wallet_id' => $wallet['id'],
-            'amount' => $amount,
-            'type' => 'credit',
-            'description' => "SMS credit purchase via {$hostedMethod}",
-            'reference' => $reference,
-            'status' => 'pending',
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ];
-
-        if ($this->hasColumn('wallet_transactions', 'checkout_initiated_at')) {
-            $transactionData['checkout_initiated_at'] = date('Y-m-d H:i:s');
-        }
-
-        $transactionId = table('wallet_transactions')->insert($transactionData);
-        
-        $paymentUrl = null;
-        $bankDetails = null;
-        
-        if ($hostedMethod === 'eft') {
-            $bankDetails = [
-                'bank_name' => Config::required('EFT_BANK_NAME'),
-                'account_name' => Config::required('EFT_ACCOUNT_NAME'),
-                'account_number' => Config::required('EFT_ACCOUNT_NUMBER'),
-                'branch_code' => Config::required('EFT_BRANCH_CODE'),
-                'reference' => $reference,
-            ];
-        } else {
-            try {
-                $transaction = table('wallet_transactions')->where('id', $transactionId)->first();
-                $response = $this->createPayOSCheckout($wallet, $transaction);
-                $paymentUrl = $response['payment_url'];
-
-                if (!empty($response['internal_reference']) && $this->hasColumn('wallet_transactions', 'payos_reference')) {
-                    table('wallet_transactions')->where('id', $transactionId)->update([
-                        'payos_reference' => $response['internal_reference'],
-                        'updated_at' => date('Y-m-d H:i:s'),
-                    ]);
-                }
-            } catch (Throwable $e) {
-                table('wallet_transactions')->where('id',$transactionId)->update([
-                    'status'=>'failed',
-                    'updated_at'=>date('Y-m-d H:i:s'),
-                ]);
-                error_log('PayOS checkout creation failed for ' . $reference . ': ' . $e->getMessage());
-                Response::error('PayOS could not start the checkout. Please verify the PayOS tenant credentials and try again.', 502);
-            }
-        }
-        
-        Response::success([
-            'transaction_id' => $transactionId,
-            'reference' => $reference,
-            'amount' => $amount,
-            'payment_url' => $paymentUrl,
-            'bank_details' => $bankDetails,
-            'payment_method' => $hostedMethod,
-        ]);
+        require_once __DIR__.'/CreditPurchaseController.php';
+        (new CreditPurchaseController())->buy();
     }
 
     public function paymentStatus(): void {
@@ -349,7 +273,7 @@ class WalletController {
         ]);
     }
 
-    private function createPayOSCheckout(array $wallet, array $transaction): array {
+    public function createPayOSCheckout(array $wallet, array $transaction, ?array $purchaseOrder=null): array {
         $user = Auth::user();
         $account = table('accounts')->where('user_id', $user['id'])->first();
         $payOS = new PayOSService();
@@ -363,7 +287,7 @@ class WalletController {
             'customer_name' => $user['name'] ?? 'Customer',
             'customer_email' => $user['email'] ?? null,
             'customer_phone' => $user['phone'] ?? null,
-            'item_name' => 'SMS credit purchase',
+            'item_name' => $purchaseOrder ? number_format((int)$purchaseOrder['credits']).' SMS credits' : 'SMS credit purchase',
             'item_description' => 'Prepaid billable SMS segment credits',
             'source_website' => env('FRONTEND_URL', 'https://sms.ieosuia.com'),
             'return_url' => env('PAYOS_RETURN_URL', env('FRONTEND_URL', 'https://sms.ieosuia.com') . '/payment/success') . '?reference=' . urlencode($reference),
@@ -374,6 +298,8 @@ class WalletController {
                 'wallet_id' => (int) $wallet['id'],
                 'user_id' => (int) $user['id'],
                 'checkout_source' => 'web',
+                'credits_ordered' => $purchaseOrder ? (int)$purchaseOrder['credits'] : null,
+                'pricing_version' => $purchaseOrder['pricing_version'] ?? null,
                 'account_id' => $account['id'] ?? null,
                 'company_name' => $account['company_name'] ?? null,
             ],

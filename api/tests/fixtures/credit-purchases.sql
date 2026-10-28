@@ -1,0 +1,9 @@
+CREATE TABLE users(id INTEGER PRIMARY KEY,name TEXT,email TEXT);
+    INSERT INTO users VALUES(1,'Customer','customer@example.invalid'),(2,'Other','other@example.invalid');
+    CREATE TABLE wallets(id INTEGER PRIMARY KEY,user_id INTEGER,balance REAL,reserved REAL,currency TEXT,created_at TEXT,updated_at TEXT);
+    CREATE TABLE wallet_transactions(id INTEGER PRIMARY KEY,wallet_id INTEGER,amount REAL,type TEXT,description TEXT,reference TEXT UNIQUE,status TEXT,created_at TEXT,updated_at TEXT);
+    CREATE TABLE payments(id INTEGER PRIMARY KEY,user_id INTEGER,wallet_id INTEGER,transaction_id INTEGER,gateway TEXT,merchant_reference TEXT,amount REAL,currency TEXT,status TEXT,payment_method TEXT,credits_added INTEGER,created_at TEXT,updated_at TEXT,processed_at TEXT,error_message TEXT);
+    CREATE TABLE wallet_ledger(id INTEGER PRIMARY KEY,user_id INTEGER,wallet_id INTEGER,campaign_id INTEGER,payment_id INTEGER,operation TEXT,direction TEXT,amount REAL,idempotency_key TEXT UNIQUE,created_at TEXT);
+    CREATE TABLE credit_purchase_orders(id INTEGER PRIMARY KEY,user_id INTEGER,payment_id INTEGER UNIQUE,reference TEXT UNIQUE,idempotency_key TEXT,pricing_version TEXT,credits INTEGER,unit_cents INTEGER,subtotal_cents INTEGER,discount_cents INTEGER,total_cents INTEGER,wallet_amount REAL,payment_method TEXT,status TEXT DEFAULT 'awaiting_payment',bank_details_json TEXT,checkout_url TEXT,bank_reference TEXT UNIQUE,reviewed_by INTEGER,review_note TEXT,reviewed_at TEXT,expires_at TEXT,created_at TEXT,updated_at TEXT,UNIQUE(user_id,idempotency_key));
+    CREATE TABLE credit_payment_proofs(id INTEGER PRIMARY KEY,order_id INTEGER,mime_type TEXT,byte_size INTEGER,sha256 TEXT,document BLOB,created_at TEXT);
+    CREATE TABLE credit_purchase_mail_outbox(id INTEGER PRIMARY KEY,event_key TEXT UNIQUE,recipient TEXT,subject TEXT,html TEXT,available_at TEXT,created_at TEXT)

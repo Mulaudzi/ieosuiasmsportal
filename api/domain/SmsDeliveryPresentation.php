@@ -1,32 +1,46 @@
 <?php
 
 // Customer-facing wording only. Never change stored states or provider diagnostics.
+require_once __DIR__.'/LogicSmsDeliveryStatus.php';
 final class SmsDeliveryPresentation
 {
-    public static function label(string $state, ?string $detail = null): string
+    public static function reasonCode(string $state,?string $detail,bool $submitted=true):?string
     {
-        if ($state === 'dlr_unavailable' || ($state === 'sent' && str_starts_with((string)$detail, 'DLR lookup:'))) return 'Delivery Status Unavailable';
+        return $state==='failed'&&$submitted&&LogicSmsDeliveryStatus::isBlocked($detail)?'provider_blocked':null;
+    }
+
+    public static function label(string $state, ?string $detail = null, bool $submitted = true): string
+    {
+        if ($state === 'dlr_unavailable') return 'Sent - Confirmation Unavailable';
         return match ($state) {
-            'sent' => 'Delivery Confirmation Pending',
+            'sent' => 'Sent - Awaiting Confirmation',
             'pending', 'queued' => 'Waiting to send',
             'processing' => 'Sending',
             'retry' => 'Retry scheduled',
             'delivered' => 'Delivered',
-            'failed' => 'Not Delivered',
-            'skipped' => 'Skipped',
+            'failed' => $submitted ? 'Not Delivered' : 'Failed to send',
+            'skipped' => 'Not Sent',
             default => ucfirst(str_replace('_', ' ', $state)),
         };
     }
 
-    public static function details(string $state, ?string $detail): string
+    public static function details(string $state, ?string $detail, bool $submitted = true): string
     {
-        if ($state === 'dlr_unavailable' || ($state === 'sent' && str_starts_with((string)$detail, 'DLR lookup:'))) {
-            return 'SMS was successfully sent, but the network did not provide a delivery status. The recipient may have received it.';
+        if ($state === 'dlr_unavailable') {
+            return 'Your SMS was successfully sent for delivery, but a final delivery confirmation is unavailable. This does not necessarily mean that the message was not delivered.';
         }
-        if ($state === 'sent') return 'SMS was successfully sent, but delivery confirmation is still pending.';
-        if ($state === 'delivered') return 'Network confirmed the SMS was delivered.';
-        if ($state === 'failed') return 'Network reported that the SMS could not be delivered.';
-        if ($state === 'skipped') return 'SMS was not sent, for example because the recipient had opted out.';
-        return $detail ?: 'No additional delivery details';
+        if ($state === 'sent') return 'Your SMS has been successfully sent for delivery. We are awaiting confirmation from the mobile network.';
+        if ($state === 'delivered') return 'Delivery confirmed by the mobile network.';
+        if (self::reasonCode($state,$detail,$submitted)==='provider_blocked') return 'Blocked by the messaging provider or recipient restrictions. The exact reason is unavailable.';
+        if ($state === 'failed') return $submitted
+            ? 'The mobile network reported that your SMS could not be delivered.'
+            : 'The SMS provider did not accept this message for delivery. It was not successfully sent.';
+        if ($state === 'skipped') return 'This SMS was excluded before sending, for example because the recipient opted out.';
+        return match($state){
+            'pending','queued'=>'This SMS is waiting to be sent. The provider has not accepted it for delivery yet.',
+            'processing'=>'This SMS is being submitted. Successful sending has not yet been confirmed.',
+            'retry'=>'A retry is scheduled for an unsuccessful submission. This is not a delivery confirmation.',
+            default=>'No confirmed delivery outcome is available yet.',
+        };
     }
 }

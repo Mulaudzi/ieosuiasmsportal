@@ -2,6 +2,7 @@
 
 require_once __DIR__.'/../services/SmsService.php';
 require_once __DIR__.'/../services/PaymentReceiptService.php';
+require_once __DIR__.'/../domain/AdminSmsSummary.php';
 
 final class AdminOperationsController
 {
@@ -27,7 +28,11 @@ final class AdminOperationsController
         $wallets=$pdo->query("SELECT COUNT(*) total,COALESCE(SUM(balance),0) balance,COALESCE(SUM(reserved),0) reserved FROM wallets WHERE currency='ZAR'")->fetch();
         $payments=$pdo->query("SELECT COUNT(*) total,SUM(status='completed') completed,COALESCE(SUM(CASE WHEN status='completed' THEN amount ELSE 0 END),0) received,COALESCE(SUM(CASE WHEN status='pending' THEN amount ELSE 0 END),0) pending FROM payments WHERE currency='ZAR'")->fetch();
         $customers=$pdo->query("SELECT u.id,u.name,u.email,u.is_active,u.created_at,COALESCE(w.balance,0) balance,COALESCE(w.reserved,0) reserved,COUNT(DISTINCT sc.id) campaigns,COUNT(DISTINCT sm.id) messages FROM users u LEFT JOIN wallets w ON w.user_id=u.id LEFT JOIN sms_campaigns sc ON sc.user_id=u.id LEFT JOIN sms_messages sm ON sm.user_id=u.id WHERE u.role<>'admin' GROUP BY u.id,u.name,u.email,u.is_active,u.created_at,w.balance,w.reserved ORDER BY u.created_at DESC LIMIT 8")->fetchAll();
-        Response::success(['users'=>$users,'campaigns'=>$campaigns,'messages'=>$messages,'wallets'=>$wallets,'payments'=>$payments,'recent_customers'=>$customers]);
+        $price=SmsPricing::pricePerSegment();
+        $customerWallets=$pdo->query("SELECT w.balance,w.reserved FROM wallets w JOIN users u ON u.id=w.user_id WHERE u.role<>'admin' AND w.currency='ZAR'")->fetchAll(PDO::FETCH_ASSOC);
+        $creditTotals=['sms_credits_total'=>0,'sms_credits_reserved'=>0,'sms_credits_available'=>0];
+        foreach($customerWallets as $wallet)foreach(AdminSmsSummary::credits($wallet,$price) as $key=>$value)if(array_key_exists($key,$creditTotals))$creditTotals[$key]+=$value;
+        Response::success(['users'=>$users,'campaigns'=>$campaigns,'messages'=>$messages,'wallets'=>$wallets,'payments'=>$payments,'recent_customers'=>AdminSmsSummary::customers($customers,$price),'customer_credits'=>$creditTotals,'dispatch'=>AdminSmsSummary::dispatch($pdo)]);
     }
 
     public function services(): void
@@ -73,7 +78,7 @@ final class AdminOperationsController
         if($search!==''){$where.=' AND (u.name LIKE ? OR u.email LIKE ?)';$args[]='%'.$search.'%';$args[]='%'.$search.'%';}
         $count=$pdo->prepare("SELECT COUNT(*) FROM users u WHERE $where");$count->execute($args);$total=(int)$count->fetchColumn();
         $sql="SELECT u.id,u.name,u.email,u.is_active,u.email_verified_at,u.created_at,u.last_login_at,COALESCE(w.balance,0) balance,COALESCE(w.reserved,0) reserved,(SELECT COUNT(*) FROM contacts c WHERE c.user_id=u.id) contacts,(SELECT COUNT(*) FROM contact_groups g WHERE g.user_id=u.id) contact_groups,(SELECT COUNT(*) FROM templates t WHERE t.user_id=u.id) templates,(SELECT COUNT(*) FROM opt_outs o WHERE o.user_id=u.id) opt_outs,(SELECT COUNT(*) FROM sms_campaigns sc WHERE sc.user_id=u.id) campaigns,(SELECT COUNT(*) FROM sms_messages sm WHERE sm.user_id=u.id) messages FROM users u LEFT JOIN wallets w ON w.user_id=u.id WHERE $where ORDER BY u.created_at DESC LIMIT $perPage OFFSET $offset";
-        $stmt=$pdo->prepare($sql);$stmt->execute($args);Response::success(['customers'=>$stmt->fetchAll(),'pagination'=>['page'=>$page,'per_page'=>$perPage,'total'=>$total,'last_page'=>(int)ceil($total/$perPage)]]);
+        $stmt=$pdo->prepare($sql);$stmt->execute($args);Response::success(['customers'=>AdminSmsSummary::customers($stmt->fetchAll(),SmsPricing::pricePerSegment()),'pagination'=>['page'=>$page,'per_page'=>$perPage,'total'=>$total,'last_page'=>(int)ceil($total/$perPage)]]);
     }
 
     public function customer(array $params): void
@@ -83,6 +88,7 @@ final class AdminOperationsController
         $q=$pdo->prepare("SELECT id,name,state,sender_id,recipient_count,sent_count,delivered_count,failed_count,skipped_count,estimated_cost,actual_cost,scheduled_at,created_at FROM sms_campaigns WHERE user_id=? ORDER BY created_at DESC LIMIT 10");$q->execute([$id]);$campaigns=$q->fetchAll();
         $q=$pdo->prepare("SELECT id,gateway,merchant_reference,amount,currency,status,payment_method,created_at,processed_at FROM payments WHERE user_id=? ORDER BY created_at DESC LIMIT 10");$q->execute([$id]);$payments=$q->fetchAll();
         $q=$pdo->prepare("SELECT id,operation,direction,amount,campaign_id,payment_id,created_at FROM wallet_ledger WHERE user_id=? ORDER BY created_at DESC LIMIT 20");$q->execute([$id]);$ledger=$q->fetchAll();
+        $customer=array_merge($customer,AdminSmsSummary::credits($customer,SmsPricing::pricePerSegment()));
         Response::success(['customer'=>$customer,'counts'=>$counts,'campaigns'=>$campaigns,'payments'=>$payments,'ledger'=>$ledger]);
     }
 
@@ -121,5 +127,19 @@ final class AdminOperationsController
         if($queued)table('payment_receipt_outbox')->where('payment_id',$paymentId)->where('status','failed')->update(['status'=>'pending','available_at'=>date('Y-m-d H:i:s'),'updated_at'=>date('Y-m-d H:i:s')]);
         $result=PaymentReceiptService::dispatch($paymentId);
         Response::success(['receipt_email_status'=>$result['status'],'sent'=>!empty($result['success'])]);
+    }
+
+    public function payments(): void
+    {
+        $this->admin();[$page,$perPage,$offset]=$this->page();
+        $search=Request::query('search','');$status=Request::query('status','all');$gateway=Request::query('gateway','all');
+        if (!is_string($search) || strlen($search)>200 || !is_string($status) || !in_array($status,['all','pending','completed','failed','cancelled','refunded'],true) || !is_string($gateway) || !in_array($gateway,['all','eft','payos','payfast','paystack','ozow'],true)) Response::error('Choose valid payment filters.',422);
+        $where='1=1';$args=[];
+        if ($status!=='all') { $where.=' AND p.status=?';$args[]=$status; }
+        if ($gateway!=='all') { $where.=' AND p.gateway=?';$args[]=$gateway; }
+        if (trim($search)!=='') { $where.=' AND (u.name LIKE ? OR u.email LIKE ? OR p.merchant_reference LIKE ?)';$term='%'.trim($search).'%';array_push($args,$term,$term,$term); }
+        $count=db()->prepare("SELECT COUNT(*) FROM payments p JOIN users u ON u.id=p.user_id WHERE $where");$count->execute($args);$total=(int)$count->fetchColumn();
+        $q=db()->prepare("SELECT p.id,u.name customer_name,u.email customer_email,p.gateway,p.merchant_reference,p.amount,p.currency,p.status,p.credits_added,p.created_at,p.processed_at,o.id order_id,o.credits credits_ordered FROM payments p JOIN users u ON u.id=p.user_id LEFT JOIN credit_purchase_orders o ON o.payment_id=p.id WHERE $where ORDER BY p.id DESC LIMIT $perPage OFFSET $offset");$q->execute($args);
+        Response::success(['payments'=>$q->fetchAll(PDO::FETCH_ASSOC),'pagination'=>['page'=>$page,'per_page'=>$perPage,'total'=>$total,'last_page'=>max(1,(int)ceil($total/$perPage))]]);
     }
 }

@@ -1,11 +1,12 @@
 import { Sidebar } from "./Sidebar";
 import { PortalEntrance } from './PortalEntrance';
-import { BarChart3, LayoutDashboard, Menu, MessageSquare, Search, Users, Wallet } from "lucide-react";
+import { BarChart3, LayoutDashboard, Menu, MessageSquare, Search, Users, Wallet, Send } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { NotificationBell } from "./NotificationBell";
 import { Button, PortalButtonHints } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { DarkModeControl, Tutorial, usePortalPreference } from './PortalPreferences';
@@ -14,7 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 const mobileNavigation = [
   { name: "Home", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Campaigns", href: "/sms-campaigns", icon: MessageSquare },
+  { name: "Send Messages", href: "/sms-campaigns/new", icon: Send },
   { name: "Contacts", href: "/contacts", icon: Users },
   { name: "Wallet", href: "/wallet", icon: Wallet },
 ];
@@ -37,6 +38,8 @@ export function DashboardLayout({
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(()=>{const close=()=>setMenuOpen(false);window.addEventListener('sms:dashboard-tour',close);return()=>window.removeEventListener('sms:dashboard-tour',close);},[]);
   const location = useLocation();
+  const tutorialTitle=location.pathname==='/dashboard'?'Dashboard':title;
+  const navigate=useNavigate();const [search,setSearch]=useState('');
   const { user,logout } = useAuth();
   const [dark,setDark] = usePortalPreference('dark');
   const [collapsed,setCollapsed] = usePortalPreference('sidebar-collapsed');
@@ -60,35 +63,36 @@ export function DashboardLayout({
               <SheetContent side="left" className="w-[86vw] max-w-72">
                 <SheetTitle className="sr-only">More navigation</SheetTitle><SheetDescription className="sr-only">Portal pages, help and display preferences</SheetDescription>
                 <nav aria-label="More navigation" className="flex flex-col gap-3 pt-8">
-                  {['Templates','Reports','Settings'].map(label=><Link key={label} className="rounded-lg p-3 hover:bg-muted" to={'/'+label.toLowerCase()} onClick={()=>setMenuOpen(false)}>{label}</Link>)}
+                  {['SMS Campaigns','Templates','Reports','Settings'].map(label=><Link key={label} className="rounded-lg p-3 hover:bg-muted" to={label==='SMS Campaigns'?'/sms-campaigns':'/'+label.toLowerCase()} onClick={()=>setMenuOpen(false)}>{label}</Link>)}
                   <Link className="rounded-lg p-3 hover:bg-muted" title="Need help" to="/support">Need help</Link>
-                  <Tutorial title={title} step={campaignStep}/><DarkModeControl checked={dark} onChange={setDark}/>
+                  <Tutorial title={tutorialTitle} step={campaignStep}/><DarkModeControl checked={dark} onChange={setDark}/>
                   {user?.role==='admin'&&<><Link to="/guymhan">Operations</Link><Link to="/guymhan/users">Platform Managers</Link></>}
                   <Button variant="ghost" onClick={()=>void logout()}>Sign out</Button>
                 </nav>
               </SheetContent>
             </Sheet>
-            <div className="relative hidden sm:block">
+            <form role="search" onSubmit={event=>{event.preventDefault();if(search.trim())navigate(`/sms-campaigns?search=${encodeURIComponent(search.trim())}`);}} className="relative hidden sm:block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search campaigns, contacts..."
-                className="w-64 pl-10 xl:w-80"
+                aria-label="Search campaigns" placeholder="Search campaigns and press Enter…" value={search} onChange={event=>setSearch(event.target.value)}
+                className="w-56 pl-10 xl:w-96"
               />
-            </div>
+            </form>
             <span className="truncate text-sm font-semibold lg:hidden">IEOSUIA SMS</span>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden lg:flex items-center gap-2"><DarkModeControl checked={dark} onChange={setDark}/><Tutorial title={title} step={campaignStep}/></div>
+            <div className="hidden lg:flex items-center gap-2"><DarkModeControl checked={dark} onChange={setDark}/><Tutorial title={tutorialTitle} step={campaignStep}/></div>
             <NotificationBell />
+            <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="gap-2" aria-label="Account menu"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-foreground text-xs text-background">{(user?.name??'U').split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase()}</span><span className="hidden max-w-32 truncate text-sm xl:block">{user?.name??'Account'}</span></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem asChild><Link to="/settings">Account settings</Link></DropdownMenuItem><DropdownMenuItem asChild><Link to="/support">Help and support</Link></DropdownMenuItem><DropdownMenuItem onSelect={()=>void logout()}>Sign out</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
           </div>
         </header>
 
         {/* Page Header */}
-        <div className="border-b border-border bg-card px-4 py-4 sm:px-6 sm:py-6">
+        <div className="portal-page-header px-4 pt-5 pb-1 sm:px-6 sm:pt-6">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-bold text-foreground sm:text-2xl">{title}</h1>
+              <h1 className="break-words text-xl font-bold tracking-tight text-foreground sm:text-2xl">{title}</h1>
               {subtitle && (
                 <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
               )}

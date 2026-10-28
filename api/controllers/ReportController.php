@@ -26,9 +26,9 @@ class ReportController {
                 c.actual_cost,
                 c.created_at,
                 c.completed_at,
-                COUNT(CASE WHEN m.state IN ('sent','delivered') THEN 1 END) as sent_count,
+                COUNT(CASE WHEN m.sent_at IS NOT NULL OR m.state IN ('sent','delivered','dlr_unavailable') THEN 1 END) as sent_count,
                 COUNT(CASE WHEN m.state = 'delivered' THEN 1 END) as delivered_count,
-                COUNT(CASE WHEN m.state = 'failed' THEN 1 END) as failed_count
+                COUNT(CASE WHEN m.state = 'failed' AND m.sent_at IS NOT NULL THEN 1 END) as failed_count
             FROM sms_campaigns c
             LEFT JOIN sms_messages m ON c.id = m.campaign_id AND m.user_id=c.user_id
             WHERE c.user_id = ?
@@ -41,7 +41,7 @@ class ReportController {
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
-        $campaigns = $stmt->fetchAll();
+        $campaigns = SmsReportingService::campaignRecords((int)$userId,$stmt->fetchAll());
         
         // Summary stats
         $totalSent = array_sum(array_column($campaigns, 'sent_count'));
@@ -359,6 +359,7 @@ class ReportController {
             ],
             'sms' => [
                 'total_sent'=>$sms['total_messages'],'delivered'=>$sms['delivered'],'failed'=>$sms['failed'],'pending'=>$sms['pending'],'awaiting_delivery'=>$sms['awaiting_delivery'],'dlr_unavailable'=>$sms['dlr_unavailable'],'skipped'=>$sms['skipped'],'credits_used'=>$sms['credits_used'],
+                'total_recipients'=>$sms['recipient_count'],'waiting_to_send'=>$sms['waiting_to_send'],'failed_submissions'=>$sms['failed_submissions'],
             ],
             'email' => ['coming_soon'=>true,'total_sent'=>0,'delivered'=>0,'opened'=>0,'clicked'=>0,'bounced'=>0],
         ]);

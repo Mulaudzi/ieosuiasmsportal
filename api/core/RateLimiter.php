@@ -19,24 +19,30 @@ class RateLimiter {
         $hash = md5($key);
         $file = self::$cacheDir . '/' . $hash;
         
-        $data = self::getData($file);
-        $now = time();
-        
-        // Clean up old attempts
-        $data['attempts'] = array_filter($data['attempts'], function($timestamp) use ($now, $decayMinutes) {
-            return ($now - $timestamp) < ($decayMinutes * 60);
-        });
-        
-        // Check if rate limited
-        if (count($data['attempts']) >= $maxAttempts) {
+        $handle = fopen($file, 'c+');
+        if ($handle === false || !flock($handle, LOCK_EX)) {
+            if (is_resource($handle)) fclose($handle);
             return false;
         }
-        
-        // Record this attempt
-        $data['attempts'][] = $now;
-        self::saveData($file, $data);
-        
-        return true;
+        try {
+            rewind($handle);
+            $decoded = json_decode((string) stream_get_contents($handle), true);
+            $data = is_array($decoded) ? $decoded : ['attempts' => []];
+            $now = time();
+            $data['attempts'] = array_values(array_filter((array) ($data['attempts'] ?? []), static function($timestamp) use ($now, $decayMinutes) {
+                return ($now - (int) $timestamp) < ($decayMinutes * 60);
+            }));
+            if (count($data['attempts']) >= $maxAttempts) return false;
+            $data['attempts'][] = $now;
+            ftruncate($handle, 0);
+            rewind($handle);
+            if (fwrite($handle, (string) json_encode($data)) === false) return false;
+            fflush($handle);
+            return true;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
     }
     
     /**

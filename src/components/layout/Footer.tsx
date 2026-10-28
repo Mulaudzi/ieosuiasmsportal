@@ -23,6 +23,7 @@ export function Footer({ variant = "full" }: FooterProps) {
             <Link to="/popia-compliance" className="hover:text-sidebar-primary-foreground">POPIA Compliance</Link>
             <Link to="/cookie-policy" className="hover:text-sidebar-primary-foreground">Cookie Policy</Link>
             <Link to="/support" className="hover:text-sidebar-primary-foreground">Support</Link>
+            <Link to="/banking-details" className="hover:text-sidebar-primary-foreground">Banking Details</Link>
             <Link to="/contact" className="hover:text-sidebar-primary-foreground">Contact</Link>
             <Link to="/features" className="hover:text-sidebar-primary-foreground">SMS Features</Link>
             <Link to="/use-cases" className="hover:text-sidebar-primary-foreground">Use Cases</Link>
@@ -61,6 +62,7 @@ export function Footer({ variant = "full" }: FooterProps) {
             <ul className="space-y-2 text-sm text-sidebar-muted">
               <li><Link to="/features" className="hover:text-sidebar-primary-foreground">Features</Link></li>
               <li><Link to="/pricing" className="hover:text-sidebar-primary-foreground">Pricing</Link></li>
+              <li><Link to="/banking-details" className="hover:text-sidebar-primary-foreground">Banking Details</Link></li>
               <li><Link to="/documentation" className="hover:text-sidebar-primary-foreground">Documentation</Link></li>
               <li><Link to="/login" className="hover:text-sidebar-primary-foreground">Login</Link></li>
               <li><Link to="/register" className="hover:text-sidebar-primary-foreground">Sign Up</Link></li>

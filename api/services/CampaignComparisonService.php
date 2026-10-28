@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/../domain/SmsMessageState.php';
 /** Read-only calculations used only by the Campaign Comparison page. */
 final class CampaignComparisonService
 {
@@ -31,11 +32,12 @@ final class CampaignComparisonService
         }
         // A later failed delivery is still a sent message. Unsent failures and
         // skipped/queued recipients must not inflate this comparison's denominator.
-        $sent = "m.state <> 'skipped' AND (m.sent_at IS NOT NULL OR m.state IN ('sent','delivered'))";
+        $sent = SmsMessageState::acceptedSql('m');
+        $failure = SmsMessageState::networkFailureSql('m');
         $sql = "SELECT c.id, c.name, 'sms' type, c.created_at,
             COUNT(CASE WHEN $sent THEN 1 END) sent_count,
             COUNT(CASE WHEN m.state = 'delivered' THEN 1 END) delivered_count,
-            COUNT(CASE WHEN m.state = 'failed' AND m.sent_at IS NOT NULL THEN 1 END) failed_count,
+            COUNT(CASE WHEN $failure THEN 1 END) failed_count,
             COALESCE(SUM(m.actual_charge), 0) actual_cost,
             AVG(CASE WHEN m.state = 'delivered' AND m.sent_at IS NOT NULL AND m.delivered_at >= m.sent_at
                 THEN TIMESTAMPDIFF(SECOND, m.sent_at, m.delivered_at) END) avg_delivery_time_seconds

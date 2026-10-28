@@ -28,7 +28,7 @@ try {
  if(!executablePath && process.platform==='win32'){const candidate='C:/Program Files/Google/Chrome/Application/chrome.exe';try{await access(candidate);executablePath=candidate;}catch{}}
  browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
  const context=await browser.newContext({viewport:{width:1440,height:1000}});
- await context.addInitScript(()=>localStorage.setItem('ieosuia_cookie_consent','{}'));
+ await context.addInitScript(()=>{localStorage.setItem('ieosuia_cookie_consent','{}');window.__IEOSUIA_PUBLIC_PRERENDER__=true;});
  const page=await context.newPage();
  const failures=[]; page.on('pageerror',e=>failures.push(e.message));
  await page.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin || url.pathname.startsWith('/api/')){failures.push('Unexpected request '+url.pathname);return route.abort();}return route.continue();});

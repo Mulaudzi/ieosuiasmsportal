@@ -1,5 +1,8 @@
 <?php
 
+require_once __DIR__.'/../domain/SmsAdminProjection.php';
+require_once __DIR__.'/../domain/CentralAdminAccess.php';
+
 final class IeosuiaAuthController
 {
     private const FLOW_COOKIE = 'sms_ieosuia_oauth_flow';
@@ -50,13 +53,16 @@ final class IeosuiaAuthController
         $email = strtolower((string) $profile['email']);
 
         if ($type === 'admin') {
-            $admin = table('admin_users')->where('identity_uuid', $uuid)->first();
-            if (!$admin) $admin = table('admin_users')->where('email', $email)->first();
-            if (!$admin || !(bool) $admin['is_active'] || (!empty($admin['identity_uuid']) && !hash_equals((string) $admin['identity_uuid'], $uuid))) $this->fail('local_access_missing');
-            $user = table('users')->where('email', $email)->first();
-            if (!$user) $this->fail('admin_projection_missing');
-            table('users')->where('id', $user['id'])->update(['identity_uuid' => $uuid, 'role' => 'admin', 'is_active' => 1, 'email_verified_at' => $user['email_verified_at'] ?? date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')]);
-            $user = table('users')->where('id', $user['id'])->first();
+            try {
+                $config = Auth::centralAdminConfig();
+                CentralAdminAccess::profile($profile,'sms',['admin'],$config);
+                CentralAdminAccess::verify($uuid,(int)($profile['token_version']??0),(string)($profile['access_level']??''),CentralAdminAccess::managed($profile),'sms',$config);
+                $user = SmsAdminProjection::synchronize(db(), $profile,true,CentralAdminAccess::enabled($config));
+                $user['central_admin_version']=(int)($profile['token_version']??0);
+                $user['central_admin_managed']=CentralAdminAccess::managed($profile);
+            } catch (RuntimeException $error) {
+                $this->fail($error->getMessage());
+            }
         } else {
             $user = $this->customerProjection($uuid, $email, (string) ($profile['name'] ?? $email));
         }
