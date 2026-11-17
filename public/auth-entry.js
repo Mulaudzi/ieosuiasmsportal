@@ -1,5 +1,3 @@
-(function () {
-  var path = window.location.pathname.replace(/\/+$/, '') || '/';
-  if (path === '/login' && !window.location.hash.includes('ieosuia_token=')) window.location.replace('/api/auth/ieosuia/start');
-  if (path === '/register') window.location.replace('/api/auth/ieosuia/start?screen_hint=signup');
-})();
+// Compatibility file for older HTML entries. Authentication redirects now belong
+// exclusively to CentralAuthRedirect, which preserves fresh-login and logout rules.
+// Keep this file inert rather than competing with the application or returning 404.

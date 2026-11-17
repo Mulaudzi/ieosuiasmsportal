@@ -8,7 +8,7 @@ require_once __DIR__.'/../domain/SmsReportingService.php';
 class DashboardController {
     public function stats(): void {
         $userId = Auth::id();
-        $range=(string)Request::query('range','7d');try{$sms=SmsReportingService::summary((int)$userId,$range);}catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}
+        $range=(string)Request::query('range','30d');try{$sms=SmsReportingService::summary((int)$userId,$range,Request::query('from'),Request::query('to'));}catch(InvalidArgumentException $e){Response::error($e->getMessage(),422);return;}
         
         $pdo=db();$campaignStatement=$pdo->prepare("SELECT COUNT(*) total,SUM(state IN ('scheduled','queued','processing')) active FROM sms_campaigns WHERE user_id=?");$campaignStatement->execute([$userId]);$campaignMetrics=$campaignStatement->fetch()?:[];
         $totalCampaigns=(int)($campaignMetrics['total']??0);$activeCampaigns=(int)($campaignMetrics['active']??0);$totalSent=$sms['total_messages'];$totalDelivered=$sms['delivered'];$totalFailed=$sms['failed'];
@@ -33,6 +33,9 @@ class DashboardController {
             'total_awaiting_delivery' => $sms['awaiting_delivery'],
             'total_dlr_unavailable' => $sms['dlr_unavailable'],
             'total_skipped' => $sms['skipped'],
+            'total_recipients' => $sms['recipient_count'],
+            'total_waiting_to_send' => $sms['waiting_to_send'],
+            'total_failed_submissions' => $sms['failed_submissions'],
             'delivery_rate' => $sms['delivery_rate'],
             'reporting_range'=>$range,'reporting_start'=>$sms['start'],'reporting_end'=>$sms['end'],
             'total_contacts' => $totalContacts,
@@ -42,16 +45,21 @@ class DashboardController {
     
     public function chart(): void {
         $userId = Auth::id();
-        $range=(string)Request::query('range',Request::query('days','7')==='30'?'30d':'7d');try{$rows=SmsReportingService::daily((int)$userId,$range);}catch(InvalidArgumentException){Response::error('Invalid reporting range',422);return;}$data=array_map(static fn($row)=>['date'=>$row['date'],'sent'=>(int)$row['total_messages'],'delivered'=>(int)$row['delivered'],'failed'=>(int)$row['failed'],'pending'=>(int)$row['pending']],$rows);
+        $range=(string)Request::query('range',Request::query('days','30')==='7'?'7d':'30d');try{$period=SmsReportingService::period($range,Request::query('from'),Request::query('to'));$rows=SmsReportingService::daily((int)$userId,$range,Request::query('from'),Request::query('to'));}catch(InvalidArgumentException $e){Response::error($e->getMessage(),422);return;}$data=array_map(static fn($row)=>['date'=>$row['date'],'sent'=>(int)$row['total_messages'],'delivered'=>(int)$row['delivered'],'failed'=>(int)$row['failed'],'pending'=>(int)$row['pending']],$rows);
         
-        Response::success(['chart' => $data]);
+        Response::success(['chart' => $data,'reporting_start'=>$period['start'],'reporting_end'=>$period['end']]);
     }
     
     public function recentCampaigns(): void {
         $userId = Auth::id();
         
-        $campaigns = table('sms_campaigns')
-            ->where('user_id', $userId)
+        $query = table('sms_campaigns')->where('user_id', $userId);
+        if (Request::query('range')) {
+            try {$period=SmsReportingService::period((string)Request::query('range'),Request::query('from'),Request::query('to'));}
+            catch(InvalidArgumentException $e){Response::error($e->getMessage(),422);return;}
+            $query->where('created_at','>=',$period['start'])->where('created_at','<=',$period['end']);
+        }
+        $campaigns = $query
             ->orderBy('created_at', 'DESC')
             ->limit(5)
             ->get();

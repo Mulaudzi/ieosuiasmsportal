@@ -5,18 +5,12 @@ require_once __DIR__.'/../domain/SmsReportingService.php';
 final class SmsReportDocument
 {
     public const HEADERS=['Campaign','Number','Status','Segments','Sent','Details'];
-    public const COLORS=['Delivered'=>'#2E9B5B','Delivery Confirmation Pending'=>'#2F6FED','Delivery Status Unavailable'=>'#5E7394','Not Delivered'=>'#C45C5C','Skipped'=>'#8B93A1'];
+    public const COLORS=['Delivered'=>'#2E9B5B','Sent - Awaiting Confirmation'=>'#2F6FED','Sent - Confirmation Unavailable'=>'#5E7394','Not Delivered'=>'#C45C5C','Not Sent'=>'#8B93A1','Failed to send'=>'#C45C5C'];
 
     public static function filter(string $state,string $search,array &$args,string $alias='m'):string
     {
         $sql='';
-        if($state==='all')$state='';
-        if($state==='dlr_unavailable')$sql=" AND $alias.state='sent' AND $alias.last_error LIKE 'DLR lookup:%'";
-        elseif($state==='sent')$sql=" AND $alias.state='sent' AND ($alias.last_error IS NULL OR $alias.last_error NOT LIKE 'DLR lookup:%')";
-        elseif($state!==''){
-            if(!in_array($state,['pending','queued','processing','retry','delivered','failed','skipped'],true))throw new InvalidArgumentException('Invalid delivery filter');
-            $sql=" AND $alias.state=?";$args[]=$state;
-        }
+        $sql=SmsMessageState::filter($state,$alias);
         if($search!==''){
             $sql.=" AND ($alias.destination LIKE ? OR EXISTS(SELECT 1 FROM contacts contact WHERE contact.user_id=$alias.user_id AND contact.phone_normalized=$alias.destination AND (contact.name LIKE ? OR contact.surname LIKE ?)))";
             $term='%'.str_replace(['!','%','_'],['!!','!%','!_'],$search).'%';
@@ -36,17 +30,19 @@ final class SmsReportDocument
             $period=['start'=>$campaign['created_at'],'end'=>$campaign['completed_at']?:date('Y-m-d H:i:s')];
         }else{$where.=' AND m.created_at>=? AND m.created_at<=?';array_push($args,$period['start'],$period['end']);}
         $where.=self::filter($state,$search,$args);
-        $q=db()->prepare("SELECT c.name campaign,m.destination,m.state,m.segment_count,m.sent_at,m.last_error FROM sms_messages m JOIN sms_campaigns c ON c.id=m.campaign_id AND c.user_id=m.user_id WHERE $where ORDER BY m.id ASC");$q->execute($args);
+        $q=db()->prepare("SELECT c.name campaign,m.destination,m.state,m.segment_count,m.sent_at,m.last_error,m.actual_charge FROM sms_messages m JOIN sms_campaigns c ON c.id=m.campaign_id AND c.user_id=m.user_id WHERE $where ORDER BY m.id ASC");$q->execute($args);
         return self::snapshot($name,$period,$q->fetchAll(),$campaignId,$range);
     }
 
     public static function snapshot(string $name,array $period,array $messages,?int $campaignId=null,string $range='7d'):array
     {
-        $counts=array_fill_keys(array_keys(self::COLORS),0);$rows=[];
+        $counts=array_fill_keys(array_slice(array_keys(self::COLORS),0,5),0);$rows=[];
         foreach($messages as $m){
-            $label=SmsDeliveryPresentation::label($m['state'],$m['last_error']??null);
+            $submitted=SmsMessageState::accepted($m);
+            $label=SmsDeliveryPresentation::label($m['state'],$m['last_error']??null,$submitted);
+            if($label==='Failed to send'&&!isset($counts[$label]))$counts[$label]=0;
             if(isset($counts[$label]))$counts[$label]++;
-            $rows[]=[$m['campaign']??$name,$m['destination'],$label,(int)$m['segment_count'],$m['sent_at']??'',SmsDeliveryPresentation::details($m['state'],$m['last_error']??null)];
+            $rows[]=[$m['campaign']??$name,$m['destination'],$label,(int)$m['segment_count'],$m['sent_at']??'',SmsDeliveryPresentation::details($m['state'],$m['last_error']??null,$submitted)];
         }
         return ['name'=>$name,'period'=>$period,'rows'=>$rows,'counts'=>$counts,'total'=>count($rows),'campaign_id'=>$campaignId,'range'=>$range];
     }
@@ -72,8 +68,10 @@ final class SmsReportDocument
     {
         $largest=array_search(max($r['counts']),$r['counts'],true);
         if(max($r['counts'])===0)return 'No delivery outcomes are available yet.';
-        if($largest==='Delivery Status Unavailable')return 'These messages were sent. The network did not return a delivery status. This is not a confirmed failure.';
-        $states=['Delivered'=>'delivered','Delivery Confirmation Pending'=>'sent','Not Delivered'=>'failed','Skipped'=>'skipped'];
+        if(($r['counts']['Sent - Awaiting Confirmation']??0)>0)return "Your messages have already been sent for delivery. Delivery confirmations are updating as reports arrive. Some outcomes are still pending.";
+        if($largest==='Sent - Confirmation Unavailable')return 'These messages were sent. The network did not return a conclusive delivery confirmation. This is not a confirmed failure.';
+        if($largest==='Failed to send')return SmsDeliveryPresentation::details('failed',null,false);
+        $states=['Delivered'=>'delivered','Sent - Awaiting Confirmation'=>'sent','Not Delivered'=>'failed','Not Sent'=>'skipped'];
         return SmsDeliveryPresentation::details($states[$largest],null);
     }
     public static function mask(string $number):string
@@ -86,6 +84,7 @@ final class SmsReportDocument
         $separator=str_contains($url,'?')?'&':'?';$tiles=['Total'=>$r['total']]+$r['counts'];
         $html='<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>@media(max-width:600px){.tile{display:block!important;width:100%!important;box-sizing:border-box}.pad{padding:16px!important}}</style></head><body style="margin:0;background:#f1f3f6;font-family:Arial,sans-serif;color:#0B1628"><table role="presentation" width="100%"><tr><td align="center"><table role="presentation" width="600" style="width:100%;max-width:600px;background:white;border-collapse:collapse"><tr><td style="background:#0B1628;padding:24px;text-align:center"><img src="'.self::e($base.'/branding/ieosuia-sms-portal-navy.png').'" width="180" alt="IEOSUIA SMS Portal" style="width:180px;max-width:100%;height:auto"></td></tr><tr><td class="pad" style="padding:24px"><h1 style="margin:0 0 12px;font-size:26px">SMS delivery report</h1><p>Period: '.self::e(self::period($r)).'</p><p>Campaign name: '.self::e($r['name']).'</p><h2 style="font-size:16px">Summary</h2><table role="presentation" width="100%" style="table-layout:fixed">';
         $i=0;foreach($tiles as $label=>$count){if($i%3===0)$html.='<tr>';$html.='<td class="tile" width="33%" style="padding:12px 8px;vertical-align:top;background:#f7f8fa"><div style="font-size:28px;font-weight:bold;color:'.(self::COLORS[$label]??'#0B1628').'">'.$count.'</div><div style="font-size:13px">'.self::e($label).'</div></td>';if(++$i%3===0)$html.='</tr>';}
+        if($i%3!==0)$html.='</tr>';
         $html.='</table>'.(array_sum($r['counts'])>0?'<p style="padding:12px;background:#eef3f9">'.self::e(self::note($r)).'</p>':'').'<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>';
         $sum=array_sum($r['counts']);foreach($r['counts'] as $label=>$count)if($count)$html.='<td height="8" width="'.(100*$count/max(1,$sum)).'%" style="background:'.self::COLORS[$label].';font-size:0;line-height:0">&nbsp;</td>';
         $html.='</tr></table>';foreach($r['counts'] as $label=>$count)if($count)$html.='<p style="font-size:13px;margin:8px 0"><span style="color:'.self::COLORS[$label].'">&#9679;</span> '.self::e($label).' '.$count.'</p>';

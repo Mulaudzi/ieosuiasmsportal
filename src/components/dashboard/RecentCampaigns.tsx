@@ -1,4 +1,6 @@
-import { campaignStatusConfig, sendingStatusHint } from '@/lib/campaign-status';
+import { campaignReference } from '@/lib/campaign-reference';
+import { campaignStatus, sendingStatusHint } from '@/lib/campaign-status';
+import { useSmsRefresh } from '@/hooks/useSmsRefresh';
 import { MetricHint } from '@/components/dashboard/MetricHint';
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
@@ -13,22 +15,22 @@ interface Campaign {
   name: string;
   type: "sms" | "email";
   status: string;
-  recipients: number;
+  recipient_count: number;
   sent_count: number;
   delivered_count: number;
   failed_count: number;
   created_at: string;
 }
 
-const statusConfig = campaignStatusConfig;
 
 export function RecentCampaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    void loadCampaigns();const timer=window.setInterval(()=>void loadCampaigns(false),30000);return()=>window.clearInterval(timer);
+    void loadCampaigns();
   }, []);
+  useSmsRefresh(()=>loadCampaigns(false));
 
   const loadCampaigns = async (showLoading=true) => {
     try {
@@ -100,7 +102,7 @@ export function RecentCampaigns() {
 
       <div className="space-y-4">
         {campaigns.map((campaign) => {
-          const status = statusConfig[campaign.status.toLowerCase()] || { label: campaign.status, class: "status-queued" };
+          const status = campaignStatus(campaign);
           const campaignType = campaign.type || "sms";
           
           return (
@@ -125,11 +127,12 @@ export function RecentCampaigns() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="truncate font-medium text-foreground">{campaign.name}</p>
+                  <p className="truncate font-medium text-foreground">{campaign.name || 'Unnamed campaign'}</p>
+                  <p className="text-xs text-muted-foreground">{campaignReference(campaign)}</p>
                   <span className={cn("status-badge", status.class)}>{status.label}</span><MetricHint label="Sending status" text={sendingStatusHint}/>
                 </div>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  {(campaign.delivered_count || 0).toLocaleString()} / {(campaign.sent_count || campaign.recipients || 0).toLocaleString()} recipients • {formatDate(campaign.created_at)}
+                  {Number(campaign.sent_count || 0).toLocaleString()} sent / {Number(campaign.recipient_count || 0).toLocaleString()} recipients • {formatDate(campaign.created_at)}
                 </p>
               </div>
 

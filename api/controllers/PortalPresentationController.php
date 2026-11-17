@@ -16,11 +16,11 @@ class PortalPresentationController
         $this->respond(fn()=>PortalReadModel::activity(db(),(int)Auth::id(),$filters,SmsPricing::pricePerSegment()));
     }
     public function recipients(array $params): void {
-        $this->respond(function()use($params){$r=PortalReadModel::recipients(db(),(int)Auth::id(),(int)$params['id'],(string)Request::query('state','all'),trim((string)Request::query('search','')));$page=max(1,(int)Request::query('page',1));$r['rows']=array_slice($r['rows'],($page-1)*50,50);return $r;});
+        $this->respond(fn()=>PortalReadModel::recipients(db(),(int)Auth::id(),(int)$params['id'],(string)Request::query('state','all'),trim((string)Request::query('search','')),(string)Request::query('segments','all'),max(1,(int)Request::query('page',1))));
     }
     public function export(array $params): void {
         try{
-            $r=PortalReadModel::recipients(db(),(int)Auth::id(),(int)$params['id'],(string)Request::query('state','all'));
+            $r=PortalReadModel::recipients(db(),(int)Auth::id(),(int)$params['id'],(string)Request::query('state','all'),trim((string)Request::query('search','')),(string)Request::query('segments','all'));
             if(!$r['total']){Response::error('No '.strtolower($r['choice']==='All recipients'?'matching':$r['choice']).' recipients',422);return;}
             require_once __DIR__.'/../services/CampaignRecipientExport.php';
             CampaignRecipientExport::download($r,(string)Request::query('format','csv'));

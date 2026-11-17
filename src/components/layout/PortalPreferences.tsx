@@ -20,7 +20,7 @@ export function DarkModeControl({checked, onChange}: {checked:boolean;onChange:(
 
 const guides: Record<string,string[]> = {
   Dashboard: ['Choose a reporting period to review SMS activity.', 'Delivered means network-confirmed delivery. Sending complete does not mean every recipient received the SMS.'],
-  'SMS Campaigns': ['Create a campaign or use the eye action to view an existing campaign.', 'Open a delivery breakdown bar to see all five delivery outcomes.'],
+  'SMS Campaigns': ['Create a campaign or open its actions menu to view or export an existing campaign.', 'Open a delivery breakdown bar to see all five delivery outcomes.'],
   Contacts: ['Add contacts or import your contact file using the existing import guide.', 'Groups help select campaign recipients. Opted-out recipients remain excluded from sending.'],
   Templates: ['Create an SMS template with a clear name and reusable message.', 'Select a saved template in the campaign message step, then edit it before sending.'],
   Wallet: ['Your balance is shown in SMS credits. One credit pays for one billable SMS segment.', 'Choose a purchase amount and follow the existing payment flow.'],

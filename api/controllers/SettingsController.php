@@ -2,6 +2,7 @@
 /**
  * Settings Controller
  */
+require_once __DIR__.'/../core/SafeImageUpload.php';
 
 class SettingsController {
     public function smsPreferences(): void {
@@ -107,31 +108,10 @@ class SettingsController {
             Response::error('No file uploaded', 400);
         }
         
-        // Validate file type
-        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if (!in_array($file['type'], $allowedTypes)) {
-            Response::error('Invalid file type. Allowed: JPG, PNG, GIF, WebP', 400);
-        }
-        
-        // Validate file size (max 2MB)
-        if ($file['size'] > 2 * 1024 * 1024) {
-            Response::error('File too large. Maximum size: 2MB', 400);
-        }
-        
-        // Create uploads directory
         $uploadsDir = __DIR__ . '/../uploads/logos';
-        if (!is_dir($uploadsDir)) {
-            mkdir($uploadsDir, 0755, true);
-        }
-        
-        // Generate unique filename
-        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $filename = Auth::id() . '_' . time() . '.' . $extension;
-        $filepath = $uploadsDir . '/' . $filename;
-        
-        if (!move_uploaded_file($file['tmp_name'], $filepath)) {
-            Response::error('Failed to save file', 500);
-        }
+        try{$filename=SafeImageUpload::storeUploaded($file,$uploadsDir,(string)Auth::id());}
+        catch(InvalidArgumentException $e){Response::error($e->getMessage(),400);return;}
+        catch(Throwable $e){Response::error('Failed to save file',500);return;}
         
         // Update account
         $logoUrl = env('APP_URL') . '/uploads/logos/' . $filename;

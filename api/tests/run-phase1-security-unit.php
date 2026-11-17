@@ -1,0 +1,25 @@
+<?php
+declare(strict_types=1);
+$root=dirname(__DIR__);$failures=[];$assert=static function(bool $ok,string $message)use(&$failures):void{if(!$ok)$failures[]=$message;};
+$routes=(string)file_get_contents($root.'/index.php');
+$legacy=(string)file_get_contents($root.'/controllers/CampaignController.php');
+$cron=(string)file_get_contents($root.'/cron/process_scheduled_campaigns.php');
+$campaign=(string)file_get_contents($root.'/domain/CampaignService.php');
+$dispatch=(string)file_get_contents($root.'/domain/SmsDispatchService.php');
+$rate=(string)file_get_contents($root.'/core/RateLimiter.php');
+$upload=(string)file_get_contents($root.'/core/SafeImageUpload.php');
+$assert(str_contains($routes,"CampaignController@legacyRetryDisabled"),'legacy retry route is reachable');
+$assert(str_contains($legacy,'410'),'legacy retry does not fail closed');
+$assert(str_contains($cron,'exit(64)'),'legacy scheduler is not disabled');
+$assert(str_contains($campaign,'requestFingerprint'),'campaign idempotency is not payload-bound');
+$assert(substr_count($campaign,'hash_equals($stored,$fingerprint)')>=2,'concurrent campaign idempotency conflict is not payload-bound');
+$assert(str_contains($campaign,'reserveDailyQuota'),'daily sending quota is not enforced');
+$assert(str_contains($dispatch,'u.is_active=1'),'inactive owners can be claimed for dispatch');
+$assert(str_contains($dispatch,'SuppressionService::contains'),'dispatch suppression normalization missing');
+$assert(str_contains($rate,'flock($handle, LOCK_EX)'),'rate limiter update is not atomic');
+$assert(str_contains($upload,'getimagesizefromstring')&&str_contains($upload,'FILEINFO_MIME_TYPE'),'uploads are not content validated');
+$assert(is_file($root.'/config/.htaccess')&&trim((string)file_get_contents($root.'/config/.htaccess'))==='Require all denied','configuration directory is not HTTP-denied');
+$assert(str_contains($routes,'X-Correlation-ID')&&str_contains($routes,'IEOSUIA_CORRELATION_ID'),'request correlation ID missing');
+$suppression=(string)file_get_contents($root.'/domain/SuppressionService.php');
+$assert(!str_contains($suppression,'static array $cache'),'long-running worker suppression cache remains');
+if($failures){foreach($failures as $failure)fwrite(STDERR,"FAIL: {$failure}\n");exit(1);}echo "SMS Phase 1 security checks passed (13 assertions).\n";

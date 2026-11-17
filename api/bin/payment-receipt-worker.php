@@ -14,6 +14,16 @@ try{$alerts=PurchaseAlertService::dispatchDue();}
 catch(Throwable){$alerts=['processed'=>0,'sent'=>0,'failed'=>1];}
 $result['purchase_alerts']=$alerts;
 $result['processed']+=$alerts['processed'];$result['failed']+=$alerts['failed'];
+require_once __DIR__.'/../services/CreditPurchaseMailer.php';
+try{$purchaseMail=CreditPurchaseMailer::dispatchDue();}
+catch(Throwable){$purchaseMail=['processed'=>0,'sent'=>0,'failed'=>1];}
+$result['bank_transfer_emails']=$purchaseMail;
+$result['processed']+=$purchaseMail['processed'];$result['failed']+=$purchaseMail['failed'];
+require_once __DIR__.'/../services/CreditTransferReceiptService.php';
+try{$transferMail=CreditTransferReceiptService::dispatchDue(db());}
+catch(Throwable){$transferMail=['processed'=>0,'sent'=>0,'held'=>1];}
+$result['credit_transfer_receipts']=$transferMail;
+$result['processed']+=$transferMail['processed'];$result['failed']+=$transferMail['held'];
 $heartbeat=db()->prepare("INSERT INTO service_heartbeats(service_name,instance_id,metadata_json,last_seen_at) VALUES('payment-receipt-worker',?,?,NOW()) ON DUPLICATE KEY UPDATE instance_id=VALUES(instance_id),metadata_json=VALUES(metadata_json),last_seen_at=NOW()");
 $heartbeat->execute([gethostname(),json_encode($result)]);
 OperationalLogger::finishRun($runId,($result['failed']>0||!empty($result['migration_required']))?'failed':'completed',$result['processed'],$result['failed']);

@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/PhoneNumber.php';
+require_once __DIR__ . '/SuppressionService.php';
 
 final class RecipientResolver
 {
@@ -39,11 +40,8 @@ final class RecipientResolver
             }
         }
 
-        $optedOut = [];
-        if ($valid) {
-            $rows = table('opt_outs')->where('user_id', $userId)->where('channel', 'sms')->whereIn('recipient', array_values($valid))->get();
-            foreach ($rows as $row) $optedOut[(string) $row['recipient']] = true;
-        }
+        $allSuppressed = SuppressionService::normalizedForUser($userId);
+        $optedOut = array_intersect_key($allSuppressed, $valid);
         $excluded = [];
         foreach (($source['excluded'] ?? []) as $number) {
             try { $excluded[PhoneNumber::normalize((string) $number)] = true; }

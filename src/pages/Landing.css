@@ -33,3 +33,7 @@
 .ops-footer a{min-height:44px}
 @media(max-width:639px){.ops-preview-top{font-size:9px;letter-spacing:.5px}.ops-demo-label{font-size:8px}.ops-campaign-meta,.ops-preview-breadcrumb,.ops-review-line,.ops-preview-section-title>span:last-child,.ops-preview-bottom,.ops-contact-head,.ops-contact-person small,.ops-audience-summary{font-size:10px}.ops-preview-message p{font-size:12px}.ops-audience-groups{font-size:10px}.ops-minimum p,.ops-rate>span{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sms-home *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.ops-hero-price{margin:-10px 0 25px;font-size:15px;line-height:1.7;color:#d2e0f1}.ops-hero-price a{color:#8ce9f9;font-weight:650;text-decoration:underline;text-underline-offset:4px}.ops-hero-price span{display:block;font-size:13px;margin-top:4px}
+.ops-pricing-details{display:grid;grid-template-columns:1fr 1.2fr;gap:40px;margin-top:32px;padding-top:30px;border-top:1px solid #cedae8;align-items:start}.ops-pricing-details h3{font-size:23px;font-weight:600;line-height:1.3;margin-bottom:14px}.ops-pricing-details p+p{margin-top:14px}.ops-pricing-details .ops-text-link{margin-top:12px;color:#2157c5}.ops-pricing-details .credit-pricing-table{border:1px solid #dce5f0}
+@media(max-width:767px){.ops-pricing-details{grid-template-columns:minmax(0,1fr);gap:22px}.ops-hero-price{font-size:14px}.ops-hero-price span{font-size:12px}}
+.ops-rate strong{font-size:clamp(24px,2.6vw,34px);letter-spacing:-1px}

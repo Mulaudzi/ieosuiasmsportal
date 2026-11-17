@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Zap, Mail, Loader2, CheckCircle } from "lucide-react";
+import { Mail, Loader2, CheckCircle } from "lucide-react";
+import { Logo } from "@/components/layout/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 
@@ -35,11 +36,8 @@ export default function VerifyEmailReminder() {
   return (
     <div className="min-h-screen flex items-center justify-center p-8 bg-background">
       <div className="w-full max-w-md text-center">
-        <div className="flex items-center gap-2 mb-8 justify-center">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-            <Zap className="h-6 w-6 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold text-foreground">IEOSUIA SMS</span>
+        <div className="flex mb-8 justify-center">
+          <Logo variant="theme" size="lg" />
         </div>
 
         <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-warning/10">

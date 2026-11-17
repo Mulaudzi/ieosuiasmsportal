@@ -6,6 +6,10 @@
  * This script runs every minute and processes campaigns that are due to be sent.
  */
 
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+fwrite(STDERR, "This legacy scheduler is disabled because it bypasses canonical SMS reservations and no-resend controls. Use api/bin/sms-scheduler.php and api/bin/sms-worker.php.\n");
+exit(64);
+
 // Set working directory
 chdir(dirname(__DIR__));
 

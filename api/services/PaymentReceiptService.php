@@ -28,7 +28,7 @@ final class PaymentReceiptService
             return ['success'=>(bool)($existing['sent_at']??false),'status'=>$existing['status']??'missing'];
         }
 
-        $stmt=$pdo->prepare("SELECT o.*,p.amount,p.merchant_reference,u.email,u.name
+        $stmt=$pdo->prepare("SELECT o.*,p.amount,p.credits_added,p.merchant_reference,u.email,u.name
             FROM payment_receipt_outbox o
             JOIN payments p ON p.id=o.payment_id
             JOIN users u ON u.id=o.user_id
@@ -40,7 +40,7 @@ final class PaymentReceiptService
         }
 
         try {
-            $result=EmailService::sendPaymentConfirmationEmail((string)$job['email'],(string)($job['name']?:'Customer'),(float)$job['amount'],(string)$job['merchant_reference']);
+            $result=EmailService::sendPaymentConfirmationEmail((string)$job['email'],(string)($job['name']?:'Customer'),(float)$job['amount'],(string)$job['merchant_reference'],(int)$job['credits_added']);
         } catch (\Throwable $exception) {
             $result=['success'=>false,'error'=>$exception->getMessage()];
         }
@@ -79,10 +79,10 @@ final class PaymentReceiptService
 
     private static function direct(PDO $pdo,int $paymentId):array
     {
-        $stmt=$pdo->prepare("SELECT p.amount,p.merchant_reference,u.email,u.name FROM payments p JOIN users u ON u.id=p.user_id WHERE p.id=? AND p.status='completed' LIMIT 1");
+        $stmt=$pdo->prepare("SELECT p.amount,p.credits_added,p.merchant_reference,u.email,u.name FROM payments p JOIN users u ON u.id=p.user_id WHERE p.id=? AND p.status='completed' LIMIT 1");
         $stmt->execute([$paymentId]);$payment=$stmt->fetch();
         if(!$payment||empty($payment['email']))return ['success'=>false,'status'=>'failed'];
-        try{$result=EmailService::sendPaymentConfirmationEmail((string)$payment['email'],(string)($payment['name']?:'Customer'),(float)$payment['amount'],(string)$payment['merchant_reference']);}
+        try{$result=EmailService::sendPaymentConfirmationEmail((string)$payment['email'],(string)($payment['name']?:'Customer'),(float)$payment['amount'],(string)$payment['merchant_reference'],(int)$payment['credits_added']);}
         catch(\Throwable $exception){$result=['success'=>false];}
         return ['success'=>!empty($result['success']),'status'=>!empty($result['success'])?'sent':'failed'];
     }

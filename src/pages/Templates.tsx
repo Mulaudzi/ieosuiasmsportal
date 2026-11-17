@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from 'react-router-dom';
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,9 +39,11 @@ interface Template {
 }
 
 export default function Templates() {
+  const location=useLocation();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(()=>new URLSearchParams(location.search).get('search')?.slice(0,80)??'');
+  useEffect(()=>{setSearchQuery(new URLSearchParams(location.search).get('search')?.slice(0,80)??'');},[location.search]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

@@ -27,7 +27,6 @@ interface PurposeOption {
   label: string;
   description: string;
   icon: React.ElementType;
-  email: string;
 }
 
 const purposeOptions: PurposeOption[] = [
@@ -36,21 +35,18 @@ const purposeOptions: PurposeOption[] = [
     label: "General / Friendly Inquiry",
     description: "Say hello, ask a question, or provide feedback",
     icon: Smile,
-    email: "support@ieosuia.com",
   },
   {
     id: "support",
     label: "Support / Technical Help",
     description: "Get help with your account or technical issues",
     icon: HelpCircle,
-    email: "support@ieosuia.com",
   },
   {
     id: "sales",
     label: "Sales / Quotes / Partnerships",
     description: "Discuss pricing, volume discounts, or partnerships",
     icon: ShoppingBag,
-    email: "support@ieosuia.com",
   },
 ];
 
@@ -72,10 +68,6 @@ export default function Contact() {
       setPurpose(purposeParam);
     }
   }, [searchParams]);
-
-  const getEmailRecipient = () => {
-    return purposeOptions.find(p => p.id === purpose)?.email || "support@ieosuia.com";
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +114,6 @@ export default function Contact() {
     }
   };
 
-  const selectedPurpose = purposeOptions.find(p => p.id === purpose);
 
   return (
     <div className="min-h-screen bg-background">
@@ -165,6 +156,7 @@ export default function Contact() {
                     <p className="text-muted-foreground">
                       <strong>Sales:</strong> support@ieosuia.com
                     </p>
+                    <p className="my-2"><Link className="text-primary underline" to="/banking-details">Banking Details &amp; EFT payment references</Link></p>
                     <p className="text-xs text-muted-foreground mt-2 italic">
                       Use the form to ensure your message reaches the right team
                     </p>
@@ -312,13 +304,6 @@ export default function Contact() {
                     className="mt-1.5 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-none"
                     placeholder="How can we help you?"
                   />
-                </div>
-
-                <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                  <p className="text-muted-foreground">
-                    Your message will be sent to <strong className="text-foreground">{selectedPurpose?.email}</strong>
-                    {" "}with a copy to <strong className="text-foreground">info@ieosuia.com</strong>
-                  </p>
                 </div>
 
                 <Button type="submit" className="w-full" disabled={isSubmitting}>

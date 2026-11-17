@@ -20,9 +20,11 @@ export function Footer({ variant = "full" }: FooterProps) {
           <div className="flex flex-wrap justify-center gap-4 md:gap-6 text-sm text-sidebar-muted mb-4">
             <Link to="/terms-of-service" className="hover:text-sidebar-primary-foreground">Terms of Service</Link>
             <Link to="/privacy-policy" className="hover:text-sidebar-primary-foreground">Privacy Policy</Link>
+            <Link to="/data-deletion" className="hover:text-sidebar-primary-foreground">Data Deletion</Link>
             <Link to="/popia-compliance" className="hover:text-sidebar-primary-foreground">POPIA Compliance</Link>
             <Link to="/cookie-policy" className="hover:text-sidebar-primary-foreground">Cookie Policy</Link>
             <Link to="/support" className="hover:text-sidebar-primary-foreground">Support</Link>
+            <Link to="/banking-details" className="hover:text-sidebar-primary-foreground">Banking Details</Link>
             <Link to="/contact" className="hover:text-sidebar-primary-foreground">Contact</Link>
             <Link to="/features" className="hover:text-sidebar-primary-foreground">SMS Features</Link>
             <Link to="/use-cases" className="hover:text-sidebar-primary-foreground">Use Cases</Link>
@@ -61,7 +63,9 @@ export function Footer({ variant = "full" }: FooterProps) {
             <ul className="space-y-2 text-sm text-sidebar-muted">
               <li><Link to="/features" className="hover:text-sidebar-primary-foreground">Features</Link></li>
               <li><Link to="/pricing" className="hover:text-sidebar-primary-foreground">Pricing</Link></li>
+              <li><Link to="/banking-details" className="hover:text-sidebar-primary-foreground">Banking Details</Link></li>
               <li><Link to="/documentation" className="hover:text-sidebar-primary-foreground">Documentation</Link></li>
+              <li><Link to="/developers" className="hover:text-sidebar-primary-foreground">SMS API</Link></li>
               <li><Link to="/login" className="hover:text-sidebar-primary-foreground">Login</Link></li>
               <li><Link to="/register" className="hover:text-sidebar-primary-foreground">Sign Up</Link></li>
             </ul>
@@ -83,6 +87,7 @@ export function Footer({ variant = "full" }: FooterProps) {
             <h4 className="font-semibold text-sidebar-primary-foreground mb-4">Legal</h4>
             <ul className="space-y-2 text-sm text-sidebar-muted">
               <li><Link to="/privacy-policy" className="hover:text-sidebar-primary-foreground">Privacy Policy</Link></li>
+              <li><Link to="/data-deletion" className="hover:text-sidebar-primary-foreground">Data Deletion</Link></li>
               <li><Link to="/terms-of-service" className="hover:text-sidebar-primary-foreground">Terms of Service</Link></li>
               <li><Link to="/popia-compliance" className="hover:text-sidebar-primary-foreground">POPIA Compliance</Link></li>
               <li><Link to="/cookie-policy" className="hover:text-sidebar-primary-foreground">Cookie Policy</Link></li>

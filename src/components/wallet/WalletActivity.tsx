@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-interface Activity {id:string;created_at:string;type:'Purchase'|'Credit adjustment'|'SMS usage';reference:string;detail:string;amount:number;credits:number;status:string}
+interface Activity {id:string;created_at:string;type:'Purchase'|'Credit adjustment'|'Credit transfer'|'SMS usage'|'Email usage';reference:string;detail:string;amount:number;credits:number;status:string}
 export interface WalletActivityData {transactions:Activity[];total:number;page:number;last_page:number;total_paid:number}
 export function WalletActivity({full=false,onTotalPaid}:{full?:boolean;onTotalPaid?:(amount:number)=>void}){
  const {user}=useAuth();const [params,setParams]=useSearchParams();const [page,setPage]=useState(1);

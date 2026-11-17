@@ -1,319 +1,96 @@
 # IEOSUIA SMS Portal
 
-A comprehensive SMS and Email marketing platform built with Laravel (PHP 8.4) backend and React/Vite frontend.
+IEOSUIA Messaging is a React/Vite customer portal with a custom PHP API and a MySQL-backed messaging ledger. The PHP application uses its own router, authentication helpers and database workers. It does not use Laravel, Artisan or Sanctum.
 
-## 🚀 Features
+## Application structure
 
-- **SMS Campaigns**: Send bulk SMS messages with delivery tracking
-- **Email Campaigns**: Create and send HTML email campaigns
-- **Contact Management**: Import, organize, and segment contacts
-- **Template System**: Reusable message templates with variables
-- **Wallet System**: Credit-based billing with transaction history
-- **Real-time DLR**: Delivery report tracking and webhooks
-- **Analytics**: Comprehensive reporting and exports
-- **Multi-user**: Role-based access control
-
-## 📁 Project Structure
-
-```
-sms.ieosuia.com/
-├── api/                    # Laravel PHP Backend
-│   ├── app/
-│   │   ├── Http/Controllers/
-│   │   ├── Models/
-│   │   ├── Services/
-│   │   └── Jobs/
-│   ├── database/
-│   │   ├── migrations/
-│   │   ├── seeders/
-│   │   └── factories/
-│   ├── routes/api.php
-│   └── public/             # API document root
-├── src/                    # React Frontend Source
-│   ├── components/
-│   ├── pages/
-│   ├── hooks/
-│   └── lib/
-├── dist/                   # Built frontend (after npm run build)
-├── nginx.conf              # Nginx configuration
-└── deploy.sh               # Deployment script
+```text
+api/
+  index.php             Main HTTP entry point and route registrations
+  core/                 Router, request/response, JWT and authentication helpers
+  config/database.php   Private environment loading and PDO connection
+  controllers/          Customer and administrator request handlers
+  domain/               Campaign, wallet, reconciliation and policy services
+  providers/            Messaging provider adapters
+  services/             Transport, read models and operational services
+  routes/               Additional route registration, including SMS integration
+  migrations/           Numbered PHP schema migrations
+  bin/                  CLI workers and maintenance tools
+  cron/                 Scheduled campaign processing
+  tests/                Isolated PHP fixtures and guarded integration suites
+src/                    React pages, components, hooks and client API
+ops/                    Worker and cron configuration examples
+docs/operations/        Setup, security and operational contracts
+docs/verification/      Dated, bounded verification and release evidence
+dist/                   Generated frontend output
 ```
 
-## 🛠️ Local Development Setup
+Apache-compatible hosting uses `api/.htaccess` to rewrite API paths to `api/index.php`. `api/core/Router.php` removes the `/api` prefix, matches the registered method/path, runs middleware and loads the selected controller. Some integrations have separate PHP entry points; inspect their source and operational contract before changing their deployment.
 
-### Prerequisites
+## Capabilities and acceptance boundaries
 
-- PHP 8.4+
-- Composer 2.x
-- Node.js 18+
-- MySQL 8.0+
+- SMS campaigns, scheduling, contacts, templates, reports and credit wallets use canonical campaign/message records. Submission acceptance and handset delivery are separate results; a missing delivery report does not prove non-delivery.
+- The AWS email campaign service has sender review, reply-inbox verification, content/file inspection, feedback and separate billing/dispatch gates. Available source or a successful direct delivery test does not establish general customer launch readiness.
+- WhatsApp uses Facebook Login for Business / Embedded Signup to authorize business assets. Customer portal sign-in is separate. Meta review, permission approval and publication remain external states.
+- Administration is separated from customer access. Financial changes, real provider tests and production deployments retain their specific authorization and verification requirements.
 
-### Backend Setup
+Start with [production readiness](docs/operations/production-readiness.md), [email operations and pilot gates](docs/operations/email-feedback-alerts-and-pilot.md) and [Meta setup](docs/operations/whatsapp-meta-setup.md). Dated verification records describe the scope actually checked; they are not a current full-product acceptance certificate.
 
-```bash
-# Navigate to API directory
-cd api
+## Local development
 
-# Install PHP dependencies
-composer install
+The documented backend baseline is PHP 8.4 with PDO MySQL, cURL, sodium and mbstring, a dedicated MySQL-compatible development database, and an HTTP server configured for the PHP routes. Frontend development uses Node 20+ and the committed npm lockfile. Some isolated PHP fixtures also require PDO SQLite.
 
-# Copy environment file
-cp .env.example .env
+1. Read [environment configuration](docs/operations/environment.md) and [database setup](docs/operations/database.md).
+2. Create private local environment files from the examples only when needed. Configure a dedicated local/test database and mock transports. Do not copy production credentials into a development or fixture environment.
+3. Point `VITE_API_BASE_URL` in the frontend's private local environment to that local API. Its fallback is the production API; starting Vite alone does not create an isolated backend.
+4. Install the locked frontend dependencies and start Vite:
 
-# Generate application key
-php artisan key:generate
-
-# Configure database in .env
-# DB_CONNECTION=mysql
-# DB_HOST=127.0.0.1
-# DB_PORT=3306
-# DB_DATABASE=ieosuia_sms
-# DB_USERNAME=your_user
-# DB_PASSWORD=your_password
-
-# Run migrations
-php artisan migrate
-
-# Seed demo data
-php artisan db:seed
-
-# Start API server
-php artisan serve --port=8000
-```
-
-### Frontend Setup
-
-```bash
-# From project root
-npm install
-
-# Start development server
+```sh
+npm ci
 npm run dev
 ```
 
-Access the app at `http://localhost:5173`
+The Vite configuration requests port 8080; use the URL it prints if the port is occupied. Central sign-in also needs a deliberately configured development integration. There are no documented universal demo accounts or default production passwords.
 
-### Demo Credentials
+The API loads `api/.env` through `api/config/database.php`. Its CLI migration runner is `api/bin/migrate.php`, not an Artisan command. It applies all pending numbered migrations, so review the intended schema scope and test restoration on a disposable database before invoking it. This README is not approval to migrate production or unrelated schemas.
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@ieosuia.com | password |
-| User | test@example.com | password |
+## Checks
 
-## 🧪 Running Tests
-
-```bash
-cd api
-
-# Run all tests
-php artisan test
-
-# Run specific test suite
-php artisan test --testsuite=Feature
-
-# With coverage
-php artisan test --coverage
+```sh
+npm run typecheck
+npm test
+npm run test:php
 ```
 
-## 📦 Production Deployment
+`npm run test:php` runs only the pure domain and injected-provider suites named in `package.json`; it is not the complete PHP acceptance matrix. See [test strategy](api/tests/README.md). Run other suites only after checking their database/transport guards. MySQL integration suites must use the required dedicated test database; hermetic SQLite suites do not establish real MySQL concurrency or provider acceptance.
 
-### Server Requirements
+## Authentication and route discovery
 
-- Ubuntu 22.04+ / CentOS 8+
-- Nginx or Apache
-- PHP 8.4 with extensions: BCMath, Ctype, cURL, DOM, Fileinfo, JSON, Mbstring, OpenSSL, PCRE, PDO, Tokenizer, XML
-- MySQL 8.0+
-- Redis (optional, for queues)
-- Supervisor (for queue workers)
+Customer sign-in starts through the IEOSUIA central authentication integration. Local registration/password-login routes are disabled in the main router. Protected route groups use `Auth::check()` and bearer JWT validation; account state, session/revocation checks and central administrator validation are server-side. Public health, callback and preference routes have their own contracts and are not ordinary authenticated customer endpoints.
 
-### Quick Deploy
+Use `api/index.php` and additional entry-point/route files as the route authority. Current main-router examples:
 
-```bash
-# Make deploy script executable
-chmod +x deploy.sh
+| Area | Route example |
+| --- | --- |
+| Central sign-in | `GET /api/auth/ieosuia/start` |
+| SMS campaigns | `GET /api/sms/campaigns-v2` |
+| Campaign queue / cancellation | `POST /api/sms/campaigns-v2/{id}/queue`, `POST /api/sms/campaigns-v2/{id}/cancel` |
+| Contacts | `GET /api/contacts` |
+| Templates | `GET /api/templates` |
+| Wallet | `GET /api/wallet` |
+| Liveness / readiness | `GET /api/up`, `GET /api/ready` |
 
-# Run deployment
-./deploy.sh
-```
+These examples describe routing only; they do not authorize requests or prove the caller has access.
 
-### Manual Deployment
+## Deployment and operations
 
-#### 1. Build Frontend
+Follow the [deployment contract](docs/operations/deployment.md) together with the exact approved release scope. The SMS dispatcher is `api/bin/sms-worker.php`; the scheduler and DLR poller have separate cron entries in `ops/cron.example`. They are database-backed PHP processes, not Laravel queue or scheduler commands. Email and WhatsApp have additional independent service and launch gates.
 
-```bash
-npm run build
-```
+For a scoped update, preserve current live bytes and protected configuration, publish a coherent frontend asset graph, retain rollback evidence and verify readback. Keep `.env`, uploads, audit evidence and credentials private. Do not upload the whole dirty workspace or assume a frontend build authorizes workers, sending or financial changes.
 
-#### 2. Upload Files
+## Ownership and support
 
-Upload to your server:
-- `dist/` → `/var/www/sms.ieosuia.com/dist/`
-- `api/` → `/var/www/sms.ieosuia.com/api/`
-
-#### 3. Configure Backend
-
-```bash
-cd /var/www/sms.ieosuia.com/api
-
-composer install --optimize-autoloader --no-dev
-cp .env.example .env
-php artisan key:generate
-php artisan migrate --force
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
-```
-
-#### 4. Set Permissions
-
-```bash
-chown -R www-data:www-data /var/www/sms.ieosuia.com
-chmod -R 755 /var/www/sms.ieosuia.com
-chmod -R 775 /var/www/sms.ieosuia.com/api/storage
-chmod -R 775 /var/www/sms.ieosuia.com/api/bootstrap/cache
-```
-
-#### 5. Configure Nginx
-
-```bash
-sudo cp nginx.conf /etc/nginx/sites-available/sms.ieosuia.com
-sudo ln -s /etc/nginx/sites-available/sms.ieosuia.com /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-#### 6. SSL Certificate
-
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d sms.ieosuia.com
-```
-
-#### 7. Queue Worker (Supervisor)
-
-```bash
-sudo cp api/supervisor.conf /etc/supervisor/conf.d/sms-queue.conf
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl start sms-queue:*
-```
-
-#### 8. Cron Job
-
-Add to crontab (`crontab -e`):
-
-```
-* * * * * cd /var/www/sms.ieosuia.com/api && php artisan schedule:run >> /dev/null 2>&1
-```
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Key settings in `api/.env`:
-
-```env
-# Application
-APP_NAME="IEOSUIA SMS Portal"
-APP_ENV=production
-APP_DEBUG=false
-APP_URL=https://sms.ieosuia.com
-
-# Database
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=ieosuia_sms
-DB_USERNAME=your_user
-DB_PASSWORD=your_password
-
-# SMS Gateway (LogicSMS)
-SMS_GATEWAY_URL=https://www.logicsms.co.za/postmsg2.aspx
-SMS_GATEWAY_USERNAME=your_username
-SMS_GATEWAY_PASSWORD=your_password
-SMS_DEFAULT_SENDER=IEOSUIA
-
-# Email (SMTP)
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.mailgun.org
-MAIL_PORT=587
-MAIL_USERNAME=your_smtp_user
-MAIL_PASSWORD=your_smtp_password
-MAIL_ENCRYPTION=tls
-MAIL_FROM_ADDRESS=noreply@ieosuia.com
-MAIL_FROM_NAME="IEOSUIA SMS Portal"
-
-# Queue
-QUEUE_CONNECTION=database
-
-# Frontend URL
-FRONTEND_URL=https://sms.ieosuia.com
-```
-
-### SMS Gateway Integration
-
-The system supports LogicSMS (South Africa). Configure in `api/config/sms.php`:
-
-```php
-'api_url' => env('SMS_GATEWAY_URL'),
-'username' => env('SMS_GATEWAY_USERNAME'),
-'password' => env('SMS_GATEWAY_PASSWORD'),
-'default_sender' => env('SMS_DEFAULT_SENDER', 'IEOSUIA'),
-```
-
-## 🔒 Security
-
-- All API routes require authentication (Laravel Sanctum)
-- CORS configured for frontend domain only
-- Rate limiting on authentication endpoints
-- Input validation on all requests
-- XSS protection headers
-
-## 📊 API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login
-- `POST /api/auth/logout` - Logout
-- `GET /api/auth/me` - Get current user
-
-### Campaigns
-- `GET /api/sms/campaigns` - List SMS campaigns
-- `POST /api/sms/campaigns` - Create SMS campaign
-- `GET /api/sms/campaigns/{id}` - Get campaign details
-- `DELETE /api/sms/campaigns/{id}` - Delete campaign
-
-### Contacts
-- `GET /api/contacts` - List contacts
-- `POST /api/contacts` - Create contact
-- `POST /api/contacts/import` - Import CSV
-- `GET /api/contacts/groups` - List groups
-
-### Templates
-- `GET /api/templates` - List templates
-- `POST /api/templates` - Create template
-- `PUT /api/templates/{id}` - Update template
-
-### Wallet
-- `GET /api/wallet/balance` - Get balance
-- `GET /api/wallet/transactions` - Transaction history
-- `POST /api/wallet/buy` - Buy credits
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is proprietary software owned by IEOSUIA (Pty) Ltd.
-
-## 📞 Support
-
-For support, email support@ieosuia.com or visit https://ieosuia.com
+Proprietary software owned by IEOSUIA (Pty) Ltd. Support: `sms@ieosuia.com`. Public website: [IEOSUIA](https://ieosuia.com).
 
 ## Public homepage rendering
 

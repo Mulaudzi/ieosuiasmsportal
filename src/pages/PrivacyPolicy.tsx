@@ -15,17 +15,34 @@ export default function PrivacyPolicy() {
         </Link>
 
         <h1 className="text-3xl font-bold text-foreground mb-6">Privacy Policy</h1>
-        <p className="text-muted-foreground mb-8">Last updated: January 13, 2026</p>
+        <p className="text-muted-foreground mb-8">Last updated: November 13, 2026</p>
 
         <div className="prose prose-gray dark:prose-invert max-w-none space-y-6">
-          <section><h2 className="text-xl font-semibold text-foreground mb-3">Responsible party</h2><p className="text-muted-foreground leading-relaxed">IEOSUIA, 26 Rock Alder, Naturena, Johannesburg, 2095, South Africa.</p></section>
+          <section><h2 className="text-xl font-semibold text-foreground mb-3">Responsible party</h2><p className="text-muted-foreground leading-relaxed">IEOSUIA (Pty) Ltd, 26 Rock Alder, Naturena, Johannesburg, 2095, South Africa. For privacy and deletion requests, contact <a href="mailto:sms@ieosuia.com" className="text-primary hover:underline">sms@ieosuia.com</a>.</p></section>
           <section>
             <h2 className="text-xl font-semibold text-foreground mb-3">1. Introduction</h2>
             <p className="text-muted-foreground leading-relaxed">
               IEOSUIA SMS Portal ("we", "our", or "us") is committed to protecting your privacy. 
               This Privacy Policy explains how we collect, use, disclose, and safeguard your information 
-              when you use our SMS and email messaging service.
+              when you use our SMS, email and available WhatsApp Business messaging features. Our customer service currently supports South Africa.
             </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-foreground mb-3">Meta and WhatsApp Business data</h2>
+            <p className="text-muted-foreground leading-relaxed">When you choose to connect WhatsApp Business, Facebook Login for Business and Meta Embedded Signup let you authorize access to your business assets. This connection is separate from your IEOSUIA portal sign-in. We receive the authorization code, business access token and authorization details, WhatsApp Business Account and phone number identifiers, business/display names, phone numbers and token expiry information. We do not receive your Facebook password.</p>
+            <p className="text-muted-foreground leading-relaxed mt-3">Where the WhatsApp workspace is enabled, we process template names, categories, languages, text and review status; the recipient number, template parameters and opt-in details you submit; Meta message identifiers; and signed webhook payloads, including incoming message content and sending, delivery, read or failure updates. We use this information to connect your chosen business, manage its templates, perform your requested messaging operations, show results, protect accounts and investigate errors. Connecting a number alone does not send messages.</p>
+            <p className="text-muted-foreground leading-relaxed mt-3">Messages and template requests are sent to Meta to provide these features. Recipient contact information and message content needed for delivery are shared with Meta and the receiving party. Your business is responsible for having permission to contact its recipients and honoring opt-outs. WhatsApp access tokens are encrypted in portal storage and are not displayed to other customers.</p>
+            <p className="text-muted-foreground leading-relaxed mt-3">Axxess DSL (Pty) Ltd provides hosting for the portal and its database. Serving South African customers does not mean all processing occurs only in South Africa: Meta and hosting providers may process data or provide support from other countries. This page does not promise a complete provider processing-country list.</p>
+            <p className="text-muted-foreground leading-relaxed mt-3">Disconnecting WhatsApp from portal settings removes the stored connection credentials and cancels pending authorization attempts. Connection metadata, the account ownership reservation, operation history and webhook records may remain until reviewed for deletion or retention. WhatsApp records are not subject to an automatic 90-day deletion guarantee. Follow our <Link to="/data-deletion" className="text-primary hover:underline">data deletion instructions</Link> to request deletion of applicable records. We will verify your authority and explain the scope, expected timing and any justified retention or backup limitations. Disconnecting the portal does not delete your Meta/WhatsApp account or messages already held by Meta or recipients.</p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-foreground mb-3">Email campaign data</h2>
+            <p className="text-muted-foreground leading-relaxed">Where email campaigns are enabled, Amazon Web Services (AWS), including Amazon SES, processes approved sender details, recipient email addresses, campaign content, consent evidence, delivery events and email preference records to provide the service. The campaign service is configured in the AWS Europe (Stockholm) region. Delivery also involves recipients' email providers, and provider support or other processing may occur outside South Africa or that region.</p>
+            <p className="text-muted-foreground leading-relaxed mt-3">The portal retains account and financial authority. AWS campaign processing receives the account identifier, verified Reply-To address and the limited authorization information needed for the requested campaign. Customer messages include unsubscribe and abuse-report links. We retain suppression information to honor those choices and retain campaign, review and accounting evidence for service operation, reconciliation and abuse prevention.</p>
+            <p className="text-muted-foreground leading-relaxed mt-3">Uploaded logos, images and attachments are stored privately in Amazon S3 in the Stockholm region. Amazon GuardDuty checks quarantined uploads for malware, and the service validates file types, inspects readable PDF text and records content-risk signals for independent review. Automated checks cannot identify all harmful or unwanted content. Authorized reviewers can inspect the exact files associated with a campaign through temporary links. Quarantined files are scheduled for deletion after 7 days and accepted files after 90 days; storage lifecycle deletion may take additional time. File access and sending eligibility expire separately from retained campaign and accounting evidence.</p>
+            <p className="text-muted-foreground leading-relaxed mt-3">Email campaign records do not currently have automatic 90-day deletion. Use our <Link to="/data-deletion" className="text-primary hover:underline">data deletion instructions</Link> to request deletion. We will assess applicable records and explain any justified retention or backup limitations. Deletion cannot recall email already sent to recipients.</p>
           </section>
 
           <section>
@@ -98,6 +115,7 @@ export default function PrivacyPolicy() {
               <li>Withdraw consent where applicable</li>
               <li>Lodge a complaint with the Information Regulator</li>
             </ul>
+            <p className="text-muted-foreground leading-relaxed mt-3">To request deletion of portal or Meta/WhatsApp data, follow our <Link to="/data-deletion" className="text-primary hover:underline">data deletion instructions</Link>.</p>
           </section>
 
           <section>

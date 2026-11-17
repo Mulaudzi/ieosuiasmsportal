@@ -59,7 +59,7 @@ export function OnboardingFlow({ onComplete, onSkip }: OnboardingFlowProps) {
           <div className="grid gap-4 max-w-md mx-auto">
             <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-4 text-left">
               <Check className="h-5 w-5 text-success shrink-0" />
-              <span className="text-sm text-foreground">R0.35 including VAT per SMS segment</span>
+              <span className="text-sm text-foreground">R0.22 to R0.35 per credit by purchase volume. No VAT charged.</span>
             </div>
             <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-4 text-left">
               <Check className="h-5 w-5 text-success shrink-0" />

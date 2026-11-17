@@ -1,234 +1,50 @@
-import { Link, useLocation } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Users,
-  Shield,
-  Settings,
-  Key,
-  Mail,
-  Bell,
-  Activity,
-  FileText,
-  ChevronRight,
-  ArrowLeft,
-  LogOut,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useAuth } from "@/hooks/useAuth";
-import { LogoSidebar } from "@/components/layout/Logo";
+import { Link, useLocation } from 'react-router-dom';
+import { Activity, ArrowLeft, CalendarClock, ChevronRight, CreditCard, FileText, Inbox, LayoutDashboard, LogOut, Mail, MessageCircle, MessageSquare, Settings, Shield, Users } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { LogoSidebar } from '@/components/layout/Logo';
+import { adminLinkActive } from '@/lib/admin-tools';
 
-const adminNavigation = [
-  { 
-    name: "Overview", 
-    href: "/guymhan",
-    icon: LayoutDashboard,
-    exact: true,
-    description: "Dashboard & stats"
-  },
-  { 
-    name: "Platform Managers",
-    href: "/guymhan/users",
-    icon: Shield,
-    description: "Manage administrators"
-  },
-  { 
-    name: "User Management", 
-    href: "/guymhan/tools?tab=users",
-    icon: Users,
-    description: "All platform users"
-  },
-  { 
-    name: "Operations Tools",
-    href: "/guymhan/tools",
-    icon: Mail,
-    description: "Support, audit & settings"
-  },
+const navigation = [
+  { label: 'Workspace', items: [
+    { name: 'Overview', href: '/guymhan', icon: LayoutDashboard },
+    { name: 'Customers', href: '/guymhan?tab=customers', icon: Users },
+    { name: 'SMS campaigns', href: '/guymhan?tab=campaigns', icon: MessageSquare },
+    { name: 'Finance', href: '/guymhan?tab=finance', icon: CreditCard },
+    { name: 'Support inbox', href: '/guymhan/tools?tab=contact-emails', icon: Inbox },
+  ] },
+  { label: 'People & channels', items: [
+    { name: 'User access', href: '/guymhan/tools?tab=users', icon: Users },
+    { name: 'Platform managers', href: '/guymhan/users', icon: Shield },
+    { name: 'Email review', href: '/guymhan/email-campaigns', icon: Mail },
+    { name: 'WhatsApp setup', href: '/guymhan/whatsapp', icon: MessageCircle },
+  ] },
+  { label: 'System', items: [
+    { name: 'Service monitoring', href: '/guymhan?tab=monitoring', icon: Activity },
+    { name: 'Scheduled messages', href: '/guymhan/tools?tab=scheduled', icon: CalendarClock },
+    { name: 'Configuration', href: '/guymhan/tools?tab=settings', icon: Settings },
+    { name: 'System health', href: '/guymhan/tools?tab=health', icon: Activity },
+    { name: 'Audit logs', href: '/guymhan/logs', icon: FileText },
+  ] },
 ];
-
-const settingsNavigation = [
-  { 
-    name: "SMTP Settings", 
-    href: "/guymhan/tools?tab=settings",
-    icon: Settings,
-    description: "Email configuration"
-  },
-  { 
-    name: "Notifications", 
-    href: "/guymhan/tools?tab=settings",
-    icon: Bell,
-    description: "Alert settings"
-  },
-  { 
-    name: "Audit Logs", 
-    href: "/guymhan/logs",
-    icon: FileText,
-    description: "System activity"
-  },
-  { 
-    name: "System Health", 
-    href: "/guymhan/tools",
-    icon: Activity,
-    description: "Service status"
-  },
-];
-
+export const adminSidebarLinks = navigation.flatMap(group => group.items.map(item => item.href));
 interface AdminSidebarProps { mobile?: boolean; onNavigate?: () => void }
-
-export function AdminSidebar({mobile=false,onNavigate}:AdminSidebarProps) {
+export function AdminSidebar({ mobile = false, onNavigate }: AdminSidebarProps) {
   const location = useLocation();
   const { user, logout } = useAuth();
-
-  const handleLogout = async () => {
-    await logout();
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  const isActive = (href: string, exact?: boolean) => {
-    if (href.includes('?tab=')) {
-      const [path, query] = href.split('?');
-      const params = new URLSearchParams(query);
-      const tab = params.get('tab');
-      const currentTab = new URLSearchParams(location.search).get('tab');
-      return location.pathname === path && currentTab === tab;
-    }
-    if (exact) {
-      return location.pathname === href && !location.search;
-    }
-    return location.pathname.startsWith(href);
-  };
-
-  return (
-    <aside className={cn(mobile?"h-full w-full bg-sidebar":"fixed left-0 top-0 z-40 hidden h-screen w-64 bg-sidebar lg:block")}>
-      <div className="flex h-full flex-col">
-        {/* Logo */}
-        <div className="flex h-16 items-center border-b border-sidebar-border px-6">
-          <Link to="/guymhan" onClick={onNavigate}>
-            <LogoSidebar size="md" />
-          </Link>
-        </div>
-
-        {/* Admin Label */}
-        <div className="px-6 py-3 border-b border-sidebar-border">
-          <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-destructive" />
-            <span className="text-sm font-semibold text-destructive">Admin Operations</span>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-          {/* Back to Dashboard */}
-          <Link
-            to="/dashboard"
-            onClick={onNavigate}
-            className="nav-item group mb-4 border border-dashed border-sidebar-border"
-          >
-            <ArrowLeft className="h-5 w-5 flex-shrink-0" />
-            <span className="flex-1">Back to App</span>
-          </Link>
-
-          {/* Main Navigation */}
-          <div className="mb-2 px-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
-              Administration
-            </p>
-          </div>
-          
-          {adminNavigation.map((item) => {
-            const active = isActive(item.href, item.exact);
-            return (
-              <Link
-                key={item.name}
-                to={item.href}
-                onClick={onNavigate}
-                className={cn(
-                  "nav-item group",
-                  active && "active"
-                )}
-              >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="block truncate">{item.name}</span>
-                  <span className="block text-xs text-sidebar-muted truncate">
-                    {item.description}
-                  </span>
-                </div>
-                {active && (
-                  <ChevronRight className="h-4 w-4 opacity-60 flex-shrink-0" />
-                )}
-              </Link>
-            );
-          })}
-
-          {/* Settings Section */}
-          <div className="mt-6 mb-2 px-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
-              Configuration
-            </p>
-          </div>
-          
-          {settingsNavigation.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.name}
-                to={item.href}
-                onClick={onNavigate}
-                className={cn(
-                  "nav-item group",
-                  active && "active"
-                )}
-              >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="block truncate">{item.name}</span>
-                  <span className="block text-xs text-sidebar-muted truncate">
-                    {item.description}
-                  </span>
-                </div>
-                {active && (
-                  <ChevronRight className="h-4 w-4 opacity-60 flex-shrink-0" />
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* User Section */}
-        <div className="border-t border-sidebar-border p-3">
-          <div className="flex items-center gap-3 rounded-lg px-3 py-2">
-            <Link 
-              to="/profile"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-destructive/20 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors"
-            >
-              {user ? getInitials(user.name) : 'A'}
-            </Link>
-            <Link to="/profile" className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
-              <p className="truncate text-sm font-medium text-sidebar-primary-foreground">
-                {user?.name || 'Admin'}
-              </p>
-              <p className="truncate text-xs text-sidebar-muted">
-                Administrator
-              </p>
-            </Link>
-            <button 
-              className="rounded-lg p-2 text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-primary-foreground"
-              onClick={handleLogout}
-              aria-label="Logout"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
+  const initials = user?.name?.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'A';
+  return <aside className={cn(mobile ? 'h-full w-full bg-sidebar' : 'fixed left-0 top-0 z-40 hidden h-screen w-64 bg-sidebar lg:block')}>
+    <div className="flex h-full flex-col">
+      <div className="flex h-16 shrink-0 items-center border-b border-sidebar-border px-6"><Link to="/guymhan" onClick={onNavigate} aria-label="Admin home"><LogoSidebar size="md"/></Link></div>
+      <div className="admin-sidebar-label"><span><Shield size={15} aria-hidden="true"/></span><span>Administration</span></div>
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="Admin navigation">
+        <Link to="/dashboard" onClick={onNavigate} className="admin-sidebar-back nav-item border border-dashed border-sidebar-border"><ArrowLeft size={17} aria-hidden="true"/><span>Back to SMS Portal</span></Link>
+        {navigation.map(group => <section key={group.label} className="admin-sidebar-group"><h2>{group.label}</h2>{group.items.map(item => {
+          const active = adminLinkActive(item.href, location);
+          return <Link key={item.href} to={item.href} onClick={onNavigate} aria-current={active ? 'page' : undefined} className={cn('nav-item', active && 'active')}><item.icon size={17} aria-hidden="true"/><span>{item.name}</span>{active && <ChevronRight size={14} aria-hidden="true"/>}</Link>;
+        })}</section>)}
+      </nav>
+      <div className="shrink-0 border-t border-sidebar-border p-3"><div className="flex items-center gap-3 rounded-lg px-3 py-2"><Link to="/profile" onClick={onNavigate} aria-label="Your profile" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-sm font-medium text-sidebar-foreground">{initials}</Link><Link to="/profile" onClick={onNavigate} className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-sidebar-primary-foreground">{user?.name || 'Admin'}</p><p className="text-xs text-sidebar-muted">Administrator</p></Link><button type="button" onClick={() => void logout()} aria-label="Logout" className="rounded-lg p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent"><LogOut size={16} aria-hidden="true"/></button></div></div>
+    </div>
+  </aside>;
 }

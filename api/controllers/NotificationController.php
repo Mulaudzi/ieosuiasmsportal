@@ -14,7 +14,7 @@ class NotificationController
         $page = max(1,(int) Request::query('page', 1));
         $perPage = max(1,min(100,(int) Request::query('per_page', 20)));
         $syncAvailable=true;
-        try { require_once __DIR__.'/../services/CustomerNotificationService.php'; CustomerNotificationService::sync(db(),(int)$userId); }
+        try { require_once __DIR__.'/../services/CustomerNotificationService.php'; $syncAvailable=CustomerNotificationService::sync(db(),(int)$userId)['available']; }
         catch(Throwable $e){$syncAvailable=false;error_log('Customer notification reconciliation unavailable: '.get_class($e));}
         
         $notifications = table('notifications')
@@ -124,7 +124,7 @@ class NotificationController
             $userId,
             'campaign_complete',
             'Campaign Completed',
-            "Your campaign \"{$campaignName}\" has finished. {$sent} sent, {$failed} failed.",
+            "Sending finished for \"{$campaignName}\". {$sent} successfully sent, {$failed} failed submissions. Delivery confirmations update as network reports arrive.",
             ['campaign_name' => $campaignName, 'sent' => $sent, 'failed' => $failed]
         );
     }
@@ -191,7 +191,7 @@ class NotificationController
             $userId,
             'message_failed',
             'Messages Failed',
-            "{$failedCount} messages failed in campaign \"{$campaignName}\".",
+            "The messaging provider or mobile network reported unsuccessful delivery for {$failedCount} messages in \"{$campaignName}\". Review the latest recipient results.",
             ['failed_count' => $failedCount, 'campaign_name' => $campaignName]
         );
     }

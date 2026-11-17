@@ -1,5 +1,8 @@
 <?php
 
+require_once __DIR__.'/../domain/SmsAdminProjection.php';
+require_once __DIR__.'/../domain/CentralAdminAccess.php';
+
 final class IeosuiaAuthController
 {
     private const FLOW_COOKIE = 'sms_ieosuia_oauth_flow';
@@ -50,17 +53,31 @@ final class IeosuiaAuthController
         $email = strtolower((string) $profile['email']);
 
         if ($type === 'admin') {
-            $admin = table('admin_users')->where('identity_uuid', $uuid)->first();
-            if (!$admin) $admin = table('admin_users')->where('email', $email)->first();
-            if (!$admin || !(bool) $admin['is_active'] || (!empty($admin['identity_uuid']) && !hash_equals((string) $admin['identity_uuid'], $uuid))) $this->fail('local_access_missing');
-            $user = table('users')->where('email', $email)->first();
-            if (!$user) $this->fail('admin_projection_missing');
-            table('users')->where('id', $user['id'])->update(['identity_uuid' => $uuid, 'role' => 'admin', 'is_active' => 1, 'email_verified_at' => $user['email_verified_at'] ?? date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')]);
-            $user = table('users')->where('id', $user['id'])->first();
+            try {
+                $config = Auth::centralAdminConfig();
+                CentralAdminAccess::profile($profile,'sms',['admin'],$config);
+                CentralAdminAccess::verify($uuid,(int)($profile['token_version']??0),(string)($profile['access_level']??''),CentralAdminAccess::managed($profile),'sms',$config);
+                $user = SmsAdminProjection::synchronize(db(), $profile,true,CentralAdminAccess::enabled($config));
+                $user['central_admin_version']=(int)($profile['token_version']??0);
+                $user['central_admin_managed']=CentralAdminAccess::managed($profile);
+            } catch (RuntimeException $error) {
+                $this->fail($error->getMessage());
+            }
         } else {
             $user = $this->customerProjection($uuid, $email, (string) ($profile['name'] ?? $email));
         }
 
+        require_once __DIR__.'/../domain/SmsLoginSecurity.php';
+        $security=new SmsLoginSecurity(db());
+        if(!empty($security->state((int)$user['id'])['enabled'])){
+            require_once __DIR__.'/../services/EmailService.php';
+            $binding=bin2hex(random_bytes(32));
+            try{$challenge=$security->request($user,'login',$binding,static fn($email,$code,$purpose)=>(EmailService::sendSmsLoginCode($email,$code,$purpose)['success']??false)===true,$user);}
+            catch(SmsLoginSecurityException){$this->fail('extra_verification_unavailable');}
+            setcookie('sms_login_binding',$binding,['expires'=>time()+600,'path'=>'/api/auth/two-step','secure'=>$this->https(),'httponly'=>true,'samesite'=>'Strict']);
+            header('Cache-Control: no-store');header('Referrer-Policy: no-referrer');
+            header('Location: '.$this->frontend().'/auth/two-step'.($type==='admin'?'?account_type=admin':'').'#challenge='.$challenge['challenge'],true,302);exit;
+        }
         $token = Auth::generateToken($user);
         $target = $type === 'admin' ? '/guymhan/auth/callback#ieosuia_admin_token=' : '/auth/callback#ieosuia_token=';
         header('Location: '.$this->frontend().$target.rawurlencode($token), true, 302);

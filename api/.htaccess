@@ -1,7 +1,39 @@
 RewriteEngine On
+
+# Payment proofs are limited to 5 MB by the controller. LiteSpeed uses these
+# per-directory values; .user.ini provides the equivalent CGI/FPM setting.
+<IfModule lsapi_module>
+    php_value upload_max_filesize 6M
+    php_value post_max_size 8M
+</IfModule>
+<IfModule LiteSpeed>
+    php_value upload_max_filesize 6M
+    php_value post_max_size 8M
+</IfModule>
+
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.php [QSA,L]
+
+# OAuth codes and customer connection responses must not inherit public caching
+# or the site's same-origin referrer policy. Scope this to the new endpoints.
+<IfModule mod_headers.c>
+  <FilesMatch "^(whatsapp-meta-oauth|whatsapp-connect|whatsapp-workspace)\.php$">
+    Header unset Cache-Control
+    Header always unset Cache-Control
+    Header always set Cache-Control "no-store, private, max-age=0"
+    Header always set Pragma "no-cache"
+    Header unset Referrer-Policy
+    Header always unset Referrer-Policy
+    Header always set Referrer-Policy "no-referrer"
+    Header unset X-Frame-Options
+    Header always unset X-Frame-Options
+    Header always set X-Frame-Options "DENY"
+    Header unset Content-Security-Policy
+    Header always unset Content-Security-Policy
+    Header always set Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+  </FilesMatch>
+</IfModule>
 
 # CORS headers
 Header always set Access-Control-Allow-Origin "*"

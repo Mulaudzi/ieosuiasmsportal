@@ -19,22 +19,22 @@ $fixture->exec("INSERT INTO sms_campaigns VALUES(1,1,'Fixture'),(2,2,'Other tena
 $insert=$fixture->prepare('INSERT INTO sms_messages(campaign_id,user_id,state,last_error,segment_count,actual_charge,sent_at,delivered_at,created_at,destination) VALUES(?,?,?,?,?,?,?,?,?,?)');
 foreach([1,2] as $user){foreach([0,2,10,45,100] as $days){
     $created=(new DateTimeImmutable())->modify("-$days days -1 hour")->format('Y-m-d H:i:s');
-    foreach([['delivered',null,1,.35],['delivered',null,2,.70],['sent',null,1,.35],['sent','DLR lookup: Cannot Find Message',1,.35],['failed','Rejected',1,.35],['pending',null,1,0],['skipped','Opted out',1,0]] as [$state,$error,$segments,$charge]){
+    foreach([['delivered',null,1,.35],['delivered',null,2,.70],['sent',null,1,.35],['dlr_unavailable','UNKNOWN',1,.35],['failed','Rejected',1,.35],['pending',null,1,0],['skipped','Opted out',1,0]] as [$state,$error,$segments,$charge]){
         $insert->execute([$user,$user,$state,$error,$segments,$charge,$charge>0?$created:null,$state==='delivered'?$created:null,$created,'+27638082493']);
     }
 }}
 $before=$fixture->query('SELECT * FROM sms_messages ORDER BY id')->fetchAll();
 foreach(['24h'=>1,'7d'=>2,'30d'=>3,'90d'=>4] as $range=>$packs){
     $summary=SmsReportingService::summary(1,$range);
-    foreach(['total_messages'=>6,'delivered'=>2,'failed'=>1,'pending'=>3,'awaiting_delivery'=>1,'dlr_unavailable'=>1,'skipped'=>1,'credits_used'=>6] as $field=>$expected)check($summary[$field]===$expected*$packs,"$range $field mismatch");
-    check($summary['delivery_rate']===33.3,'Skipped changed delivery rate');
+    foreach(['total_messages'=>5,'delivered'=>2,'failed'=>1,'pending'=>2,'waiting_to_send'=>1,'awaiting_delivery'=>1,'dlr_unavailable'=>1,'skipped'=>1,'credits_used'=>6] as $field=>$expected)check($summary[$field]===$expected*$packs,"$range $field mismatch");
+    check($summary['delivery_rate']===40.0,'Unsent records changed delivery rate');
     $breakdown=array_column(SmsReportingService::breakdown(1,$range),'count','status');
-    foreach(['Delivered'=>2,'Delivery Confirmation Pending'=>1,'Delivery Status Unavailable'=>1,'Not Delivered'=>1,'Skipped'=>1,'Waiting to send'=>1] as $label=>$count)check((int)($breakdown[$label]??-1)===$count*$packs,"$range $label mismatch");
+    foreach(['Delivered'=>2,'Sent - Awaiting Confirmation'=>1,'Sent - Confirmation Unavailable'=>1,'Not Delivered'=>1,'Not Sent'=>1,'Waiting to send'=>1] as $label=>$count)check((int)($breakdown[$label]??-1)===$count*$packs,"$range $label mismatch");
     $rows=SmsReportingService::rows(1,$range);
     check(count($rows)===7*$packs,'Export must include separately labelled skipped recipients');
     $exportCounts=array_count_values(array_column($rows,2));
-    foreach(['Delivered'=>2,'Delivery Confirmation Pending'=>1,'Delivery Status Unavailable'=>1,'Not Delivered'=>1,'Skipped'=>1,'Waiting to send'=>1] as $label=>$count)check(($exportCounts[$label]??0)===$count*$packs,"$range export $label mismatch");
-    check(array_sum(array_column(SmsReportingService::daily(1,$range),'total_messages'))===6*$packs,'Daily message totals changed');
+    foreach(['Delivered'=>2,'Sent - Awaiting Confirmation'=>1,'Sent - Confirmation Unavailable'=>1,'Not Delivered'=>1,'Not Sent'=>1,'Waiting to send'=>1] as $label=>$count)check(($exportCounts[$label]??0)===$count*$packs,"$range export $label mismatch");
+    check(array_sum(array_column(SmsReportingService::daily(1,$range),'total_messages'))===5*$packs,'Daily message totals must count accepted messages only');
 }
 check(SmsReportingService::summary(99,'7d')['skipped']===0,'Empty tenant skipped count');
 check(SmsReportingService::rows(99,'7d')===[],'Tenant isolation');

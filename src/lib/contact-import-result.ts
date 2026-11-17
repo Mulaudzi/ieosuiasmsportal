@@ -1,4 +1,4 @@
-export interface ContactImportResult { imported: number; duplicates: number; failed: number }
+export interface ContactImportResult { imported: number; duplicates: number; failed: number; existing_added_to_group?: number; corrected?: number; rejected?: number; skipped_empty?: number; automatically_corrected?: number; email_only?: number }
 
 export function contactImportResult(response: unknown): ContactImportResult {
   const envelope=response as {data?:unknown};
@@ -9,5 +9,11 @@ export function contactImportResult(response: unknown): ContactImportResult {
     if(!Number.isSafeInteger(value)||value<0)throw new Error('The import completed, but its counts were unavailable. Check Contacts before importing again.');
     return value;
   };
-  return {imported:count('imported'),duplicates:count('duplicates'),failed:count('failed')};
+  return {imported:count('imported'),duplicates:count('duplicates'),failed:count('failed'),
+    ...(data?.existing_added_to_group !== undefined ? {existing_added_to_group:count('existing_added_to_group')} : {}),
+    ...(data?.corrected !== undefined ? {corrected:count('corrected')} : {}),
+    ...(data?.rejected !== undefined ? {rejected:count('rejected')} : {}),
+    ...(data?.skipped_empty !== undefined ? {skipped_empty:count('skipped_empty')} : {}),
+    ...(data?.automatically_corrected !== undefined ? {automatically_corrected:count('automatically_corrected')} : {}),
+    ...(data?.email_only !== undefined ? {email_only:count('email_only')} : {})};
 }

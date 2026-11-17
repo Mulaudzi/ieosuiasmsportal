@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/../services/AdminNotificationService.php';
 require_once __DIR__ . '/../services/AuditLogService.php';
+require_once __DIR__ . '/../core/SafeImageUpload.php';
 
 class AuthController {
     
@@ -196,9 +197,6 @@ class AuthController {
                 'attempted_email' => $data['email'],
             ], null);
             
-            // Send security alert email
-            $this->sendAdminLoginAlert($ip, $_SERVER['HTTP_USER_AGENT'] ?? 'unknown');
-            
             // Return generic error with remaining attempts (don't reveal which password failed)
             Response::json([
                 'success' => false,
@@ -357,21 +355,10 @@ class AuthController {
                     return;
                 }
                 
-                $allowedExtensions = ['jpeg', 'jpg', 'png', 'gif', 'webp'];
-                if (!in_array(strtolower($extension), $allowedExtensions)) {
-                    Response::error('Invalid image type', 400);
-                    return;
-                }
-                
-                if (strlen($imageData) > 2 * 1024 * 1024) {
-                    Response::error('Image too large (max 2MB)', 400);
-                    return;
-                }
-                
                 $uploadsDir = __DIR__ . '/../uploads/avatars';
-                if (!is_dir($uploadsDir)) {
-                    mkdir($uploadsDir, 0755, true);
-                }
+                try{$filename=SafeImageUpload::storeBytes($imageData,$uploadsDir,(string)$user['id']);}
+                catch(InvalidArgumentException $e){Response::error($e->getMessage(),400);return;}
+                catch(Throwable $e){Response::error('Failed to save image',500);return;}
                 
                 // Delete old avatar
                 if (!empty($user['avatar_url'])) {
@@ -379,14 +366,6 @@ class AuthController {
                     if (file_exists($oldPath)) {
                         unlink($oldPath);
                     }
-                }
-                
-                $filename = $user['id'] . '_' . time() . '.' . $extension;
-                $filepath = $uploadsDir . '/' . $filename;
-                
-                if (!file_put_contents($filepath, $imageData)) {
-                    Response::error('Failed to save image', 500);
-                    return;
                 }
                 
                 $avatarUrl = '/api/uploads/avatars/' . $filename;
@@ -414,21 +393,10 @@ class AuthController {
             return;
         }
         
-        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if (!in_array($file['type'], $allowedTypes)) {
-            Response::error('Invalid file type', 400);
-            return;
-        }
-        
-        if ($file['size'] > 2 * 1024 * 1024) {
-            Response::error('File too large (max 2MB)', 400);
-            return;
-        }
-        
         $uploadsDir = __DIR__ . '/../uploads/avatars';
-        if (!is_dir($uploadsDir)) {
-            mkdir($uploadsDir, 0755, true);
-        }
+        try{$filename=SafeImageUpload::storeUploaded($file,$uploadsDir,(string)$user['id']);}
+        catch(InvalidArgumentException $e){Response::error($e->getMessage(),400);return;}
+        catch(Throwable $e){Response::error('Failed to save file',500);return;}
         
         // Delete old avatar
         if (!empty($user['avatar_url'])) {
@@ -436,15 +404,6 @@ class AuthController {
             if (file_exists($oldPath)) {
                 unlink($oldPath);
             }
-        }
-        
-        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $filename = $user['id'] . '_' . time() . '.' . $extension;
-        $filepath = $uploadsDir . '/' . $filename;
-        
-        if (!move_uploaded_file($file['tmp_name'], $filepath)) {
-            Response::error('Failed to save file', 500);
-            return;
         }
         
         $avatarUrl = '/api/uploads/avatars/' . $filename;
@@ -664,41 +623,4 @@ class AuthController {
         }
     }
     
-    /**
-     * Send security alert for failed admin login attempts
-     */
-    private function sendAdminLoginAlert(string $ip, string $userAgent): void {
-        try {
-            $adminEmail = 'godtheson@ieosuia.com';
-            $timestamp = date('Y-m-d H:i:s');
-            
-            $subject = '⚠️ Security Alert: Failed Admin Login Attempt';
-            $body = "
-                <h2 style='color: #dc2626;'>Security Alert</h2>
-                <p>A failed admin login attempt was detected on your IEOSUIA SMS Portal.</p>
-                <table style='border-collapse: collapse; margin: 20px 0;'>
-                    <tr>
-                        <td style='padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;'>Time:</td>
-                        <td style='padding: 8px; border: 1px solid #e5e7eb;'>{$timestamp}</td>
-                    </tr>
-                    <tr>
-                        <td style='padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;'>IP Address:</td>
-                        <td style='padding: 8px; border: 1px solid #e5e7eb;'>{$ip}</td>
-                    </tr>
-                    <tr>
-                        <td style='padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;'>User Agent:</td>
-                        <td style='padding: 8px; border: 1px solid #e5e7eb;'>{$userAgent}</td>
-                    </tr>
-                </table>
-                <p style='color: #6b7280;'>If this was you, you can ignore this message. Otherwise, please review your security settings.</p>
-                <p style='color: #6b7280; font-size: 12px;'>This is an automated security notification from IEOSUIA SMS Portal.</p>
-            ";
-            
-            EmailService::sendRawEmail($adminEmail, $subject, $body);
-            
-            error_log("Admin login security alert sent for IP: {$ip}");
-        } catch (\Exception $e) {
-            error_log("Failed to send admin login security alert: " . $e->getMessage());
-        }
-    }
 }

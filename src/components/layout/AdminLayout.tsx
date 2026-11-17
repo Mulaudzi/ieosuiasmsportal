@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
+import './AdminWorkspace.css';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -12,6 +13,7 @@ interface AdminLayoutProps {
   subtitle?: string;
   actions?: ReactNode;
   className?: string;
+  onMenuClosed?: () => void;
 }
 
 export function AdminLayout({ 
@@ -19,11 +21,12 @@ export function AdminLayout({
   title, 
   subtitle,
   actions,
-  className 
+  className,
+  onMenuClosed,
 }: AdminLayoutProps) {
   const [menuOpen,setMenuOpen]=useState(false);
   return (
-    <div className="min-h-screen bg-background">
+    <div className="admin-shell min-h-screen bg-background">
       <AdminSidebar />
       
       {/* Main Content */}
@@ -34,7 +37,10 @@ export function AdminLayout({
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
                 <SheetTrigger asChild><Button variant="ghost" size="icon" className="shrink-0 lg:hidden" aria-label="Open operations menu"><Menu className="h-5 w-5"/></Button></SheetTrigger>
-                <SheetContent side="left" className="w-[86vw] max-w-72 border-0 bg-sidebar p-0"><AdminSidebar mobile onNavigate={()=>setMenuOpen(false)}/></SheetContent>
+                <SheetContent side="left" onCloseAutoFocus={() => {
+                  // Run after the drawer's focus and scroll restoration.
+                  if (onMenuClosed) requestAnimationFrame(() => requestAnimationFrame(onMenuClosed));
+                }} className="w-[86vw] max-w-72 border-0 bg-sidebar p-0"><AdminSidebar mobile onNavigate={()=>setMenuOpen(false)}/></SheetContent>
               </Sheet>
               <div className="min-w-0">
               <h1 className="truncate text-base font-semibold text-foreground sm:text-xl">{title}</h1>
@@ -51,7 +57,7 @@ export function AdminLayout({
         </header>
 
         {/* Page Content */}
-        <main className={cn("p-3 pb-20 sm:p-4 lg:p-6", className)}>
+        <main className={cn("admin-main p-3 pb-20 sm:p-4 lg:p-6", className)}>
           {children}
         </main>
       </div>

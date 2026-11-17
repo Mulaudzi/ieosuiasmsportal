@@ -40,6 +40,14 @@ class QueryBuilder {
         return $this;
     }
     
+    /** SQL expressions must be trusted application code; bind all user-supplied values. */
+    public function whereRaw(string $expression, array $bindings = []): self {
+        if (trim($expression) === '') throw new InvalidArgumentException('A SQL condition is required.');
+        $this->wheres[] = '(' . $expression . ')';
+        $this->bindings = array_merge($this->bindings, array_values($bindings));
+        return $this;
+    }
+
     private function escapeColumn(string $column): string {
         // Don't escape if already escaped or contains functions/expressions
         if (strpos($column, '`') !== false || strpos($column, '(') !== false || strpos($column, '.') !== false) {

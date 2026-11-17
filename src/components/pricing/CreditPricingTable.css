@@ -1,0 +1,8 @@
+.credit-pricing-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;text-align:left;background:#fff;color:#182d48}
+main .credit-pricing-table{min-width:0;max-width:100%;table-layout:fixed}
+.credit-pricing-table thead{background:#e5edf7}
+.credit-pricing-table th,.credit-pricing-table td{padding:11px 16px;border-bottom:1px solid #dce5f0}
+.credit-pricing-table thead th{font-weight:650}
+.credit-pricing-table tbody th{font-weight:400}
+.credit-pricing-table tr>:last-child{text-align:right;font-weight:650}
+@media(max-width:639px){.credit-pricing-table{font-size:13px}.credit-pricing-table th,.credit-pricing-table td{padding:10px}}

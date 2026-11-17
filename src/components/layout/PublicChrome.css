@@ -1,1 +1,8 @@
 .public-site-header{position:sticky;top:0;z-index:40}
+.home-nav-actions .home-dashboard-cta{display:inline-flex;white-space:nowrap;font-weight:650;font-size:12px;min-height:44px;padding:12px 18px}
+.home-auth-loading{display:inline-flex;align-items:center;width:130px;height:44px}
+.home-auth-loading>span{width:100%;height:35px;border-radius:7px;background:#ffffff18;animation:public-auth-pulse 1.5s ease-in-out infinite}
+@keyframes public-auth-pulse{50%{opacity:.45}}
+@media(max-width:639px){.home-nav--signed-in .home-nav-actions{gap:8px}.home-nav-actions .home-dashboard-cta{font-size:11px;padding:10px 12px}.home-auth-loading{width:90px}}
+@media(max-width:359px){.home-nav--signed-in .home-logo{width:108px}.home-nav--signed-in .home-nav-actions{gap:6px}.home-nav-actions .home-dashboard-cta{padding-inline:8px;font-size:10px}.home-auth-loading{width:70px}}
+@media(prefers-reduced-motion:reduce){.home-auth-loading>span{animation:none}}

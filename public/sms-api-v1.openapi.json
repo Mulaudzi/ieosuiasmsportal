@@ -1,0 +1,595 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "IEOSUIA SMS integration API",
+    "version": "1.1.0",
+    "description": "Server-to-server HTTPS SMS API. Creating or rotating API keys requires a verified account, the extra SMS Portal email-code sign-in check enabled in Settings > Security, and signing in again after enabling it. This security setting applies only to the SMS Portal. API requests use server-side Bearer credentials, not an interactive email code. Uses the authorizing account's existing credits. Browser Origin requests are rejected. No arbitrary payer, provider credentials or administrative access."
+  },
+  "servers": [
+    {
+      "url": "https://sms.ieosuia.com/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "ServerApiKey": []
+    }
+  ],
+  "paths": {
+    "/sms/quotes": {
+      "post": {
+        "operationId": "quoteSms",
+        "summary": "Estimate SMS credits without a reservation",
+        "x-required-scopes": [
+          "sms:quote"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "quote": {
+                      "type": "object",
+                      "properties": {
+                        "credits_required": {
+                          "type": "integer"
+                        },
+                        "sendable": {
+                          "type": "integer"
+                        },
+                        "available_credits": {
+                          "type": "integer"
+                        },
+                        "sufficient_balance": {
+                          "type": "boolean"
+                        },
+                        "binding": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request not accepted. On an uncertain result retry the same Idempotency-Key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Present on 429 responses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageInput"
+              }
+            }
+          }
+        },
+        "description": "Also requires sms:schedule when scheduled_at is supplied."
+      }
+    },
+    "/sms/messages": {
+      "post": {
+        "operationId": "queueSms",
+        "summary": "Queue or schedule SMS",
+        "x-required-scopes": [
+          "sms:send"
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued or scheduled, not confirmed delivery",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request not accepted. On an uncertain result retry the same Idempotency-Key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Present on 429 responses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageInput"
+              }
+            }
+          }
+        },
+        "description": "Also requires sms:schedule when scheduled_at is supplied. Reuse the same request key and payload on retries, including across key rotation.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{15,99}$"
+            }
+          }
+        ]
+      }
+    },
+    "/sms/messages/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSmsStatus",
+        "summary": "Read this connection's message status",
+        "x-required-scopes": [
+          "sms:read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request not accepted. On an uncertain result retry the same Idempotency-Key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Present on 429 responses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sms/messages/{id}/cancel": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "cancelSms",
+        "summary": "Cancel queued or scheduled work before sending",
+        "x-required-scopes": [
+          "sms:cancel"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request not accepted. On an uncertain result retry the same Idempotency-Key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Present on 429 responses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/balance": {
+      "get": {
+        "operationId": "getSmsBalance",
+        "summary": "Read authorizing account's available balance",
+        "x-required-scopes": [
+          "wallet:read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "balance": {
+                      "type": "object",
+                      "properties": {
+                        "available_credits": {
+                          "type": "integer"
+                        },
+                        "available_amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string",
+                          "enum": [
+                            "ZAR"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request not accepted. On an uncertain result retry the same Idempotency-Key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Present on 429 responses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/usage": {
+      "get": {
+        "operationId": "getSmsApiUsage",
+        "summary": "Read today's admitted-credit allowance usage",
+        "x-required-scopes": [
+          "sms:read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "usage": {
+                      "type": "object",
+                      "properties": {
+                        "date": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "timezone": {
+                          "type": "string"
+                        },
+                        "admitted_credits": {
+                          "type": "integer"
+                        },
+                        "campaigns": {
+                          "type": "integer"
+                        },
+                        "daily_credit_limit": {
+                          "type": "integer"
+                        },
+                        "cancelled_and_failed_requests_count_toward_allowance": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request not accepted. On an uncertain result retry the same Idempotency-Key.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Present on 429 responses"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ServerApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "smsk_<random-id>.<256-bit-secret>",
+        "description": "Backend secret storage only. Keys expire, are revocable and cannot become portal sessions."
+      }
+    },
+    "schemas": {
+      "MessageInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Optional campaign name for your records. If empty or omitted, generated from the connection name, South African date/time and a short request reference."
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "recipients": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          "include_opt_out": {
+            "type": "boolean",
+            "default": false
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:Z|[+-]\\d{2}:\\d{2})$"
+          },
+          "external_reference": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6000
+          }
+        },
+        "required": [
+          "content",
+          "recipients"
+        ],
+        "additionalProperties": false
+      },
+      "MessageResult": {
+        "type": "object",
+        "description": "Simple sending confirmation. Detailed recipient and delivery results are available inside the authenticated SMS Portal. Version 1.1 replaces detailed counters and lifecycle state values with the public status contract; migrate existing clients to message.status and message.complete.",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "reference", "external_reference", "status", "state", "complete", "scheduled_at", "created_at", "recipients", "credits_required", "acceptance_is_not_delivery"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$",
+                "description": "Opaque request ID. Store it with the original business job and use it for polling or cancellation."
+              },
+              "reference": {
+                "type": "string",
+                "pattern": "^API-[A-F0-9]{32}$",
+                "description": "Stable reference also shown in the portal campaign. Not a credential."
+              },
+              "external_reference": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": ["queued", "sent", "not_sent", "partially_sent"],
+                "deprecated": true,
+                "description": "Alias of status, not an internal lifecycle. Use status for new integrations."
+              },
+              "status": {
+                "type": "string",
+                "enum": ["queued", "sent", "not_sent", "partially_sent"],
+                "description": "queued: preparing, scheduled, sending or awaiting confirmation; sent: all recipients accepted for sending, not guaranteed handset delivery; not_sent: none sent and result final, including cancellation before sending; partially_sent: finished batch with mixed outcomes. Never automatically resend a queued or partially_sent batch."
+              },
+              "complete": {
+                "type": "boolean",
+                "description": "False while any sending outcome remains pending. Back off and poll until true. Delivery reports may still change inside the portal after sending completes."
+              },
+              "scheduled_at": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "created_at": {
+                "type": "integer"
+              },
+              "credits_required": {
+                "type": "integer",
+                "description": "Credits required when this request was accepted, not a claim that all have been charged."
+              },
+              "recipients": {
+                "type": "integer"
+              },
+              "acceptance_is_not_delivery": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

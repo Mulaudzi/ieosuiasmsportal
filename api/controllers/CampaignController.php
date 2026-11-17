@@ -800,6 +800,13 @@ class CampaignController {
             ]);
         }
     }
+
+    public function legacyRetryDisabled(array $params): void {
+        Response::error(
+            'This legacy retry endpoint is retired. Use /sms/campaigns-v2/{id}/retry so billing, ownership and duplicate-send protections are enforced.',
+            410
+        );
+    }
     
     /**
      * Upload attachment for email campaign

@@ -1,0 +1,4 @@
+.page-loading-bar { height:3px; overflow:hidden; border-radius:999px; background:hsl(var(--primary)/.12); }
+.page-loading-bar>span { display:block; width:35%; height:100%; border-radius:inherit; background:hsl(var(--primary)); animation:page-loading-slide 1.4s ease-in-out infinite; }
+@keyframes page-loading-slide { from { transform:translateX(-105%); } to { transform:translateX(390%); } }
+@media(prefers-reduced-motion:reduce) { .page-loading-bar>span { animation:none; width:100%; opacity:.55; } }

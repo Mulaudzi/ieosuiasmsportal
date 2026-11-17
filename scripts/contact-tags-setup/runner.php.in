@@ -1,0 +1,124 @@
+<?php
+declare(strict_types=1);
+const TAG_SETUP_EXPIRES = __EXPIRES__;
+const TAG_SETUP_KEY_HASH = '__KEY_HASH__';
+const TAG_SETUP_MIGRATION_HASH = '__MIGRATION_HASH__';
+const TAG_SETUP_DRAFT_HASH = '__DRAFT_HASH__';
+const TAG_SETUP_CLIENT = '__CLIENT__';
+const TAG_SETUP_STATE = '__STATE__';
+
+/** Temporary owner-authorized runner. Never invokes the general migration runner. */
+final class ContactTagsSetup
+{
+    public const VERSION = '020_contact_tags';
+    public const TABLES = ['contact_tags','contact_tag_memberships','contact_tag_audit'];
+    public function __construct(private PDO $pdo, private string $migrationFile, private string $expectedHash, private string $draftFile, private string $draftHash) {}
+    private function rows(string $sql,array $args=[]): array
+    {
+        $s=$this->pdo->prepare($sql);$s->execute($args);return $s->fetchAll(PDO::FETCH_ASSOC);
+    }
+    private function table(string $name): ?array
+    {
+        return $this->rows('SELECT ENGINE FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?',[$name])[0]??null;
+    }
+    private function columns(string $table): array
+    {
+        return array_column($this->rows('SELECT column_name AS column_name,column_type AS column_type,is_nullable AS is_nullable,collation_name AS collation_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?',[$table]),null,'column_name');
+    }
+    private function indexes(string $table): array
+    {
+        $out=[];foreach($this->rows('SELECT index_name AS index_name,non_unique AS non_unique,column_name AS column_name FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=? ORDER BY index_name,seq_in_index',[$table])as$r){$out[$r['index_name']]['columns'][]=$r['column_name'];$out[$r['index_name']]['unique']=!(bool)$r['non_unique'];}return $out;
+    }
+    private function marked(string $version): bool
+    {
+        return (bool)$this->rows('SELECT version FROM schema_migrations WHERE version=?',[$version]);
+    }
+    public function inspect(): array
+    {
+        if($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql')throw new RuntimeException('A MySQL or MariaDB connection is required.');
+        $problems=[];
+        foreach(['users','contacts','schema_migrations']as$t)if(!$this->table($t))$problems[]='Missing prerequisite table: '.$t;
+        foreach(['users','contacts']as$t){$meta=$this->table($t);if($meta&&strtolower($meta['ENGINE'])!=='innodb')$problems[]=$t.' must use InnoDB.';$id=$this->columns($t)['id']['column_type']??'';if($meta&&!preg_match('/^bigint(?:\(\d+\))? unsigned$/iD',$id))$problems[]=$t.'.id must be unsigned BIGINT.';}
+        $expected=[
+            'work_drafts'=>['id'=>'char(36)','user_id'=>'bigint unsigned','kind'=>'varchar(16)','title'=>'varchar(100)','payload_json'=>'mediumtext','version'=>'int unsigned','created_at'=>'datetime','updated_at'=>'datetime'],
+            'contact_tags'=>['id'=>'char(32)','user_id'=>'bigint unsigned','name'=>'varchar(80)','name_key'=>'char(64)','created_at'=>'datetime','updated_at'=>'datetime'],
+            'contact_tag_memberships'=>['tag_id'=>'char(32)','contact_id'=>'bigint unsigned','user_id'=>'bigint unsigned','created_at'=>'datetime'],
+            'contact_tag_audit'=>['id'=>'char(32)','user_id'=>'bigint unsigned','operation'=>'varchar(30)','details_json'=>'text','created_at'=>'datetime'],
+        ];
+        $tables=[];
+        foreach($expected as$t=>$fields){
+            $meta=$this->table($t);$tables[$t]=['exists'=>$meta!==null];if(!$meta)continue;
+            if(strtolower($meta['ENGINE'])!=='innodb')$problems[]=$t.' must use InnoDB.';
+            $columns=$this->columns($t);if(array_diff(array_keys($columns),array_keys($fields)))$problems[]=$t.' has unexpected columns; inspect it before continuing.';
+            foreach($fields as$name=>$type){$c=$columns[$name]??null;$actual=$c?preg_replace('/(bigint|int)\(\d+\)/i','$1',$c['column_type']):'';if(!$c||strtolower($actual)!==$type||$c['is_nullable']!=='NO')$problems[]='Unexpected definition: '.$t.'.'.$name;if($c&&$c['collation_name']!==null&&$c['collation_name']!=='utf8mb4_unicode_ci')$problems[]='Unexpected text collation: '.$t.'.'.$name;}
+            $indexes=$this->indexes($t);$primary=$t==='contact_tag_memberships'?['tag_id','contact_id']:['id'];
+            if(($indexes['PRIMARY']['columns']??[])!==$primary)$problems[]='Unexpected primary key: '.$t;
+            if($t==='work_drafts'&&($indexes['idx_work_drafts_owner']['columns']??[])!==['user_id','kind','updated_at'])$problems[]='Unexpected private-draft owner index.';
+            if($t==='contact_tags'){ $unique=false;foreach($indexes as$i)if($i['unique']&&$i['columns']===['user_id','name_key'])$unique=true;if(!$unique)$problems[]='Missing owned-name uniqueness on contact_tags.'; }
+            if($t==='contact_tag_memberships'){
+                $fks=$this->rows('SELECT k.column_name AS column_name,k.referenced_table_name AS referenced_table_name,k.referenced_column_name AS referenced_column_name,r.delete_rule AS delete_rule FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r ON r.constraint_schema=k.constraint_schema AND r.constraint_name=k.constraint_name AND r.table_name=k.table_name WHERE k.table_schema=DATABASE() AND k.table_name=? AND k.referenced_table_name IS NOT NULL',[$t]);
+                foreach([['tag_id','contact_tags'],['contact_id','contacts']]as[$column,$target]){ $valid=false;foreach($fks as$f)if($f['column_name']===$column&&$f['referenced_table_name']===$target&&$f['referenced_column_name']==='id'&&$f['delete_rule']==='CASCADE')$valid=true;if(!$valid)$problems[]='Missing expected cascading foreign key: '.$t.'.'.$column; }
+            }
+            $tables[$t]['indexes']=$indexes;
+        }
+        $ledger=$this->columns('schema_migrations');
+        if($this->table('schema_migrations')&&(!isset($ledger['version'])||!isset($ledger['applied_at'])))$problems[]='Migration history has an unexpected definition.';
+        $marked=$this->table('schema_migrations')&&isset($ledger['version'])?$this->marked(self::VERSION):false;
+        if($marked)foreach(self::TABLES as$t)if(!$tables[$t]['exists'])$problems[]='Migration history exists but its table is missing: '.$t;
+        $draftMarked=$this->table('schema_migrations')&&isset($ledger['version'])?$this->marked('016_work_drafts'):false;
+        if($draftMarked&&!$tables['work_drafts']['exists'])$problems[]='Saved-draft migration is recorded but its table is missing; investigate before recreating it.';
+        return ['ok'=>true,'read_only'=>true,'migration'=>self::VERSION,'allowed_migrations'=>['016_work_drafts',self::VERSION],'ready_to_apply'=>!$problems,'migration_recorded'=>$marked,'draft_prerequisite_recorded'=>$draftMarked,'draft_prerequisite_needed'=>!$draftMarked,'tables'=>$tables,'problems'=>array_values(array_unique($problems)),'email_migration_recorded'=>$this->table('schema_migrations')&&isset($ledger['version'])?$this->marked('019_email_campaigns'):null,'observed_at_utc'=>gmdate('c'),'sms_submitted'=>false,'emails_sent'=>false,'payments_processed'=>false,'customer_records_changed'=>false];
+    }
+    public function apply(): array
+    {
+        if(!is_file($this->migrationFile)||!hash_equals($this->expectedHash,hash_file('sha256',$this->migrationFile)))throw new RuntimeException('Approved migration bytes do not match.');
+        if(!is_file($this->draftFile)||!hash_equals($this->draftHash,hash_file('sha256',$this->draftFile)))throw new RuntimeException('Approved saved-draft prerequisite bytes do not match.');
+        $locked=$this->rows("SELECT GET_LOCK(CONCAT(DATABASE(),':contact_tags_020'),0) acquired")[0]['acquired']??0;
+        if((int)$locked!==1)throw new RuntimeException('Another contact-tag setup is running.');
+        try{
+            $before=$this->inspect();if(!$before['ready_to_apply'])throw new RuntimeException('Schema preflight failed. Inspect the database before continuing.');
+            $this->pdo->exec('SET SESSION lock_wait_timeout=5');$this->pdo->exec('SET SESSION innodb_lock_wait_timeout=5');
+            if(!$before['draft_prerequisite_recorded']){$draftMigration=require $this->draftFile;$draftMigration($this->pdo);}
+            $migration=require $this->migrationFile;$migration($this->pdo);
+            $after=$this->inspect();if(!$after['ready_to_apply'])throw new RuntimeException('Schema verification failed after setup.');
+            foreach($after['tables']as$t=>$s)if(!$s['exists'])throw new RuntimeException('Setup table missing: '.$t);
+            foreach([['contact_tag_memberships','idx_contact_tag_owner',['user_id','contact_id']],['contact_tag_audit','idx_contact_tag_audit',['user_id','created_at']]]as[$t,$i,$cols])if(($after['tables'][$t]['indexes'][$i]['columns']??[])!==$cols)throw new RuntimeException('Expected setup index is missing.');
+            if(!$before['draft_prerequisite_recorded']){$s=$this->pdo->prepare('INSERT INTO schema_migrations(version,applied_at) VALUES(?,NOW())');$s->execute(['016_work_drafts']);}
+            if(!$before['migration_recorded']){$s=$this->pdo->prepare('INSERT INTO schema_migrations(version,applied_at) VALUES(?,NOW())');$s->execute([self::VERSION]);}
+            if($this->marked('019_email_campaigns')!==$before['email_migration_recorded'])throw new RuntimeException('Email migration history changed concurrently; inspect before proceeding.');
+            return ['ok'=>true,'code'=>$before['migration_recorded']&&$before['draft_prerequisite_recorded']?'ALREADY_APPLIED':'CONTACT_TAGS_READY','migration'=>self::VERSION,'allowed_migrations'=>['016_work_drafts',self::VERSION],'verified_tables'=>['work_drafts',...self::TABLES],'migration_recorded'=>true,'draft_prerequisite_recorded'=>true,'draft_prerequisite_created'=>!$before['tables']['work_drafts']['exists'],'email_migration_run'=>false,'email_migration_recorded'=>$before['email_migration_recorded'],'other_migrations_run'=>false,'customer_records_changed'=>false,'sms_submitted'=>false,'emails_sent'=>false,'payments_processed'=>false,'schema_only'=>true,'completed_at_utc'=>gmdate('c'),'message'=>'Contact-tag database setup is ready. No application UI was deployed. Send this JSON back so the temporary setup tool can be removed.'];
+        }finally{$this->rows("SELECT RELEASE_LOCK(CONCAT(DATABASE(),':contact_tags_020')) released");}
+    }
+}
+
+function tagSetupMain(): void
+{
+    header('Cache-Control: no-store, max-age=0');header('Pragma: no-cache');header('X-Robots-Tag: noindex, nofollow, noarchive');header('Referrer-Policy: no-referrer');header('X-Content-Type-Options: nosniff');
+    header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    ini_set('display_errors','0');
+    if(time()>TAG_SETUP_EXPIRES){http_response_code(410);echo 'This temporary setup link has expired.';return;}
+    $method=$_SERVER['REQUEST_METHOD']??'GET';$key=$_SERVER['HTTP_X_CONTACT_TAGS_SETUP_KEY']??'';
+    if($method==='GET'&&$key===''&&!str_contains($_SERVER['HTTP_ACCEPT']??'','application/json')){
+        header('Content-Type: text/html; charset=utf-8');$client=htmlspecialchars(TAG_SETUP_CLIENT,ENT_QUOTES,'UTF-8');
+        echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contact tags database setup</title><script defer src="'.$client.'"></script><style>body{font:16px system-ui;background:#f5f7fb;color:#10223c;margin:0;padding:20px}main{max-width:850px;margin:25px auto;background:white;padding:25px;border:1px solid #dce4ef;border-radius:16px}button{font:inherit;padding:12px 16px;margin:6px 6px 6px 0;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer}button:disabled{opacity:.5;cursor:default}#apply{background:#165af5;color:white}pre{overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:13px;background:#f5f7fb;padding:16px;border-radius:8px}</style></head><body><main><h1>Contact tags database setup</h1><p>Applies contact tags (migration 020) and, if needed, its private saved-draft prerequisite (016). No SMS, emails, payments or contact imports are started.</p><p>Opening this page only inspects the schema. Click Apply only after the check is ready. Email migration 019 and all other migrations are excluded. This link can apply once and expires after 24 hours.</p><p id="status" role="status">Open the complete private link from our conversation.</p><button id="inspect" disabled>Inspect / refresh</button><button id="apply" disabled>Apply contact-tags setup</button><button id="copy" disabled>Copy JSON</button><button id="download" disabled>Download JSON</button><pre id="output"></pre><p>The portal UI is not deployed by this tool. After success, send back the JSON so this temporary tool can be deleted.</p></main></body></html>';return;
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    if(!in_array($method,['GET','POST'],true)||!is_string($key)||!hash_equals(TAG_SETUP_KEY_HASH,hash('sha256',$key))){http_response_code(404);echo '{"ok":false,"code":"NOT_FOUND"}';return;}
+    if($method==='POST'&&($_SERVER['HTTP_ORIGIN']??'')!=='https://sms.ieosuia.com'){http_response_code(403);echo '{"ok":false,"code":"ORIGIN_DENIED"}';return;}
+    set_time_limit(45);$statePath=__DIR__.'/config/'.TAG_SETUP_STATE;$handle=null;
+    try{
+        if(is_file($statePath)){$raw=file_get_contents($statePath);$state=json_decode(substr($raw,strlen("<?php exit; ?>\n")),true,32,JSON_THROW_ON_ERROR);if(($state['phase']??'')==='completed'){echo json_encode($state['result'],JSON_THROW_ON_ERROR);return;}if($method==='POST')throw new RuntimeException('A setup attempt has already started. Inspect before further changes.');}
+        global $dbConfig;require_once __DIR__.'/config/database.php';$runner=new ContactTagsSetup(db(),__DIR__.'/migrations/020_contact_tags.php',TAG_SETUP_MIGRATION_HASH,__DIR__.'/migrations/016_work_drafts.php',TAG_SETUP_DRAFT_HASH);
+        if($method==='GET'){$result=$runner->inspect();if(isset($state)){$result['ready_to_apply']=false;$result['setup_attempted']=true;$result['message']='An earlier attempt started. Copy this result for investigation; do not repeat setup.';}echo json_encode($result,JSON_THROW_ON_ERROR);return;}
+        if(!str_starts_with($_SERVER['CONTENT_TYPE']??'','application/json'))throw new RuntimeException('JSON confirmation is required.');
+        $raw=file_get_contents('php://input',false,null,0,2048);$input=json_decode($raw,true,8,JSON_THROW_ON_ERROR);
+        if(($input['confirm']??null)!=='016_work_drafts+020_contact_tags')throw new RuntimeException('Migration confirmation is required.');
+        $preflight=$runner->inspect();if(!$preflight['ready_to_apply']){http_response_code(409);echo json_encode($preflight,JSON_THROW_ON_ERROR);return;}
+        // Atomic creation consumes the single apply permission before any DDL.
+        $handle=fopen($statePath,'x+b');if(!$handle||!flock($handle,LOCK_EX|LOCK_NB))throw new RuntimeException('Setup is already claimed.');
+        $write=static function(array $state)use($handle):void{$bytes="<?php exit; ?>\n".json_encode($state,JSON_THROW_ON_ERROR);rewind($handle);if(!ftruncate($handle,0)||fwrite($handle,$bytes)!==strlen($bytes)||!fflush($handle))throw new RuntimeException('Could not persist setup receipt.');if(function_exists('fsync'))fsync($handle);};
+        $write(['phase'=>'started','at_utc'=>gmdate('c')]);$result=$runner->apply();$write(['phase'=>'completed','result'=>$result]);echo json_encode($result,JSON_THROW_ON_ERROR);
+    }catch(Throwable $e){http_response_code(503);error_log('Contact tags setup failed class='.get_class($e));echo json_encode(['ok'=>false,'code'=>'CONTACT_TAGS_SETUP_UNAVAILABLE','message'=>'Setup could not finish. Use Inspect / refresh and send back its JSON. Do not retry applying; MariaDB DDL may have partially completed.','error_fingerprint'=>substr(hash('sha256',get_class($e).':'.$e->getMessage()),0,16),'sms_submitted'=>false,'emails_sent'=>false,'payments_processed'=>false]);}
+    finally{if(is_resource($handle)){flock($handle,LOCK_UN);fclose($handle);}}
+}
+if(!defined('CONTACT_TAGS_SETUP_TEST_MODE'))tagSetupMain();

@@ -20,6 +20,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { updateContact, getContactGroups, handleApiError } from "@/lib/api";
+import { ApiError } from '@/lib/api-error';
 
 interface Group {
   id: string;
@@ -32,6 +33,7 @@ interface Contact {
   phone: string;
   email: string;
   group_id?: string;
+  group_name?: string;
 }
 
 interface EditContactModalProps {
@@ -49,13 +51,15 @@ export function EditContactModal({ open, onOpenChange, contact, onSuccess }: Edi
   const [saving, setSaving] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
+  const [duplicate, setDuplicate] = useState(false);
 
   useEffect(() => {
     if (open && contact) {
       setName(contact.name || "");
       setPhone(contact.phone || "");
       setEmail(contact.email || "");
-      setGroupId(contact.group_id || "");
+      setGroupId("__keep__");
+      setDuplicate(false);
       loadGroups();
     }
   }, [open, contact]);
@@ -66,8 +70,8 @@ export function EditContactModal({ open, onOpenChange, contact, onSuccess }: Edi
       const res = await getContactGroups();
       if (res.success) {
         // Backend returns merged format: { success: true, groups: [...] }
-        const groupsData = (res as any).groups || [];
-        setGroups(Array.isArray(groupsData) ? groupsData : []);
+        const groupsData = (res as typeof res & {groups?: Array<Group & {is_virtual?: boolean}>}).groups || [];
+        setGroups(Array.isArray(groupsData) ? groupsData.filter(group => !group.is_virtual && /^[1-9]\d*$/.test(String(group.id))) : []);
       }
     } catch (error) {
       console.error("Failed to load groups:", error);
@@ -80,7 +84,7 @@ export function EditContactModal({ open, onOpenChange, contact, onSuccess }: Edi
     onOpenChange(false);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (reuseExisting = false) => {
     if (!contact) return;
     
     if (!phone && !email) {
@@ -98,19 +102,20 @@ export function EditContactModal({ open, onOpenChange, contact, onSuccess }: Edi
         name: name || "Esteemed",
         phone: phone || undefined,
         email: email || undefined,
-        group_id: groupId || undefined,
+        ...(reuseExisting ? {reuse_existing:true} : groupId === "__keep__" ? {} : { group_id: groupId === "none" ? "" : groupId }),
       });
 
       if (response.success) {
         toast({
-          title: "Contact updated",
-          description: `${name || phone || email} has been updated.`,
+          title: reuseExisting ? 'Existing contact used' : "Contact updated",
+          description: reuseExisting ? 'Group memberships now use the saved number. Other details, opt-outs and message history are unchanged.' : `${name || phone || email} has been updated.`,
         });
         onSuccess?.();
         handleClose();
       }
     } catch (error) {
-      handleApiError(error);
+      if(error instanceof ApiError && error.status === 409 && error.message.startsWith('This number is already saved.'))setDuplicate(true);
+      else handleApiError(error);
     } finally {
       setSaving(false);
     }
@@ -143,7 +148,7 @@ export function EditContactModal({ open, onOpenChange, contact, onSuccess }: Edi
               id="editPhone"
               placeholder="+27 82 123 4567"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {setPhone(e.target.value);setDuplicate(false);}}
             />
           </div>
 
@@ -161,24 +166,30 @@ export function EditContactModal({ open, onOpenChange, contact, onSuccess }: Edi
           <div className="space-y-2">
             <Label htmlFor="editGroup">Group</Label>
             <Select value={groupId} onValueChange={setGroupId}>
-              <SelectTrigger>
+              <SelectTrigger id="editGroup">
                 <SelectValue placeholder={loadingGroups ? "Loading..." : "Select a group"} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="__keep__">Keep existing groups</SelectItem>
                 <SelectItem value="none">No Group</SelectItem>
                 {groups.map((g) => (
                   <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">{groupId === "__keep__"
+              ? `Existing memberships will be kept${contact?.group_name ? `: ${contact.group_name}` : '.'}`
+              : 'This replaces all existing group memberships. To keep them, use Copy to Group instead.'}</p>
           </div>
         </div>
+
+        {duplicate && <div role="alert" className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm"><p>This number is already saved in your account. Use that saved contact in all of this contact’s groups instead?</p><p className="text-xs text-muted-foreground">The saved contact keeps its details, opt-outs and other groups. The original mistyped contact remains saved without these group memberships. No contacts or past messages are deleted, and edits to name or email here will not be applied.</p><Button variant="outline" disabled={saving} onClick={()=>void handleSave(true)}>Use existing contact in these groups</Button></div>}
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={()=>void handleSave()} disabled={saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Changes
           </Button>
