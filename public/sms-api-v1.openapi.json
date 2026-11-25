@@ -3,7 +3,7 @@
   "info": {
     "title": "IEOSUIA SMS integration API",
     "version": "1.1.0",
-    "description": "Server-to-server HTTPS SMS API. Creating or rotating API keys requires a verified account, the extra SMS Portal email-code sign-in check enabled in Settings > Security, and signing in again after enabling it. This security setting applies only to the SMS Portal. API requests use server-side Bearer credentials, not an interactive email code. Uses the authorizing account's existing credits. Browser Origin requests are rejected. No arbitrary payer, provider credentials or administrative access."
+    "description": "Server-to-server HTTPS SMS API. Creating or rotating API keys requires a verified, active account. The extra SMS Portal email-code sign-in check in Settings > Security is optional and off by default. If you enable it, complete it when signing in before issuing or rotating a key. This security setting applies only to the SMS Portal. API requests use server-side Bearer credentials, not an interactive email code. Uses the authorizing account's existing credits. Browser Origin requests are rejected. No arbitrary payer, provider credentials or administrative access."
   },
   "servers": [
     {

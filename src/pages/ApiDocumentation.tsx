@@ -65,14 +65,14 @@ export default function ApiDocumentation() {
     <section className="api-wrap api-security-required" aria-labelledby="api-extra-security">
 <ShieldCheck size={23} aria-hidden="true"/>
 <div>
-<h2 id="api-extra-security">Extra security is required for API access</h2>
-<p>Before creating or replacing an API key, verify your email and enable the extra email-code sign-in check in <Link to="/settings?tab=security">Settings → Security</Link>. Then sign out and back in to complete the secure sign-in.</p>
+<h2 id="api-extra-security">Extra sign-in verification is optional</h2>
+<p>Create or replace API keys with your verified, active account. The extra email-code sign-in check is optional in <Link to="/settings?tab=security">Settings → Security</Link>. If you enable it, complete that check when signing in before issuing a key.</p>
 <ul>
 <li>Verified, active account</li>
-<li>Extra SMS Portal sign-in check enabled</li>
+<li>Extra sign-in check only if you choose to enable it</li>
 <li>API keys stored only on your server</li>
 </ul>
-<p className="api-security-detail">This setting applies only to the SMS Portal, not your other IEOSUIA apps. It remains optional for portal-only use. Your backend authenticates API requests with its key; it does not enter a six-digit code for each SMS.</p>
+<p className="api-security-detail">This setting applies only to the SMS Portal, not your other IEOSUIA apps. It is optional for both portal and API access. Your backend authenticates API requests with its key; it does not enter a six-digit code for each SMS.</p>
 </div>
 </section>
     <div className="api-wrap api-layout">
@@ -95,7 +95,7 @@ export default function ApiDocumentation() {
 <ol className="api-steps">
 <li>
 <strong>Prepare your account</strong>
-<p>Sign in, verify your email and make sure you have available credits. In Settings → Security, enable the extra SMS Portal sign-in check, then sign out and back in.</p>
+<p>Sign in with your verified account and make sure you have available credits. If you have enabled the optional extra SMS Portal sign-in check, complete it when signing in.</p>
 </li>
 <li>
 <strong>Create an API connection</strong>

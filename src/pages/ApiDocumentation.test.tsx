@@ -13,7 +13,7 @@ describe('Public API documentation', () => {
     expect(screen.getAllByRole('link',{name:/Manage API access/})[0]).toHaveAttribute('href','/settings?tab=api');
     expect(screen.getByRole('link',{name:'Download OpenAPI'})).toHaveAttribute('href','/sms-api-v1.openapi.json');
     expect(screen.queryByLabelText(/API key/i)).not.toBeInTheDocument(); expect(fetch).not.toHaveBeenCalled();
-    expect(screen.getByRole('heading',{name:'Extra security is required for API access'})).toBeInTheDocument();
+    expect(screen.getByRole('heading',{name:'Extra sign-in verification is optional'})).toBeInTheDocument();
     expect(screen.getByRole('link',{name:'Settings → Security'})).toHaveAttribute('href','/settings?tab=security');
   });
   it('switches all six real HTTP examples without executing them', () => {

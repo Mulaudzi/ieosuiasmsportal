@@ -25,9 +25,9 @@ describe('SMS API access settings', () => {
     expect(screen.getByRole('button', { name: 'Add connection' })).toBeDisabled();
     expect(createSmsIntegration).not.toHaveBeenCalled();
   });
-  it('requires step-up for issuance but still allows explicit revocation', async () => {
+  it('honours an enabled extra check for issuance without requiring customers to enroll', async () => {
     vi.mocked(getSmsIntegrations).mockResolvedValue({ available: true, can_issue_keys: false, connections: [fixture] }); mount();
-    expect(await screen.findByRole('link', { name: /enable the extra SMS Portal sign-in check/ }, { timeout: 10000 })).toHaveAttribute('href', '/settings?tab=security');
+    expect(await screen.findByRole('link', { name: /review your security settings/ }, { timeout: 10000 })).toHaveAttribute('href', '/settings?tab=security');
     expect(screen.getByRole('button', { name: 'Add connection' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Revoke connection' })).not.toBeDisabled();
   });

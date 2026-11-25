@@ -28,10 +28,14 @@ final class SmsIntegrationService
     private function owner(int $id): ?array {
         return $this->one('SELECT u.id,u.is_active,u.email_verified_at,u.auth_version,s.enabled AS security_enabled,s.version AS security_version FROM users u LEFT JOIN sms_login_security s ON s.user_id=u.id WHERE u.id=?', [$id]);
     }
+    private function optionalVerificationSatisfied(array $owner, array $actor): bool {
+        return empty($owner['security_enabled']) || (isset($actor['_sms_two_step_version'])
+            && (int)$actor['_sms_two_step_version'] === (int)$owner['security_version']);
+    }
     private function issuer(array $actor): array {
         $u = $this->owner((int)$actor['id']);
         if (!$u || empty($u['is_active']) || empty($u['email_verified_at'])) throw new SmsIntegrationException('VERIFIED_ACCOUNT_REQUIRED', 'Use a verified, active SMS Portal account.', 403);
-        if (empty($u['security_enabled']) || !isset($actor['_sms_two_step_version']) || (int)$actor['_sms_two_step_version'] !== (int)$u['security_version']) throw new SmsIntegrationException('API_KEY_STEP_UP_REQUIRED', 'Enable the SMS Portal extra sign-in check in Security, then sign out and back in before creating an API key.', 403);
+        if (!$this->optionalVerificationSatisfied($u, $actor)) throw new SmsIntegrationException('API_KEY_STEP_UP_REQUIRED', 'Complete the extra SMS Portal sign-in check you enabled by signing out and back in before creating an API key.', 403);
         return $u;
     }
     private function ownedApp(int $user, string $id, bool $lock = false): array {
@@ -60,7 +64,7 @@ final class SmsIntegrationService
             $app['admitted_credits_today'] = (int)($usage['admitted_credits'] ?? 0);
             unset($app['user_id']);
         } unset($app);
-        return ['available' => true, 'can_issue_keys' => !empty($u['security_enabled']) && isset($actor['_sms_two_step_version']) && (int)$actor['_sms_two_step_version'] === (int)$u['security_version'], 'connections' => $apps, 'scopes' => SmsIntegrationPolicy::SCOPES, 'products' => SmsIntegrationPolicy::PRODUCTS];
+        return ['available' => true, 'can_issue_keys' => !empty($u['is_active']) && !empty($u['email_verified_at']) && $this->optionalVerificationSatisfied($u, $actor), 'connections' => $apps, 'scopes' => SmsIntegrationPolicy::SCOPES, 'products' => SmsIntegrationPolicy::PRODUCTS];
     }
     public function createConnection(array $actor, array $input): array {
         $this->ready(); $this->issuer($actor);
@@ -107,7 +111,7 @@ final class SmsIntegrationService
         $app = $this->one('SELECT * FROM sms_integrations WHERE id=? AND user_id=?'.($lock ? $this->lock() : ''), [$context['integration_id'], $context['user_id']]);
         $key = $this->one('SELECT * FROM sms_integration_keys WHERE id=? AND integration_id=? AND user_id=?'.($lock ? $this->lock() : ''), [$context['key_id'], $context['integration_id'], $context['user_id']]);
         $u = $this->owner((int)$context['user_id']);
-        if (!$app || !$key || !$u || $app['status'] !== 'active' || $key['revoked_at'] !== null || (int)$key['expires_at'] <= $this->now() || empty($u['is_active']) || empty($u['email_verified_at']) || empty($u['security_enabled']) || (int)$u['auth_version'] !== (int)$key['owner_auth_version'] || (int)$u['security_version'] !== (int)$key['owner_security_version']) throw new SmsIntegrationException('INVALID_API_KEY', 'Invalid, expired or revoked API key.', 401);
+        if (!$app || !$key || !$u || $app['status'] !== 'active' || $key['revoked_at'] !== null || (int)$key['expires_at'] <= $this->now() || empty($u['is_active']) || empty($u['email_verified_at']) || (int)$u['auth_version'] !== (int)$key['owner_auth_version'] || (int)$u['security_version'] !== (int)$key['owner_security_version']) throw new SmsIntegrationException('INVALID_API_KEY', 'Invalid, expired or revoked API key.', 401);
         if (!in_array($scope, json_decode($key['scopes_json'], true) ?: [], true) || !in_array($scope, json_decode($app['scopes_json'], true) ?: [], true)) throw new SmsIntegrationException('INSUFFICIENT_SCOPE', 'This API key does not have the required permission.', 403);
         return $app;
     }

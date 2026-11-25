@@ -12,7 +12,7 @@ This release does not introduce organizations, memberships, alternative payers, 
 
 ## Credentials
 
-After activation, open **Settings → API access**. Enable the SMS Portal's optional extra sign-in check, then sign out and back in before issuing a key. This requirement is only for key issuance; it does not enroll other IEOSUIA apps or require an email code on every server request.
+After activation, open **Settings → API access** with a verified, active SMS Portal account. The extra SMS Portal sign-in check is optional for API access and is off by default. If you choose to enable it, complete it when signing in before issuing or rotating a key. API requests use the server credential, not an interactive email code. Existing security/auth-version invalidation and key revocation remain enforced.
 
 1. Create a connection per application and environment, with a name, product label, daily admitted-credit allowance and least-privilege permissions.
 2. Copy the newly displayed key to a backend secret store. It is shown once. The database stores only a random public identifier and SHA-256 hash of a 256-bit random secret. The key is not saved to browser storage or the frontend query cache.

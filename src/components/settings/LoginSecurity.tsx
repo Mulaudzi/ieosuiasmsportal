@@ -35,7 +35,7 @@ export function LoginSecurity(){
 </div>
 <span className="rounded-full border bg-muted/40 px-3 py-1 text-xs font-medium">SMS Portal only</span>
 </div>
-  <p className="text-sm leading-relaxed text-muted-foreground">After Central Auth sign-in, enter a six-digit code emailed to your verified account. This setting applies only to the SMS Portal, not your other IEOSUIA apps.</p>
+  <p className="text-sm leading-relaxed text-muted-foreground">This extra check is optional and off by default, including for API access. If you enable it, enter a six-digit code emailed to your verified account after Central Auth sign-in. This setting applies only to the SMS Portal, not your other IEOSUIA apps.</p>
   <details className="settings-security-explainer"><summary>What happens when I enable this?</summary><div className="mt-3 grid gap-3 sm:grid-cols-3">{[{icon:Smartphone,title:'1. Choose to enable',text:'You stay in control. It is optional.'},{icon:Mail,title:'2. Confirm your email',text:'Enter the one-time code we send you.'},{icon:KeyRound,title:'3. Save recovery codes',text:'Keep them safe in case you lose email access.'}].map(item=>
 <div key={item.title} className="rounded-xl border bg-muted/20 p-3">
 <item.icon className="mb-2 h-4 w-4 text-primary" aria-hidden="true"/>

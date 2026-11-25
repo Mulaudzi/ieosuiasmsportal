@@ -78,5 +78,32 @@
 @media(min-width:1600px){.campaign-window-main{padding:24px 26px 28px}.campaign-window-message p{font-size:12px}.campaign-window-frame{grid-template-columns:165px minmax(0,1fr)}}
 @media(max-width:1199px){.sms-home .home-hero .ops-wrap{width:calc(100% - 64px)}.sms-home .ops-hero-grid{gap:32px;grid-template-columns:.9fr 1.1fr}.campaign-window-frame{grid-template-columns:112px minmax(0,1fr)}.campaign-window-sidebar{padding:22px 8px;font-size:10px}.campaign-window-sidebar .portal-logo{width:94px}.campaign-window-items>div,.campaign-window-support>div{gap:6px;padding:8px 5px}.campaign-window-main{padding:16px}.campaign-window-search{display:none}.sms-home .home-hero h1{font-size:clamp(39px,4.4vw,54px)}.sms-home .ops-lead{font-size:16px}.campaign-window-confirm{flex-wrap:wrap}.campaign-window-confirm small{margin-left:26px}.campaign-window-title h2{font-size:19px}}
 @media(max-width:1023px){.sms-home .ops-hero-grid{grid-template-columns:1fr;gap:56px}.sms-home .ops-hero-copy{max-width:700px}.sms-home .home-hero h1{font-size:clamp(46px,7vw,65px)}.campaign-window{transform:none;width:100%;max-width:730px;justify-self:center}.campaign-window-frame{grid-template-columns:150px minmax(0,1fr)}.campaign-window-sidebar{font-size:12px;padding:24px 12px}.campaign-window-sidebar .portal-logo{width:120px}.campaign-window-main{padding:22px}.campaign-window-search{display:flex}.campaign-window-message p{font-size:13px}.campaign-window-confirm small{margin-left:auto}.sms-home .ops-hero-facts{font-size:12px}}
+/* Tablet heroes use a centered stack in portrait and a compact split in landscape. */
+@media (min-width:640px) and (max-width:899px){
+.sms-home .home-hero{padding-top:48px}
+.sms-home .ops-hero-grid{gap:42px;padding-bottom:48px}
+.sms-home .ops-hero-copy{max-width:680px;justify-self:center;text-align:center}
+.sms-home .ops-eyebrow,.sms-home .ops-actions,.sms-home .ops-hero-facts{justify-content:center}
+.sms-home .home-hero h1{font-size:clamp(44px,6.4vw,56px);letter-spacing:-2px}
+.sms-home .ops-lead{max-width:570px;margin-inline:auto}
+.sms-home .ops-hero-baseline{justify-content:center;text-align:center}
+.campaign-window{max-width:680px}
+}
+@media (min-width:900px) and (max-width:1199px){
+.sms-home .home-hero{padding-top:56px}
+.sms-home .ops-hero-grid{grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);gap:32px;padding-bottom:56px}
+.sms-home .ops-hero-copy{max-width:none}
+.sms-home .home-hero h1{font-size:clamp(35px,4.1vw,48px);letter-spacing:-1.7px}
+.sms-home .ops-eyebrow{font-size:9px;letter-spacing:1.2px}
+.sms-home .ops-lead{max-width:100%;font-size:16px}
+.sms-home .ops-actions{gap:12px 20px}
+.sms-home .ops-actions .ops-button{min-height:54px;padding-inline:22px;font-size:14px}
+.sms-home .ops-actions .ops-text-link{font-size:13px}
+.sms-home .ops-hero-facts{font-size:10px;gap:12px}
+.campaign-window{transform:none;width:100%;max-width:none}
+.campaign-window-frame{grid-template-columns:minmax(0,1fr)}
+.campaign-window-sidebar,.campaign-window-search{display:none}
+.campaign-window-main{padding:20px}
+}
 @media(max-width:639px){.sms-home .home-nav{min-height:72px}.sms-home .home-hero{padding-top:42px}.sms-home .home-hero .ops-wrap{width:calc(100% - 40px)}.sms-home .ops-hero-grid{gap:42px;padding-bottom:38px}.sms-home .home-hero h1{font-size:clamp(35px,9.1vw,49px);letter-spacing:-1.6px}.sms-home .ops-eyebrow{font-size:8px;letter-spacing:1px;margin-bottom:23px}.sms-home .ops-lead{font-size:15px;line-height:1.8;margin-bottom:27px}.sms-home .ops-actions{gap:8px}.sms-home .ops-hero-facts{font-size:10px;gap:12px;margin-top:21px}.sms-home .ops-hero-facts svg{width:20px;height:20px;padding:3px}.sms-home .ops-hero-facts>span{gap:6px}.campaign-window::before{inset:-9px;border-radius:21px}.campaign-window-frame{display:block;border-radius:12px}.campaign-window-sidebar{display:none}.campaign-window-main{padding:18px 14px}.campaign-window-toolbar{margin-bottom:19px}.campaign-window-search{display:none}.campaign-window-title h2{font-size:20px}.campaign-window-title p{font-size:11px}.campaign-window-card{padding:14px 11px}.campaign-window-card h3{font-size:17px}.campaign-window-label>span{font-size:8px}.campaign-window-meta{font-size:10px}.campaign-window-message{padding:12px 10px}.campaign-window-message p{font-size:12px}.campaign-window-confirm small{margin-left:26px}.campaign-window-confirm>svg:last-child{display:none}.campaign-window-metrics{gap:10px}.campaign-window-metric{padding-right:8px}.campaign-window-metric strong{font-size:23px}.campaign-window-metric small{font-size:10px}.campaign-window-snapshot>span{font-size:9px}.campaign-window>figcaption{font-size:10px;padding-top:15px}.sms-home .ops-hero-baseline{gap:14px;padding-block:25px}.sms-home .ops-hero-baseline>span{font-size:8px}.sms-home .ops-hero-baseline>div{font-size:11px}.home-hero::before,.home-hero::after{display:none}}
 @media(prefers-reduced-motion:reduce){.campaign-window{transform:none}}
